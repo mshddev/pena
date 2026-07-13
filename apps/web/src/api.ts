@@ -1,0 +1,41 @@
+import type {
+  FeedbackBatch,
+  FeedbackSubmission,
+  PenaDocument,
+} from "@pena/contracts";
+
+interface ApiErrorBody {
+  error?: string;
+}
+
+async function parseResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(body.error ?? `Pena returned HTTP ${response.status}.`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export async function fetchDocument(): Promise<PenaDocument | null> {
+  const response = await fetch("/api/document");
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  return parseResponse<PenaDocument>(response);
+}
+
+export async function submitFeedback(
+  submission: FeedbackSubmission,
+): Promise<FeedbackBatch> {
+  const response = await fetch("/api/feedback", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(submission),
+  });
+
+  return parseResponse<FeedbackBatch>(response);
+}
+

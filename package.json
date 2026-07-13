@@ -10,7 +10,7 @@
     "build": "pnpm --recursive --if-present build",
     "dev": "pnpm --filter @pena/contracts build && concurrently --kill-others --names server,web \"pnpm --filter @pena/server dev\" \"pnpm --filter @pena/web dev\"",
     "test": "pnpm --recursive --if-present test",
-    "typecheck": "pnpm --recursive --if-present typecheck"
+    "typecheck": "pnpm --filter @pena/contracts build && pnpm --recursive --if-present typecheck"
   },
   "devDependencies": {
     "concurrently": "^10.0.3",

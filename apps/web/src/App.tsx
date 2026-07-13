@@ -1,4 +1,8 @@
-import type { CommentInput, PenaDocument } from "@pena/contracts";
+import {
+  DocumentSlugSchema,
+  type CommentInput,
+  type PenaDocument,
+} from "@pena/contracts";
 import {
   useCallback,
   useEffect,
@@ -22,12 +26,13 @@ type Notice =
   | null;
 
 export function App() {
+  const documentSlug = readDocumentSlug(window.location.pathname);
   const documentSurfaceRef = useRef<HTMLElement>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const [currentDocument, setCurrentDocument] = useState<PenaDocument | null>(
     null,
   );
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(documentSlug !== null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedPassage, setSelectedPassage] =
     useState<SelectedPassage | null>(null);
@@ -36,11 +41,15 @@ export function App() {
   const [notice, setNotice] = useState<Notice>(null);
 
   const loadDocument = useCallback(async () => {
+    if (!documentSlug) {
+      return;
+    }
+
     setIsLoading(true);
     setNotice(null);
 
     try {
-      const penaDocument = await fetchDocument();
+      const penaDocument = await fetchDocument(documentSlug);
       setCurrentDocument(penaDocument);
       setSelectedPassage(null);
     } catch (error) {
@@ -52,11 +61,14 @@ export function App() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [documentSlug]);
 
   useEffect(() => {
-    void loadDocument();
-  }, [loadDocument]);
+    if (documentSlug) {
+      document.title = `${documentSlug} · Pena`;
+      void loadDocument();
+    }
+  }, [documentSlug, loadDocument]);
 
   useEffect(() => {
     if (selectedPassage) {
@@ -121,7 +133,11 @@ export function App() {
     setNotice(null);
 
     try {
-      await submitFeedback({
+      if (!documentSlug) {
+        return;
+      }
+
+      await submitFeedback(documentSlug, {
         comments: draftComments.map(
           ({ selectedText, comment, contextBefore, contextAfter }) => ({
             selectedText,
@@ -170,7 +186,7 @@ export function App() {
             className="quiet-button"
             type="button"
             onClick={handleRefresh}
-            disabled={isLoading}
+            disabled={isLoading || !documentSlug}
           >
             <RefreshIcon />
             {isLoading ? "Loading" : "Refresh document"}
@@ -184,17 +200,34 @@ export function App() {
             <div>
               <p className="section-label">Current document</p>
               <p className="document-hint">
-                Select any passage to attach a comment.
+                {documentSlug
+                  ? "Select any passage to attach a comment."
+                  : "Open Pena with a document slug."}
               </p>
             </div>
-            {currentDocument ? (
-              <time dateTime={currentDocument.updatedAt}>
-                Updated {formatTime(currentDocument.updatedAt)}
-              </time>
-            ) : null}
+            <div className="document-identity">
+              {documentSlug ? (
+                <code className="document-slug">/{documentSlug}</code>
+              ) : null}
+              {currentDocument ? (
+                <time dateTime={currentDocument.updatedAt}>
+                  Updated {formatTime(currentDocument.updatedAt)}
+                </time>
+              ) : null}
+            </div>
           </div>
 
-          {isLoading ? (
+          {!documentSlug ? (
+            <div className="document-state empty-state">
+              <span className="empty-glyph" aria-hidden="true">
+                /
+              </span>
+              <h2>Document slug required</h2>
+              <p>
+                Open a direct URL such as <code>/documents/my-document</code>.
+              </p>
+            </div>
+          ) : isLoading ? (
             <div className="document-state" aria-live="polite">
               <span className="loading-line" />
               <span className="loading-line short" />
@@ -218,8 +251,8 @@ export function App() {
               </span>
               <h2>No document published yet</h2>
               <p>
-                Ask Claude to publish a Markdown document to Pena, then refresh
-                this page.
+                Ask Claude to publish Markdown using the <strong>{documentSlug}</strong>{" "}
+                slug, then refresh this page.
               </p>
             </div>
           )}
@@ -327,6 +360,23 @@ export function App() {
       </main>
     </div>
   );
+}
+
+function readDocumentSlug(pathname: string): string | null {
+  const match = /^\/documents\/([^/]+)\/?$/.exec(pathname);
+
+  if (!match?.[1]) {
+    return null;
+  }
+
+  try {
+    const parsedSlug = DocumentSlugSchema.safeParse(
+      decodeURIComponent(match[1]),
+    );
+    return parsedSlug.success ? parsedSlug.data : null;
+  } catch {
+    return null;
+  }
 }
 
 function formatTime(date: string): string {

@@ -2,6 +2,19 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { buildApp } from "./app.js";
 
+const DOCUMENT_URL = "/api/documents/initial-spec";
+const FEEDBACK_URL = `${DOCUMENT_URL}/feedback`;
+const feedbackPayload = {
+  comments: [
+    {
+      selectedText: "Current",
+      comment: "Change this.",
+      contextBefore: "",
+      contextAfter: " draft",
+    },
+  ],
+};
+
 const apps = new Set<ReturnType<typeof buildApp>>();
 
 function createApp(): ReturnType<typeof buildApp> {
@@ -10,48 +23,55 @@ function createApp(): ReturnType<typeof buildApp> {
   return app;
 }
 
+async function publishDocument(
+  app: ReturnType<typeof buildApp>,
+  url = DOCUMENT_URL,
+  content = "Current draft",
+) {
+  return app.inject({
+    method: "PUT",
+    url,
+    headers: { "content-type": "text/markdown" },
+    payload: content,
+  });
+}
+
 afterEach(async () => {
   await Promise.all([...apps].map((app) => app.close()));
   apps.clear();
 });
 
 describe("Pena API", () => {
-  it("publishes and returns the current Markdown document", async () => {
+  it("publishes and returns a Markdown document by slug", async () => {
     const app = createApp();
 
-    const publishResponse = await app.inject({
-      method: "PUT",
-      url: "/api/document",
-      headers: { "content-type": "text/markdown" },
-      payload: "# First draft\n\nHello Pena.",
-    });
+    const publishResponse = await publishDocument(
+      app,
+      DOCUMENT_URL,
+      "# First draft\n\nHello Pena.",
+    );
 
     expect(publishResponse.statusCode).toBe(200);
 
     const documentResponse = await app.inject({
       method: "GET",
-      url: "/api/document",
+      url: DOCUMENT_URL,
     });
 
     expect(documentResponse.statusCode).toBe(200);
     expect(documentResponse.json()).toMatchObject({
+      slug: "initial-spec",
       content: "# First draft\n\nHello Pena.",
     });
   });
 
   it("stores multiple comments in one feedback batch", async () => {
     const app = createApp();
-
-    await app.inject({
-      method: "PUT",
-      url: "/api/document",
-      headers: { "content-type": "text/markdown" },
-      payload: "Alpha beta gamma delta.",
-    });
+    await publishDocument(app, DOCUMENT_URL, "Alpha beta gamma delta.");
 
     const submitResponse = await app.inject({
       method: "POST",
-      url: "/api/feedback",
+      url: FEEDBACK_URL,
       payload: {
         comments: [
           {
@@ -74,7 +94,7 @@ describe("Pena API", () => {
 
     const feedbackResponse = await app.inject({
       method: "GET",
-      url: "/api/feedback",
+      url: FEEDBACK_URL,
     });
 
     const feedback = feedbackResponse.json();
@@ -82,74 +102,73 @@ describe("Pena API", () => {
     expect(feedback.batches[0].comments).toHaveLength(2);
   });
 
-  it("keeps multiple submissions until the document is replaced", async () => {
+  it("isolates documents and feedback by slug", async () => {
     const app = createApp();
+    const articleUrl = "/api/documents/article-draft";
+    const articleFeedbackUrl = `${articleUrl}/feedback`;
 
-    await app.inject({
-      method: "PUT",
-      url: "/api/document",
-      headers: { "content-type": "text/markdown" },
-      payload: "Current draft",
-    });
-
-    const feedbackPayload = {
-      comments: [
-        {
-          selectedText: "Current",
-          comment: "Change this.",
-          contextBefore: "",
-          contextAfter: " draft",
-        },
-      ],
-    };
-
+    await publishDocument(app);
+    await publishDocument(app, articleUrl, "Article draft");
     await app.inject({
       method: "POST",
-      url: "/api/feedback",
+      url: FEEDBACK_URL,
       payload: feedbackPayload,
     });
     await app.inject({
       method: "POST",
-      url: "/api/feedback",
+      url: articleFeedbackUrl,
       payload: feedbackPayload,
     });
 
-    const beforeReplacement = await app.inject({
-      method: "GET",
-      url: "/api/feedback",
-    });
-    expect(beforeReplacement.json().batches).toHaveLength(2);
+    await publishDocument(app, DOCUMENT_URL, "Replacement draft");
 
-    await app.inject({
-      method: "PUT",
-      url: "/api/document",
-      headers: { "content-type": "text/markdown" },
-      payload: "Replacement draft",
+    const replacedFeedback = await app.inject({
+      method: "GET",
+      url: FEEDBACK_URL,
+    });
+    const articleFeedback = await app.inject({
+      method: "GET",
+      url: articleFeedbackUrl,
     });
 
-    const afterReplacement = await app.inject({
-      method: "GET",
-      url: "/api/feedback",
-    });
-    expect(afterReplacement.json()).toEqual({ batches: [] });
+    expect(replacedFeedback.json()).toEqual({ batches: [] });
+    expect(articleFeedback.json().batches).toHaveLength(1);
   });
 
-  it("rejects invalid feedback", async () => {
+  it("keeps multiple submissions until that document is replaced", async () => {
     const app = createApp();
+    await publishDocument(app);
 
     await app.inject({
-      method: "PUT",
-      url: "/api/document",
-      headers: { "content-type": "text/markdown" },
-      payload: "A document",
+      method: "POST",
+      url: FEEDBACK_URL,
+      payload: feedbackPayload,
+    });
+    await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      payload: feedbackPayload,
     });
 
-    const response = await app.inject({
+    const response = await app.inject({ method: "GET", url: FEEDBACK_URL });
+    expect(response.json().batches).toHaveLength(2);
+  });
+
+  it("rejects invalid slugs and invalid feedback", async () => {
+    const app = createApp();
+
+    const invalidSlugResponse = await publishDocument(
+      app,
+      "/api/documents/Invalid_Slug",
+    );
+    expect(invalidSlugResponse.statusCode).toBe(400);
+
+    await publishDocument(app);
+    const invalidFeedbackResponse = await app.inject({
       method: "POST",
-      url: "/api/feedback",
+      url: FEEDBACK_URL,
       payload: { comments: [] },
     });
-
-    expect(response.statusCode).toBe(400);
+    expect(invalidFeedbackResponse.statusCode).toBe(400);
   });
 });

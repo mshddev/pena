@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  DocumentSlugSchema,
   FeedbackSubmissionSchema,
   type FeedbackBatch,
   type FeedbackResponse,
@@ -8,10 +9,14 @@ import {
 } from "@pena/contracts";
 import Fastify, { type FastifyInstance } from "fastify";
 
+interface DocumentState {
+  document: PenaDocument;
+  feedbackBatches: FeedbackBatch[];
+}
+
 export function buildApp(): FastifyInstance {
   const app = Fastify({ logger: false });
-  let currentDocument: PenaDocument | null = null;
-  const feedbackBatches: FeedbackBatch[] = [];
+  const documents = new Map<string, DocumentState>();
 
   app.addContentTypeParser(
     "text/markdown",
@@ -23,62 +28,100 @@ export function buildApp(): FastifyInstance {
 
   app.get("/api/health", async () => ({ status: "ok" }));
 
-  app.put("/api/document", async (request, reply) => {
-    if (typeof request.body !== "string") {
-      return reply.code(400).send({
-        error: "The request body must contain Markdown text.",
+  app.put<{ Params: { slug: string } }>(
+    "/api/documents/:slug",
+    async (request, reply) => {
+      const parsedSlug = DocumentSlugSchema.safeParse(request.params.slug);
+
+      if (!parsedSlug.success) {
+        return reply.code(400).send({
+          error:
+            "The document slug must use lowercase letters, numbers, and single hyphens.",
+        });
+      }
+
+      if (typeof request.body !== "string") {
+        return reply.code(400).send({
+          error: "The request body must contain Markdown text.",
+        });
+      }
+
+      const document: PenaDocument = {
+        slug: parsedSlug.data,
+        content: request.body,
+        updatedAt: new Date().toISOString(),
+      };
+
+      documents.set(parsedSlug.data, {
+        document,
+        feedbackBatches: [],
       });
-    }
 
-    currentDocument = {
-      content: request.body,
-      updatedAt: new Date().toISOString(),
-    };
-    feedbackBatches.length = 0;
+      return reply.code(200).send(document);
+    },
+  );
 
-    return reply.code(200).send(currentDocument);
-  });
+  app.get<{ Params: { slug: string } }>(
+    "/api/documents/:slug",
+    async (request, reply) => {
+      const state = documents.get(request.params.slug);
 
-  app.get("/api/document", async (_request, reply) => {
-    if (!currentDocument) {
-      return reply.code(404).send({
-        error: "No document has been published yet.",
-      });
-    }
+      if (!state) {
+        return reply.code(404).send({
+          error: `No document has been published with slug "${request.params.slug}".`,
+        });
+      }
 
-    return reply.send(currentDocument);
-  });
+      return reply.send(state.document);
+    },
+  );
 
-  app.post("/api/feedback", async (request, reply) => {
-    if (!currentDocument) {
-      return reply.code(409).send({
-        error: "Publish a document before submitting feedback.",
-      });
-    }
+  app.post<{ Params: { slug: string } }>(
+    "/api/documents/:slug/feedback",
+    async (request, reply) => {
+      const state = documents.get(request.params.slug);
 
-    const parsedSubmission = FeedbackSubmissionSchema.safeParse(request.body);
+      if (!state) {
+        return reply.code(409).send({
+          error: `Publish the "${request.params.slug}" document before submitting feedback.`,
+        });
+      }
 
-    if (!parsedSubmission.success) {
-      return reply.code(400).send({
-        error: "The feedback payload is invalid.",
-      });
-    }
+      const parsedSubmission = FeedbackSubmissionSchema.safeParse(request.body);
 
-    const batch: FeedbackBatch = {
-      id: randomUUID(),
-      submittedAt: new Date().toISOString(),
-      comments: parsedSubmission.data.comments,
-    };
+      if (!parsedSubmission.success) {
+        return reply.code(400).send({
+          error: "The feedback payload is invalid.",
+        });
+      }
 
-    feedbackBatches.push(batch);
+      const batch: FeedbackBatch = {
+        id: randomUUID(),
+        submittedAt: new Date().toISOString(),
+        comments: parsedSubmission.data.comments,
+      };
 
-    return reply.code(201).send(batch);
-  });
+      state.feedbackBatches.push(batch);
 
-  app.get("/api/feedback", async (): Promise<FeedbackResponse> => ({
-    batches: feedbackBatches,
-  }));
+      return reply.code(201).send(batch);
+    },
+  );
+
+  app.get<{ Params: { slug: string } }>(
+    "/api/documents/:slug/feedback",
+    async (request, reply): Promise<FeedbackResponse | void> => {
+      const state = documents.get(request.params.slug);
+
+      if (!state) {
+        await reply.code(404).send({
+          error: `No document has been published with slug "${request.params.slug}".`,
+        });
+        return;
+      }
+
+      return { batches: state.feedbackBatches };
+    },
+  );
 
   return app;
 }
-

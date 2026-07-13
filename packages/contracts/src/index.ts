@@ -5,7 +5,19 @@ const NonBlankStringSchema = z
   .min(1)
   .refine((value) => value.trim().length > 0, "Must not be blank");
 
+export const DocumentSlugSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+    "Must use lowercase letters, numbers, and single hyphens",
+  );
+
+export type DocumentSlug = z.infer<typeof DocumentSlugSchema>;
+
 export const DocumentSchema = z.object({
+  slug: DocumentSlugSchema,
   content: z.string(),
   updatedAt: z.iso.datetime(),
 });
@@ -39,4 +51,3 @@ export const FeedbackResponseSchema = z.object({
 });
 
 export type FeedbackResponse = z.infer<typeof FeedbackResponseSchema>;
-

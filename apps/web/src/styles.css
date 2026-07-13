@@ -212,7 +212,20 @@ button:disabled {
 
 .document-meta time {
   flex: 0 0 auto;
+}
+
+.document-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   margin-left: 24px;
+}
+
+.document-slug {
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  color: var(--accent-bright);
+  font-size: 11px;
 }
 
 .markdown-body {
@@ -693,8 +706,8 @@ button:disabled {
     margin-bottom: 34px;
   }
 
-  .document-meta time {
-    display: block;
+  .document-identity {
+    flex-wrap: wrap;
     margin: 12px 0 0;
   }
 

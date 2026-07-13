@@ -17,8 +17,8 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function fetchDocument(): Promise<PenaDocument | null> {
-  const response = await fetch("/api/document");
+export async function fetchDocument(slug: string): Promise<PenaDocument | null> {
+  const response = await fetch(`/api/documents/${encodeURIComponent(slug)}`);
 
   if (response.status === 404) {
     return null;
@@ -28,14 +28,17 @@ export async function fetchDocument(): Promise<PenaDocument | null> {
 }
 
 export async function submitFeedback(
+  slug: string,
   submission: FeedbackSubmission,
 ): Promise<FeedbackBatch> {
-  const response = await fetch("/api/feedback", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(submission),
-  });
+  const response = await fetch(
+    `/api/documents/${encodeURIComponent(slug)}/feedback`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(submission),
+    },
+  );
 
   return parseResponse<FeedbackBatch>(response);
 }
-

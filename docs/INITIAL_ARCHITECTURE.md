@@ -7,7 +7,7 @@ Pena — [Initial Specification](./INITIAL_SPEC.md)
 [!info]
 *This is the initial architecture. The implementation may introduce different or better decisions later.*
 
-Pena is a local web-based document review interface. Claude publishes a Markdown document to Pena, the user reviews it in the browser, and Claude reads the submitted feedback when the user asks for it.
+Pena is a local web-based document review interface. Claude publishes a Markdown document to Pena under a document slug, the user reviews it in the browser, and Claude reads the submitted feedback for that slug when the user asks for it.
 
 Automatic feedback delivery remains the intended experience. However, we do not need to solve it in the first slice. A manual prompt gives us a complete review loop while keeping the first implementation small.
 
@@ -22,7 +22,7 @@ flowchart LR
 
 Pena consists of three parts in the first slice:
 
-- **Pena Server** — stores the current document and submitted feedback, and exposes the HTTP API.
+- **Pena Server** — stores the current document and submitted feedback for each slug, and exposes the HTTP API.
 - **Pena Web** — renders the document and collects comments attached to selected text.
 - **Claude Instruction** — a copy-pasted prompt that tells the active Claude Code session how to publish a document and read feedback.
 
@@ -32,32 +32,33 @@ The Pena Server is a local HTTP server bound to `127.0.0.1`. It is the shared bo
 
 Its initial responsibilities are:
 
-- Accept a Markdown document from Claude.
-- Return the current document to the browser.
-- Accept a batch of comments from the browser.
-- Keep submitted feedback available until the document is replaced.
-- Return submitted feedback when Claude requests it.
+- Accept a Markdown document from Claude under a slug.
+- Return the current document for that slug to the browser.
+- Accept a batch of comments for that slug from the browser.
+- Keep submitted feedback available until the same document is replaced.
+- Return submitted feedback for the requested slug when Claude requests it.
 
-Pena does not associate a Claude Code session identity with a document. The initial scope only supports one active Claude Code session, so a single feedback consumer is enough.
+Pena does not associate a Claude Code session identity with a document. The document slug is the only namespace. This lets several Claude Code sessions use one running Pena server without requiring session registration or lifecycle tracking.
 
 ## The Pena Web
 
-The web interface reads the current Markdown document from the Pena Server. The user can select text, attach a comment, repeat the same process for other passages, and submit the comments together.
+The web interface reads the current Markdown document from the Pena Server using the slug in `/documents/:slug`. The user can select text, attach a comment, repeat the same process for other passages, and submit the comments together.
 
 The browser uses normal HTTP for reading and submitting data. The first slice provides a refresh action to load replaced document content. Automatic refresh may be added later.
 
 The interface uses dark mode from the beginning. This includes the document surface, comment panel, text selection, comment markers, and Markdown code blocks. The initial version can use plain CSS with shared color variables; a styling framework is not needed yet.
 
-There is no document list, search, or navigation interface for now. The document can be opened through its direct local URL.
+There is no document list, search, or navigation interface for now. Each document is opened through its direct local URL, for example `http://127.0.0.1:5173/documents/initial-spec`.
 
 ## The Claude Instruction
 
 The user copy-pastes one instruction into the active Claude Code session. The instruction describes the workflow Claude should follow when working with Pena:
 
-1. Publish the requested document through the Pena HTTP API using `curl`.
-2. Read submitted feedback through the Pena HTTP API when the user explicitly asks for it.
-3. Apply the feedback based on the user's request.
-4. Publish the updated document when another review cycle is needed.
+1. Choose a stable lowercase, kebab-case slug for the document.
+2. Publish the requested document under that slug through the Pena HTTP API using `curl`.
+3. Read submitted feedback for the same slug when the user explicitly asks for it.
+4. Apply the feedback based on the user's request.
+5. Publish the updated document under the same slug when another review cycle is needed.
 
 For example, Claude can publish a document with:
 
@@ -65,16 +66,16 @@ For example, Claude can publish a document with:
 curl --request PUT \
   --header "Content-Type: text/markdown" \
   --data-binary @document.md \
-  http://127.0.0.1:8788/api/document
+  http://127.0.0.1:8788/api/documents/initial-spec
 ```
 
 The instruction contains the HTTP endpoints and exact commands, so a Pena Skill, plugin, and dedicated CLI are not needed for the first slice.
 
 ## The Feedback Delivery
 
-The user submits one or more comments as a feedback batch. The server keeps every batch for the current document in memory.
+The user submits one or more comments as a feedback batch. The server keeps every batch for the requested document slug in memory.
 
-When the user says something like *"read my Pena feedback"*, Claude requests the stored batches and decides how to apply them. Reading feedback does not mark it as handled. Publishing a replacement document clears the previous document's feedback.
+When the user says something like *"read my Pena feedback"*, Claude requests the stored batches for its document slug and decides how to apply them. Reading feedback does not mark it as handled. Publishing a replacement document clears feedback for that slug only.
 
 This is intentionally manual. Automatic notification, background monitoring, delivery acknowledgements, and reconnection behavior are deferred until the document review experience itself has been validated.
 
@@ -138,10 +139,10 @@ The initial API may look like this:
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `PUT` | `/api/document` | Publish or replace the current Markdown document |
-| `GET` | `/api/document` | Read the current document |
-| `POST` | `/api/feedback` | Submit a batch of comments |
-| `GET` | `/api/feedback` | Read all submitted feedback batches for the current document |
+| `PUT` | `/api/documents/:slug` | Publish or replace the current Markdown document under a slug |
+| `GET` | `/api/documents/:slug` | Read the current document for a slug |
+| `POST` | `/api/documents/:slug/feedback` | Submit a batch of comments for a slug |
+| `GET` | `/api/documents/:slug/feedback` | Read all submitted feedback batches for a slug |
 
 The exact payloads are intentionally not fixed yet. They should be decided while implementing the first vertical slice.
 
@@ -149,7 +150,7 @@ The exact payloads are intentionally not fixed yet. They should be decided while
 
 ## The Document
 
-Pena keeps the current Markdown content and enough metadata to serve it through a direct URL. Replacing the content does not create a document revision.
+Pena keeps the current Markdown content and enough metadata to serve it through a direct slug URL. A slug uses lowercase letters, numbers, and single hyphens, with a maximum length of 64 characters. Replacing the content under a slug does not create a document revision.
 
 ## The Comment
 
@@ -163,7 +164,7 @@ Each comment contains:
 
 A feedback batch contains one or more comments submitted together. Pena returns all batches for the current document when Claude requests feedback.
 
-The initial storage can remain in memory because session recovery, revision history, and long-term feedback processing are out of scope. Publishing a replacement document clears the existing feedback batches.
+The initial storage can remain in memory because session recovery, revision history, and long-term feedback processing are out of scope. The server keeps a map of document slugs to their current document and feedback batches. Publishing a replacement document clears the existing feedback batches for that slug only.
 
 # The Technical Stack
 
@@ -226,13 +227,14 @@ A Pena CLI may be introduced later if direct HTTP commands become difficult to m
 The first slice is complete when:
 
 1. The user starts Pena with `pnpm dev`.
-2. Claude publishes a Markdown document through the HTTP API.
-3. The browser renders the document in dark mode.
+2. Claude chooses a document slug and publishes a Markdown document through the HTTP API.
+3. The user opens `/documents/:slug`, and the browser renders the document in dark mode.
 4. The user selects at least two passages and comments on them.
 5. The user submits both comments together.
 6. The user asks Claude to read the Pena feedback.
-7. Claude retrieves every submitted feedback batch through the HTTP API.
-8. Claude can publish an updated document for another review cycle.
+7. Claude retrieves every submitted feedback batch for the same slug through the HTTP API.
+8. Claude can publish an updated document under the same slug for another review cycle.
+9. A second Claude Code session can use another slug without mixing documents or feedback.
 
 # Open Questions
 

@@ -5,9 +5,11 @@
 
 # Overview
 
-Pena is a local web-based Markdown document review interface for an active Claude Code session.
+Pena is a local web-based Markdown document review interface for active Claude Code sessions.
 
-Claude Code publishes a document — such as a plan, article, specification, system document, report, or other draft — to Pena. The user reads the document in a browser, selects specific text, adds comments, and submits the feedback. The active Claude Code session receives the pending feedback.
+Claude Code publishes a document — such as a plan, article, specification, system document, report, or other draft — to Pena under a document slug. The user reads the document in a browser, selects specific text, adds comments, and submits the feedback. The active Claude Code session receives the pending feedback for that slug.
+
+The slug identifies the document, not the Claude Code session. Several Claude Code sessions can use one running Pena server as long as they use different document slugs.
 
 # Problem
 
@@ -18,7 +20,7 @@ Pena should make this review loop simpler.
 # The Initial Scope
 
 - One local user
-- One active Claude Code session
+- Multiple active Claude Code sessions using different document slugs
 - Markdown documents
 - Browser-based document viewer
 - Comments attached to selected text
@@ -30,8 +32,8 @@ Pena should make this review loop simpler.
 # The Workflow
 
 1. The user asks Claude to create or publish a document in Pena.
-2. Claude publishes the document.
-3. The user opens the document in a local browser.
+2. Claude chooses a stable slug and publishes the document under that slug.
+3. The user opens the document through its direct slug URL in a local browser.
 4. The user selects a passage and adds a comment.
 5. The user may add comments to other passages.
 6. The user submits the feedback.
@@ -43,9 +45,11 @@ Pena should make this review loop simpler.
 # The Document
 
 - Claude can publish a Markdown document.
+- Every document has a unique lowercase, kebab-case slug.
 - The document is rendered in the browser.
 - Claude can replace the current content of an existing document.
-- Pena only keeps the current document content.
+- Pena only keeps the current content for each document slug.
+- Replacing one document does not affect documents or feedback under other slugs.
 
 # The Feedback
 
@@ -55,7 +59,7 @@ Each comment contains:
 
 - The selected text
 - The comment
-- The source document
+- The source document slug
 - Enough location or surrounding context to identify the passage
 
 # The Feedback Delivery
@@ -76,14 +80,15 @@ Each comment contains:
 5. The submission does not interrupt Claude's ongoing work.
 6. The active Claude Code session receives both comments automatically, including the selected text and document context.
 7. Claude can replace the current document content for another review cycle.
+8. Two Claude Code sessions can use different document slugs without mixing their documents or feedback.
 
 # Out of Scope
 
 - Recovering the workflow after the Claude Code session has ended
 - Remote access
-- Multiple simultaneous Claude Code sessions
 - Multiple reviewers
 - Authentication and user accounts
+- Claude Code session identity or registration
 - Rich-text editing
 - Direct document editing by the reviewer
 - Document revision history

@@ -3,7 +3,7 @@
 Copy the instruction below into the Claude Code session that will work with Pena.
 
 ```text
-You are working with Pena, a local Markdown document review interface running at http://127.0.0.1:8788.
+You are working with Pena, a Markdown document review interface running at http://127.0.0.1:8788.
 
 When I ask you to publish a document to Pena:
 
@@ -22,8 +22,8 @@ When I ask you to read my Pena feedback:
    curl --fail --silent --show-error http://127.0.0.1:8788/api/feedback
 2. Read every returned feedback batch and its comments.
 3. Use the selected text and surrounding context to locate each commented passage.
-4. Apply the feedback according to my request.
-5. Republish the updated document when I ask for another review cycle.
+4. Depending on feedback, you my need to pply the feedback accordingly.
+5. If there are any changes, Republish the updated document.
 
-Do not poll for feedback, start a background monitor, or assume that feedback has arrived. Only retrieve it when I explicitly ask. If Pena cannot be reached, report the error instead of guessing.
+Only retrieve the feedback when I explicitly ask. If Pena cannot be reached, report the error instead of guessing.
 ```

@@ -47,6 +47,8 @@ The web interface reads the current Markdown document from the Pena Server. The 
 
 The browser uses normal HTTP for reading and submitting data. SSE may be used to refresh the displayed document when Claude replaces its content.
 
+The interface uses dark mode from the beginning. This includes the document surface, comment panel, text selection, comment markers, and Markdown code blocks. The initial version can use plain CSS with shared color variables; a styling framework is not needed yet.
+
 There is no document list, search, or navigation interface for now. The document can be opened through its direct local URL.
 
 ## The Pena Skill
@@ -183,14 +185,57 @@ The initial storage can remain in memory because session recovery, revision hist
 
 # The Technical Stack
 
-The exact technical stack is not decided yet. The implementation needs:
+After careful consideration we recommend using the following stack:
 
-- A local HTTP server with streaming response support
-- A browser-based Markdown renderer
-- Text selection and comment anchoring
-- A simple in-memory feedback queue
+| Area | Choice | Purpose |
+|---|---|---|
+| Language | TypeScript | Use the same language and contracts across the server and web application |
+| Runtime | Node.js 24 | Run the local server on the current LTS release line |
+| Package manager | pnpm | Manage dependencies and the workspace |
+| Server | Fastify | Serve the HTTP API, NDJSON stream, SSE stream, and built web application |
+| Web | React and Vite | Build the interactive document review interface |
+| Markdown | `react-markdown` and `remark-gfm` | Render Markdown and GitHub Flavored Markdown in the browser |
+| Runtime validation | Zod | Validate API payloads and derive their TypeScript types from shared schemas |
+| Styling | Plain CSS with color variables | Build the dark-mode interface without introducing a styling framework yet |
+| Unit and integration tests | Vitest | Test the server, shared contracts, and browser logic |
+| Browser tests | Playwright | Test text selection, comments, submission, and document refresh behavior |
+| Storage | In memory | Keep the current document and pending feedback without adding a database |
 
-TypeScript and Node.js are a reasonable initial direction because the server and browser can share types and event contracts. The web framework and UI framework should be selected when building the first vertical slice.
+Node.js 24 should be recorded in `.nvmrc`, so contributors using `nvm` can activate the expected runtime with `nvm use`.
+
+## Runtime Validation
+
+TypeScript checks our code while we develop it, but those types do not exist when the application is running. The Pena Server still needs to validate data received from the browser or a direct HTTP command.
+
+Zod provides this runtime validation. For example, it can reject a feedback payload when `selectedText` is missing or `comment` is not a string. The same Zod schema can also produce the TypeScript type used by both the server and web application, so the runtime validation and compile-time contract do not drift apart.
+
+Zod is not an architectural requirement — we could write the checks manually. However, the web application, server, and Claude-facing event stream all exchange structured data. A small shared validation layer is worth the dependency here.
+
+## The Monorepo
+
+Pena starts as a pnpm workspace with separate applications and shared contracts:
+
+```text
+apps/
+  server/
+  web/
+packages/
+  contracts/
+skills/
+  pena/
+tests/
+  e2e/
+```
+
+The server and web application have different build and runtime boundaries, while `packages/contracts` contains the schemas and types used by both. The Pena Skill stays under `skills/pena` because it is part of the product but not a JavaScript package.
+
+We do not need Turborepo or another build orchestrator initially. pnpm workspaces and root-level scripts are enough for this repository size. We can introduce additional orchestration later if the build graph becomes difficult to manage.
+
+## The Web Implementation
+
+The browser can use the native `Selection` and `Range` APIs for the initial text-selection flow. A comment should keep the selected text and enough surrounding context to identify the passage. We should only introduce a dedicated annotation library if the native implementation proves insufficient during the first vertical slice.
+
+Vite serves the web application during development and proxies `/api` requests to Fastify. For a production-like local run, Fastify serves the built web application together with the API.
 
 A Pena CLI may be introduced later if direct HTTP commands become difficult to maintain, automatic server startup is needed, or cross-platform behavior becomes important. It is not part of the initial architecture.
 
@@ -214,7 +259,6 @@ The result will tell us whether Monitor is sufficient or whether Pena should use
 * **Q: How should pending feedback be replayed after a watcher reconnects?**
 * **Q: How should a selected passage be anchored when Markdown rendering changes its DOM structure?**
 * **Q: Should Pena support one current document or multiple documents through direct URLs?**
-* **Q: Which server and UI frameworks should be used?**
 
 # Related Documentation
 

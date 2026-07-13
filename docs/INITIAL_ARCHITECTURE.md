@@ -7,25 +7,24 @@ Pena — [Initial Specification](./INITIAL_SPEC.md)
 [!info]
 *This is the initial architecture. The implementation may introduce different or better decisions later.*
 
-Pena is a local web-based document review interface. Claude publishes a Markdown document to Pena, the user reviews it in the browser, and Pena sends the submitted feedback back to the active Claude Code session.
+Pena is a local web-based document review interface. Claude publishes a Markdown document to Pena, the user reviews it in the browser, and Claude reads the submitted feedback when the user asks for it.
 
-The important part is the last step. Pena should send the feedback without interrupting Claude's ongoing work and without requiring the user to return to the terminal.
+Automatic feedback delivery remains the intended experience. However, we do not need to solve it in the first slice. A manual prompt gives us a complete review loop while keeping the first implementation small.
 
 # System Design
 
 ```mermaid
 flowchart LR
-    Claude["Claude Code"] -->|"HTTP PUT through curl"| Server["Pena Server"]
-    Browser["Pena Web"] <-->|"HTTP + SSE"| Server
-    Claude -->|"Monitor: curl NDJSON stream"| Server
-    Server -->|"One JSON line per feedback batch"| Claude
+    Claude["Claude Code"] -->|"Publish document through HTTP PUT"| Server["Pena Server"]
+    Browser["Pena Web"] <-->|"Read document and submit feedback through HTTP"| Server
+    Claude -->|"Read feedback through HTTP GET when asked"| Server
 ```
 
-Pena consists of three initial components:
+Pena consists of three parts in the first slice:
 
-- **Pena Server** — stores the current document and pending feedback, exposes the HTTP API, and publishes events.
+- **Pena Server** — stores the current document and submitted feedback, and exposes the HTTP API.
 - **Pena Web** — renders the document and collects comments attached to selected text.
-- **Pena Skill** — tells Claude how to publish a document, start the feedback monitor, and react to incoming feedback.
+- **Claude Instruction** — a copy-pasted prompt that tells the active Claude Code session how to publish a document and read feedback.
 
 ## The Pena Server
 
@@ -36,8 +35,8 @@ Its initial responsibilities are:
 - Accept a Markdown document from Claude.
 - Return the current document to the browser.
 - Accept a batch of comments from the browser.
-- Keep submitted feedback available until it can be delivered.
-- Stream document and feedback events.
+- Keep submitted feedback available until the document is replaced.
+- Return submitted feedback when Claude requests it.
 
 Pena does not associate a Claude Code session identity with a document. The initial scope only supports one active Claude Code session, so a single feedback consumer is enough.
 
@@ -45,21 +44,20 @@ Pena does not associate a Claude Code session identity with a document. The init
 
 The web interface reads the current Markdown document from the Pena Server. The user can select text, attach a comment, repeat the same process for other passages, and submit the comments together.
 
-The browser uses normal HTTP for reading and submitting data. SSE may be used to refresh the displayed document when Claude replaces its content.
+The browser uses normal HTTP for reading and submitting data. The first slice provides a refresh action to load replaced document content. Automatic refresh may be added later.
 
 The interface uses dark mode from the beginning. This includes the document surface, comment panel, text selection, comment markers, and Markdown code blocks. The initial version can use plain CSS with shared color variables; a styling framework is not needed yet.
 
 There is no document list, search, or navigation interface for now. The document can be opened through its direct local URL.
 
-## The Pena Skill
+## The Claude Instruction
 
-The Pena Skill describes the workflow Claude should follow when working with Pena:
+The user copy-pastes one instruction into the active Claude Code session. The instruction describes the workflow Claude should follow when working with Pena:
 
 1. Publish the requested document through the Pena HTTP API using `curl`.
-2. Start one background Monitor for the feedback stream if it is not already running.
-3. Continue the current work normally.
-4. When feedback arrives, preserve the current operation and apply the feedback at a natural opportunity.
-5. Publish the updated document when another review cycle is needed.
+2. Read submitted feedback through the Pena HTTP API when the user explicitly asks for it.
+3. Apply the feedback based on the user's request.
+4. Publish the updated document when another review cycle is needed.
 
 For example, Claude can publish a document with:
 
@@ -70,35 +68,20 @@ curl --request PUT \
   http://127.0.0.1:8788/api/document
 ```
 
-The skill contains the HTTP endpoints and the exact commands, so a dedicated Pena CLI is not needed for the initial version.
+The instruction contains the HTTP endpoints and exact commands, so a Pena Skill, plugin, and dedicated CLI are not needed for the first slice.
 
 ## The Feedback Delivery
 
-Claude Code's Monitor tool can run a command for the lifetime of the session and deliver each output line to Claude as a notification. This makes a persistent HTTP stream possible without wrapping or replacing the normal Claude Code terminal session.
+The user submits one or more comments as a feedback batch. The server keeps every batch for the current document in memory.
 
-The Claude-facing stream uses newline-delimited JSON rather than raw SSE. Each feedback batch is written as one complete JSON line, which maps naturally to one Monitor notification.
+When the user says something like *"read my Pena feedback"*, Claude requests the stored batches and decides how to apply them. Reading feedback does not mark it as handled. Publishing a replacement document clears the previous document's feedback.
 
-For example:
+This is intentionally manual. Automatic notification, background monitoring, delivery acknowledgements, and reconnection behavior are deferred until the document review experience itself has been validated.
 
-```json
-{"type":"feedback.submitted","document":"current","comments":[{"selected_text":"The selected passage","comment":"The feedback"}]}
-```
+# The Future Integration Options
 
-The flow is:
-
-1. Claude starts a Monitor running `curl --silent --no-buffer http://127.0.0.1:8788/api/feedback/stream`.
-2. `curl` keeps the HTTP connection open.
-3. The user submits one or more comments.
-4. The Pena Server creates one feedback event.
-5. The Pena Server writes the event as one JSON line.
-6. Claude Code receives the line as a Monitor notification.
-7. Claude decides when and how to apply the feedback.
-
-Monitor notifications may arrive while Claude is working. They do not stop the running command, but Claude may react to them during the current conversation. The Pena Skill must explicitly instruct Claude not to abandon the ongoing operation only because feedback has arrived.
-
-This behavior should be validated with an integration spike before building the complete review interface.
-
-# The Integration Options
+[!info]
+*The following options are not part of the first slice.*
 
 ## Option #1: Claude Code Channel
 
@@ -137,9 +120,9 @@ Cons:
 - Reconnection behavior must be handled by the Monitor command or the server.
 - Claude Code Monitor has its own version, provider, and environment restrictions.
 
-## The Recommended Solution
+## The Initial Direction For Automatic Delivery
 
-After careful consideration we recommend implementing solution **#2: HTTP Stream Through Claude Code Monitor** because:
+When automatic delivery is implemented, the initial direction remains solution **#2: HTTP Stream Through Claude Code Monitor** because:
 
 1. **It keeps the first architecture small** — Pena only needs an HTTP server, a browser interface, and a skill.
 2. **It preserves the normal Claude Code experience** — the user can continue using the interactive terminal without starting Claude through a Pena wrapper.
@@ -158,8 +141,7 @@ The initial API may look like this:
 | `PUT` | `/api/document` | Publish or replace the current Markdown document |
 | `GET` | `/api/document` | Read the current document |
 | `POST` | `/api/feedback` | Submit a batch of comments |
-| `GET` | `/api/feedback/stream` | Stream feedback batches as newline-delimited JSON |
-| `GET` | `/api/events` | Stream browser-facing document events through SSE |
+| `GET` | `/api/feedback` | Read all submitted feedback batches for the current document |
 
 The exact payloads are intentionally not fixed yet. They should be decided while implementing the first vertical slice.
 
@@ -179,9 +161,9 @@ Each comment contains:
 
 ## The Feedback Batch
 
-A feedback batch contains one or more comments submitted together. Pena delivers the batch as one event to Claude.
+A feedback batch contains one or more comments submitted together. Pena returns all batches for the current document when Claude requests feedback.
 
-The initial storage can remain in memory because session recovery, revision history, and long-term feedback processing are out of scope. This decision may change if the implementation shows that lightweight persistence is needed for reliable reconnects.
+The initial storage can remain in memory because session recovery, revision history, and long-term feedback processing are out of scope. Publishing a replacement document clears the existing feedback batches.
 
 # The Technical Stack
 
@@ -192,7 +174,7 @@ After careful consideration we recommend using the following stack:
 | Language | TypeScript | Use the same language and contracts across the server and web application |
 | Runtime | Node.js 24 | Run the local server on the current LTS release line |
 | Package manager | pnpm | Manage dependencies and the workspace |
-| Server | Fastify | Serve the HTTP API, NDJSON stream, SSE stream, and built web application |
+| Server | Fastify | Serve the HTTP API and built web application |
 | Web | React and Vite | Build the interactive document review interface |
 | Markdown | `react-markdown` and `remark-gfm` | Render Markdown and GitHub Flavored Markdown in the browser |
 | Runtime validation | Zod | Validate API payloads and derive their TypeScript types from shared schemas |
@@ -221,13 +203,13 @@ apps/
   web/
 packages/
   contracts/
-skills/
-  pena/
+docs/
+  CLAUDE_PROMPT.md
 tests/
   e2e/
 ```
 
-The server and web application have different build and runtime boundaries, while `packages/contracts` contains the schemas and types used by both. The Pena Skill stays under `skills/pena` because it is part of the product but not a JavaScript package.
+The server and web application have different build and runtime boundaries, while `packages/contracts` contains the schemas and types used by both. The copy-paste Claude instruction stays under `docs` until the workflow is stable enough to turn into a skill.
 
 We do not need Turborepo or another build orchestrator initially. pnpm workspaces and root-level scripts are enough for this repository size. We can introduce additional orchestration later if the build graph becomes difficult to manage.
 
@@ -235,34 +217,34 @@ We do not need Turborepo or another build orchestrator initially. pnpm workspace
 
 The browser can use the native `Selection` and `Range` APIs for the initial text-selection flow. A comment should keep the selected text and enough surrounding context to identify the passage. We should only introduce a dedicated annotation library if the native implementation proves insufficient during the first vertical slice.
 
-Vite serves the web application during development and proxies `/api` requests to Fastify. For a production-like local run, Fastify serves the built web application together with the API.
+Vite serves the web application during development and proxies `/api` requests to Fastify. The web interface provides a refresh action instead of maintaining an event stream. For a production-like local run, Fastify serves the built web application together with the API.
 
 A Pena CLI may be introduced later if direct HTTP commands become difficult to maintain, automatic server startup is needed, or cross-platform behavior becomes important. It is not part of the initial architecture.
 
-# The Initial Validation
+# The First Slice
 
-Before building the full review interface, create a small integration spike:
+The first slice is complete when:
 
-1. Start a local HTTP server with an event stream.
-2. Start `curl --silent --no-buffer http://127.0.0.1:8788/api/feedback/stream` through Claude Code Monitor.
-3. Submit a sample feedback event while Claude is idle.
-4. Submit another event while Claude is running a command or generating a response.
-5. Observe when the events become available to Claude.
-6. Verify that the current operation is not stopped.
-7. Verify that reconnecting the watcher does not silently lose pending feedback.
-
-The result will tell us whether Monitor is sufficient or whether Pena should use a Claude Code Channel instead.
+1. The user starts Pena with `pnpm dev`.
+2. Claude publishes a Markdown document through the HTTP API.
+3. The browser renders the document in dark mode.
+4. The user selects at least two passages and comments on them.
+5. The user submits both comments together.
+6. The user asks Claude to read the Pena feedback.
+7. Claude retrieves every submitted feedback batch through the HTTP API.
+8. Claude can publish an updated document for another review cycle.
 
 # Open Questions
 
-* **Q: How should the Pena Server be started and stopped?**
-* **Q: How should pending feedback be replayed after a watcher reconnects?**
+* **Q: How should Pena be distributed and started after the development workflow is validated?**
+* **Q: When should the copy-paste instruction become a Pena Skill or plugin?**
 * **Q: How should a selected passage be anchored when Markdown rendering changes its DOM structure?**
-* **Q: Should Pena support one current document or multiple documents through direct URLs?**
+* **Q: Which automatic feedback delivery mechanism should be implemented after the first slice?**
 
 # Related Documentation
 
 - [Pena Initial Specification](./INITIAL_SPEC.md)
+- [Claude Code Instruction](./CLAUDE_PROMPT.md)
 - [Claude Code Monitor Tool](https://code.claude.com/docs/en/tools-reference#monitor-tool)
 - [Claude Code Plugin Monitors](https://code.claude.com/docs/en/plugins-reference#monitors)
 - [Claude Code Channels](https://code.claude.com/docs/en/channels)

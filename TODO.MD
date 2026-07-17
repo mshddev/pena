@@ -3,6 +3,7 @@
 - [] comments should be displayed inline, not on side
 - [x] comments: enter to "add comment", shift enter for a new line
 - [x] comments can be edited before submission
+- [x] selecting text keeps the selection available for copying
 - [] make sure it can submit feedback multiple times
 - [] it should still be able to see comments after submitted
 - [] improve design: add sidebars as pointer to sections

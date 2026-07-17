@@ -72,10 +72,10 @@ export function App() {
   }, [documentSlug, loadDocument]);
 
   useEffect(() => {
-    if (selectedPassage) {
+    if (editingCommentId) {
       commentInputRef.current?.focus();
     }
-  }, [selectedPassage]);
+  }, [editingCommentId]);
 
   function handleDocumentSelection(): void {
     const surface = documentSurfaceRef.current;

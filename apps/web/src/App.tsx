@@ -38,6 +38,7 @@ export function App() {
     useState<SelectedPassage | null>(null);
   const [commentText, setCommentText] = useState("");
   const [draftComments, setDraftComments] = useState<DraftComment[]>([]);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
 
   const loadDocument = useCallback(async () => {
@@ -86,6 +87,7 @@ export function App() {
     const passage = readSelection(surface, window.getSelection());
 
     if (passage) {
+      setEditingCommentId(null);
       setSelectedPassage(passage);
       setCommentText("");
       setNotice(null);
@@ -111,21 +113,61 @@ export function App() {
       return;
     }
 
-    setDraftComments((comments) => [
-      ...comments,
-      {
-        id: crypto.randomUUID(),
-        ...selectedPassage,
-        comment: commentText.trim(),
-      },
-    ]);
+    const nextComment = {
+      ...selectedPassage,
+      comment: commentText.trim(),
+    };
+
+    setDraftComments((comments) =>
+      editingCommentId
+        ? comments.map((comment) =>
+            comment.id === editingCommentId
+              ? { ...comment, ...nextComment }
+              : comment,
+          )
+        : [
+            ...comments,
+            {
+              id: crypto.randomUUID(),
+              ...nextComment,
+            },
+          ],
+    );
+    setEditingCommentId(null);
     setSelectedPassage(null);
     setCommentText("");
     window.getSelection()?.removeAllRanges();
   }
 
+  function editComment(draft: DraftComment): void {
+    setEditingCommentId(draft.id);
+    setSelectedPassage({
+      selectedText: draft.selectedText,
+      contextBefore: draft.contextBefore,
+      contextAfter: draft.contextAfter,
+    });
+    setCommentText(draft.comment);
+    setNotice(null);
+  }
+
+  function cancelComment(): void {
+    setEditingCommentId(null);
+    setSelectedPassage(null);
+    setCommentText("");
+  }
+
+  function removeComment(commentId: string): void {
+    setDraftComments((comments) =>
+      comments.filter((comment) => comment.id !== commentId),
+    );
+
+    if (editingCommentId === commentId) {
+      cancelComment();
+    }
+  }
+
   async function sendFeedback(): Promise<void> {
-    if (draftComments.length === 0) {
+    if (draftComments.length === 0 || editingCommentId) {
       return;
     }
 
@@ -273,7 +315,9 @@ export function App() {
             {selectedPassage ? (
               <form onSubmit={addComment}>
                 <blockquote>{selectedPassage.selectedText}</blockquote>
-                <label htmlFor="comment">Your comment</label>
+                <label htmlFor="comment">
+                  {editingCommentId ? "Edit comment" : "Your comment"}
+                </label>
                 <textarea
                   id="comment"
                   ref={commentInputRef}
@@ -282,7 +326,7 @@ export function App() {
                   onKeyDown={(event) => {
                     if (
                       event.key === "Enter" &&
-                      event.shiftKey &&
+                      !event.shiftKey &&
                       !event.nativeEvent.isComposing
                     ) {
                       event.preventDefault();
@@ -296,19 +340,16 @@ export function App() {
                   <button
                     className="quiet-button"
                     type="button"
-                    onClick={() => {
-                      setSelectedPassage(null);
-                      setCommentText("");
-                    }}
+                    onClick={cancelComment}
                   >
-                    Cancel
+                    {editingCommentId ? "Cancel edit" : "Cancel"}
                   </button>
                   <button
                     className="primary-button"
                     type="submit"
                     disabled={!commentText.trim()}
                   >
-                    Add comment
+                    {editingCommentId ? "Save comment" : "Add comment"}
                   </button>
                 </div>
               </form>
@@ -323,7 +364,12 @@ export function App() {
           <div className="draft-list">
             {draftComments.length > 0 ? (
               draftComments.map((draft, index) => (
-                <article className="draft-comment" key={draft.id}>
+                <article
+                  className={`draft-comment${
+                    editingCommentId === draft.id ? " editing" : ""
+                  }`}
+                  key={draft.id}
+                >
                   <div className="draft-index">
                     {(index + 1).toString().padStart(2, "0")}
                   </div>
@@ -331,18 +377,24 @@ export function App() {
                     <blockquote>{draft.selectedText}</blockquote>
                     <p>{draft.comment}</p>
                   </div>
-                  <button
-                    className="remove-button"
-                    type="button"
-                    aria-label={`Remove comment ${index + 1}`}
-                    onClick={() =>
-                      setDraftComments((comments) =>
-                        comments.filter((comment) => comment.id !== draft.id),
-                      )
-                    }
-                  >
-                    <CloseIcon />
-                  </button>
+                  <div className="draft-actions">
+                    <button
+                      className="draft-action-button edit-button"
+                      type="button"
+                      aria-label={`Edit comment ${index + 1}`}
+                      onClick={() => editComment(draft)}
+                    >
+                      <EditIcon />
+                    </button>
+                    <button
+                      className="draft-action-button remove-button"
+                      type="button"
+                      aria-label={`Remove comment ${index + 1}`}
+                      onClick={() => removeComment(draft.id)}
+                    >
+                      <CloseIcon />
+                    </button>
+                  </div>
                 </article>
               ))
             ) : (
@@ -359,7 +411,11 @@ export function App() {
             <button
               className="submit-button"
               type="button"
-              disabled={draftComments.length === 0 || isSubmitting}
+              disabled={
+                draftComments.length === 0 ||
+                isSubmitting ||
+                editingCommentId !== null
+              }
               onClick={() => void sendFeedback()}
             >
               <span>{isSubmitting ? "Submitting" : "Submit feedback"}</span>
@@ -418,6 +474,15 @@ function CloseIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="m4 4 8 8M12 4l-8 8" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="m3 13 2.5-.5L13 5a1.4 1.4 0 0 0-2-2l-7.5 7.5L3 13Z" />
+      <path d="m9.8 4.2 2 2" />
     </svg>
   );
 }

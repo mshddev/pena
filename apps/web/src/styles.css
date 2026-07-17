@@ -488,6 +488,10 @@ button:disabled {
   animation: comment-enter 220ms ease-out both;
 }
 
+.draft-comment.editing {
+  background: rgb(190 151 76 / 6%);
+}
+
 .draft-index {
   color: var(--text-faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -502,7 +506,13 @@ button:disabled {
   line-height: 1.5;
 }
 
-.remove-button {
+.draft-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.draft-action-button {
   display: grid;
   width: 24px;
   height: 24px;
@@ -512,11 +522,15 @@ button:disabled {
   transition: color 160ms ease;
 }
 
+.edit-button:hover {
+  color: var(--accent-bright);
+}
+
 .remove-button:hover {
   color: var(--danger);
 }
 
-.remove-button svg {
+.draft-action-button svg {
   width: 14px;
   fill: none;
   stroke: currentColor;

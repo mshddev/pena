@@ -1,5 +1,6 @@
 - [x] each doc should have it's own url slug
 - [x] comment composer and clickable footnote-only highlights stay anchored to the exact selection
+- [x] comment composer supports large selections across Markdown blocks and table cells
 - [x] comments: enter to "add comment", shift enter for a new line
 - [x] comments can be edited or deleted from the edit composer before submission
 - [x] clicking outside the comment composer closes it

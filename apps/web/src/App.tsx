@@ -24,6 +24,8 @@ import {
   type SelectedPassage,
 } from "./selection";
 
+const DOCUMENT_ANCHOR_ID = "__pena-document__";
+
 interface DraftComment extends CommentInput {
   id: string;
   anchorId: string;
@@ -140,6 +142,41 @@ export function App() {
       document.removeEventListener("pointerdown", handleOutsidePointerDown);
   }, [selectedPassage]);
 
+  useLayoutEffect(() => {
+    const popover = commentPopoverRef.current;
+
+    if (!selectedPassage || !selectionPosition || !popover) {
+      return;
+    }
+
+    const popoverRect = popover.getBoundingClientRect();
+    const topbarBottom =
+      document.querySelector<HTMLElement>(".topbar")?.getBoundingClientRect()
+        .bottom ?? 0;
+    const viewportPadding = 12;
+    const minimumTop = topbarBottom + viewportPadding;
+    const maximumTop = Math.max(
+      minimumTop,
+      window.innerHeight - popoverRect.height - viewportPadding,
+    );
+    const nextViewportTop = Math.max(
+      minimumTop,
+      Math.min(popoverRect.top, maximumTop),
+    );
+    const topAdjustment = nextViewportTop - popoverRect.top;
+
+    if (Math.abs(topAdjustment) >= 0.5) {
+      setSelectionPosition((position) =>
+        position
+          ? {
+              ...position,
+              top: position.top + topAdjustment,
+            }
+          : position,
+      );
+    }
+  }, [selectedPassage, selectionPosition]);
+
   useEffect(() => {
     if (
       !selectedPassage ||
@@ -154,9 +191,10 @@ export function App() {
     const selectedText = selectedPassage.selectedText;
 
     function updateSelectionPosition(): void {
-      const anchor = documentSurfaceRef.current?.querySelector<HTMLElement>(
-        `[data-annotation-block="${CSS.escape(anchorId)}"]`,
-      );
+      const surface = documentSurfaceRef.current;
+      const anchor = surface
+        ? resolveAnnotationAnchor(surface, anchorId)
+        : null;
       const range = anchor
         ? findTextRange(anchor, selectedText, anchorOffset)
         : null;
@@ -184,9 +222,7 @@ export function App() {
     }
 
     const ranges = draftComments.flatMap((draft) => {
-      const anchor = surface.querySelector<HTMLElement>(
-        `[data-annotation-block="${CSS.escape(draft.anchorId)}"]`,
-      );
+      const anchor = resolveAnnotationAnchor(surface, draft.anchorId);
       const range = anchor
         ? findTextRange(anchor, draft.selectedText, draft.anchorOffset)
         : null;
@@ -218,8 +254,9 @@ export function App() {
       const nextPositions: Record<string, DraftPosition> = {};
 
       for (const draft of draftComments) {
-        const anchor = surfaceElement.querySelector<HTMLElement>(
-          `[data-annotation-block="${CSS.escape(draft.anchorId)}"]`,
+        const anchor = resolveAnnotationAnchor(
+          surfaceElement,
+          draft.anchorId,
         );
         const range = anchor
           ? findTextRange(anchor, draft.selectedText, draft.anchorOffset)
@@ -266,10 +303,22 @@ export function App() {
         range.startContainer.nodeType === Node.ELEMENT_NODE
           ? (range.startContainer as Element)
           : range.startContainer.parentElement;
-      const anchor = anchorElement?.closest<HTMLElement>(
+      const endAnchorElement =
+        range.endContainer.nodeType === Node.ELEMENT_NODE
+          ? (range.endContainer as Element)
+          : range.endContainer.parentElement;
+      const startAnchor = anchorElement?.closest<HTMLElement>(
         "[data-annotation-block]",
       );
-      const anchorId = anchor?.dataset.annotationBlock;
+      const endAnchor = endAnchorElement?.closest<HTMLElement>(
+        "[data-annotation-block]",
+      );
+      const anchor =
+        startAnchor && startAnchor === endAnchor ? startAnchor : surface;
+      const anchorId =
+        anchor === surface
+          ? DOCUMENT_ANCHOR_ID
+          : anchor.dataset.annotationBlock;
       const anchorOffset = anchor
         ? readTextOffset(anchor, range, passage.selectedText)
         : null;
@@ -299,9 +348,7 @@ export function App() {
     }
 
     for (const draft of [...draftComments].reverse()) {
-      const anchor = surface.querySelector<HTMLElement>(
-        `[data-annotation-block="${CSS.escape(draft.anchorId)}"]`,
-      );
+      const anchor = resolveAnnotationAnchor(surface, draft.anchorId);
       const range = anchor
         ? findTextRange(anchor, draft.selectedText, draft.anchorOffset)
         : null;
@@ -405,9 +452,10 @@ export function App() {
   }
 
   function editComment(draft: DraftComment): void {
-    const anchor = documentSurfaceRef.current?.querySelector<HTMLElement>(
-      `[data-annotation-block="${CSS.escape(draft.anchorId)}"]`,
-    );
+    const surface = documentSurfaceRef.current;
+    const anchor = surface
+      ? resolveAnnotationAnchor(surface, draft.anchorId)
+      : null;
     const range = anchor
       ? findTextRange(anchor, draft.selectedText, draft.anchorOffset)
       : null;
@@ -925,6 +973,19 @@ function haveSameDraftPositions(
         Math.abs(current.marker.left - next.marker.left) < 0.5
       );
     })
+  );
+}
+
+function resolveAnnotationAnchor(
+  surface: HTMLElement,
+  anchorId: string,
+): HTMLElement | null {
+  if (anchorId === DOCUMENT_ANCHOR_ID) {
+    return surface;
+  }
+
+  return surface.querySelector<HTMLElement>(
+    `[data-annotation-block="${CSS.escape(anchorId)}"]`,
   );
 }
 

@@ -1,0 +1,9 @@
+- [] persistent storage with sqlite
+- [x] each doc should have it's own url slug
+- [] comments should be displayed inline, not on side
+- [x] comments: shift enter to "add comment"
+- [] make sure it can submit feedback multiple times
+- [] it should still be able to see comments after submitted
+- [] improve design: add sidebars as pointer to sections
+- [] need capablities to accept/reject lists
+- []

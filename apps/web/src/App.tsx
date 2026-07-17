@@ -279,6 +279,16 @@ export function App() {
                   ref={commentInputRef}
                   value={commentText}
                   onChange={(event) => setCommentText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" &&
+                      event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      event.currentTarget.form?.requestSubmit();
+                    }
+                  }}
                   placeholder="What should change?"
                   rows={4}
                 />

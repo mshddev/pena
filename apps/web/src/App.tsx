@@ -6,18 +6,37 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
+  type MouseEvent as ReactMouseEvent,
+  type RefObject,
 } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { fetchDocument, submitFeedback } from "./api";
-import { readSelection, type SelectedPassage } from "./selection";
+import {
+  findTextRange,
+  readSelection,
+  readTextOffset,
+  type SelectedPassage,
+} from "./selection";
 
 interface DraftComment extends CommentInput {
   id: string;
+  anchorId: string;
+  anchorOffset: number;
+}
+
+interface SelectionPosition {
+  top: number;
+  left: number;
+}
+
+interface DraftPosition {
+  marker: SelectionPosition;
 }
 
 type Notice =
@@ -28,6 +47,8 @@ type Notice =
 export function App() {
   const documentSlug = readDocumentSlug(window.location.pathname);
   const documentSurfaceRef = useRef<HTMLElement>(null);
+  const documentStageRef = useRef<HTMLDivElement>(null);
+  const commentPopoverRef = useRef<HTMLDivElement>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const [currentDocument, setCurrentDocument] = useState<PenaDocument | null>(
     null,
@@ -36,8 +57,17 @@ export function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedPassage, setSelectedPassage] =
     useState<SelectedPassage | null>(null);
+  const [selectedAnchorId, setSelectedAnchorId] = useState<string | null>(null);
+  const [selectedAnchorOffset, setSelectedAnchorOffset] = useState<
+    number | null
+  >(null);
+  const [selectionPosition, setSelectionPosition] =
+    useState<SelectionPosition | null>(null);
   const [commentText, setCommentText] = useState("");
   const [draftComments, setDraftComments] = useState<DraftComment[]>([]);
+  const [draftPositions, setDraftPositions] = useState<
+    Record<string, DraftPosition>
+  >({});
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
 
@@ -53,6 +83,10 @@ export function App() {
       const penaDocument = await fetchDocument(documentSlug);
       setCurrentDocument(penaDocument);
       setSelectedPassage(null);
+      setSelectedAnchorId(null);
+      setSelectedAnchorOffset(null);
+      setSelectionPosition(null);
+      setEditingCommentId(null);
     } catch (error) {
       setNotice({
         kind: "error",
@@ -72,26 +106,246 @@ export function App() {
   }, [documentSlug, loadDocument]);
 
   useEffect(() => {
+    const styleElement = document.createElement("style");
+    styleElement.textContent = draftHighlightStyles;
+    document.head.append(styleElement);
+
+    return () => styleElement.remove();
+  }, []);
+
+  useEffect(() => {
     if (editingCommentId) {
       commentInputRef.current?.focus();
     }
   }, [editingCommentId]);
 
-  function handleDocumentSelection(): void {
+  useEffect(() => {
+    if (!selectedPassage) {
+      return;
+    }
+
+    function handleOutsidePointerDown(event: PointerEvent): void {
+      const target = event.target;
+
+      if (
+        target instanceof Node &&
+        !commentPopoverRef.current?.contains(target)
+      ) {
+        cancelComment();
+      }
+    }
+
+    document.addEventListener("pointerdown", handleOutsidePointerDown);
+    return () =>
+      document.removeEventListener("pointerdown", handleOutsidePointerDown);
+  }, [selectedPassage]);
+
+  useEffect(() => {
+    if (
+      !selectedPassage ||
+      !selectedAnchorId ||
+      selectedAnchorOffset === null
+    ) {
+      return;
+    }
+
+    const anchorId = selectedAnchorId;
+    const anchorOffset = selectedAnchorOffset;
+    const selectedText = selectedPassage.selectedText;
+
+    function updateSelectionPosition(): void {
+      const anchor = documentSurfaceRef.current?.querySelector<HTMLElement>(
+        `[data-annotation-block="${CSS.escape(anchorId)}"]`,
+      );
+      const range = anchor
+        ? findTextRange(anchor, selectedText, anchorOffset)
+        : null;
+
+      if (range) {
+        setSelectionPosition(
+          readSelectionPosition(range, documentStageRef.current),
+        );
+      }
+    }
+
+    window.addEventListener("resize", updateSelectionPosition);
+    return () => window.removeEventListener("resize", updateSelectionPosition);
+  }, [selectedAnchorId, selectedAnchorOffset, selectedPassage]);
+
+  useEffect(() => {
+    if (!("highlights" in CSS) || typeof Highlight === "undefined") {
+      return;
+    }
+
     const surface = documentSurfaceRef.current;
 
     if (!surface) {
       return;
     }
 
-    const passage = readSelection(surface, window.getSelection());
+    const ranges = draftComments.flatMap((draft) => {
+      const anchor = surface.querySelector<HTMLElement>(
+        `[data-annotation-block="${CSS.escape(draft.anchorId)}"]`,
+      );
+      const range = anchor
+        ? findTextRange(anchor, draft.selectedText, draft.anchorOffset)
+        : null;
+      return range ? [range] : [];
+    });
 
-    if (passage) {
+    CSS.highlights.set(
+      "pena-draft-comments",
+      new Highlight(...ranges),
+    );
+
+    return () => {
+      CSS.highlights.delete("pena-draft-comments");
+    };
+  }, [currentDocument, draftComments]);
+
+  useLayoutEffect(() => {
+    const surface = documentSurfaceRef.current;
+    const stage = documentStageRef.current;
+
+    if (!surface || !stage) {
+      return;
+    }
+
+    const surfaceElement = surface;
+    const stageElement = stage;
+
+    function updateDraftPositions(): void {
+      const nextPositions: Record<string, DraftPosition> = {};
+
+      for (const draft of draftComments) {
+        const anchor = surfaceElement.querySelector<HTMLElement>(
+          `[data-annotation-block="${CSS.escape(draft.anchorId)}"]`,
+        );
+        const range = anchor
+          ? findTextRange(anchor, draft.selectedText, draft.anchorOffset)
+          : null;
+        const marker = range ? readMarkerPosition(range, stageElement) : null;
+
+        if (marker) {
+          nextPositions[draft.id] = { marker };
+        }
+      }
+
+      setDraftPositions((currentPositions) =>
+        haveSameDraftPositions(currentPositions, nextPositions)
+          ? currentPositions
+          : nextPositions,
+      );
+    }
+
+    updateDraftPositions();
+
+    const resizeObserver = new ResizeObserver(updateDraftPositions);
+    resizeObserver.observe(surfaceElement);
+    window.addEventListener("resize", updateDraftPositions);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateDraftPositions);
+    };
+  }, [currentDocument, draftComments]);
+
+  function handleDocumentSelection(): void {
+    const surface = documentSurfaceRef.current;
+    const selection = window.getSelection();
+
+    if (!surface) {
+      return;
+    }
+
+    const passage = readSelection(surface, selection);
+
+    if (passage && selection?.rangeCount) {
+      const range = selection.getRangeAt(0);
+      const anchorElement =
+        range.startContainer.nodeType === Node.ELEMENT_NODE
+          ? (range.startContainer as Element)
+          : range.startContainer.parentElement;
+      const anchor = anchorElement?.closest<HTMLElement>(
+        "[data-annotation-block]",
+      );
+      const anchorId = anchor?.dataset.annotationBlock;
+      const anchorOffset = anchor
+        ? readTextOffset(anchor, range, passage.selectedText)
+        : null;
+
+      if (!anchorId || anchorOffset === null) {
+        return;
+      }
+
       setEditingCommentId(null);
+      setSelectedAnchorId(anchorId);
+      setSelectedAnchorOffset(anchorOffset);
+      setSelectionPosition(readSelectionPosition(range, documentStageRef.current));
       setSelectedPassage(passage);
       setCommentText("");
       setNotice(null);
     }
+  }
+
+  function findDraftCommentAtPoint(
+    clientX: number,
+    clientY: number,
+  ): DraftComment | null {
+    const surface = documentSurfaceRef.current;
+
+    if (!surface) {
+      return null;
+    }
+
+    for (const draft of [...draftComments].reverse()) {
+      const anchor = surface.querySelector<HTMLElement>(
+        `[data-annotation-block="${CSS.escape(draft.anchorId)}"]`,
+      );
+      const range = anchor
+        ? findTextRange(anchor, draft.selectedText, draft.anchorOffset)
+        : null;
+
+      if (
+        range &&
+        Array.from(range.getClientRects()).some(
+          (rect) =>
+            clientX >= rect.left &&
+            clientX <= rect.right &&
+            clientY >= rect.top &&
+            clientY <= rect.bottom,
+        )
+      ) {
+        return draft;
+      }
+    }
+
+    return null;
+  }
+
+  function handleDocumentClick(event: ReactMouseEvent<HTMLElement>): void {
+    const selection = window.getSelection();
+
+    if (selectedPassage || (selection && !selection.isCollapsed)) {
+      return;
+    }
+
+    const draft = findDraftCommentAtPoint(event.clientX, event.clientY);
+
+    if (draft) {
+      event.preventDefault();
+      editComment(draft);
+    }
+  }
+
+  function handleDocumentMouseMove(
+    event: ReactMouseEvent<HTMLElement>,
+  ): void {
+    event.currentTarget.style.cursor =
+      !selectedPassage &&
+      findDraftCommentAtPoint(event.clientX, event.clientY)
+        ? "pointer"
+        : "";
   }
 
   function handleRefresh(): void {
@@ -109,14 +363,22 @@ export function App() {
   function addComment(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
 
-    if (!selectedPassage || !commentText.trim()) {
+    if (
+      !selectedPassage ||
+      !selectedAnchorId ||
+      selectedAnchorOffset === null ||
+      !commentText.trim()
+    ) {
       return;
     }
 
     const nextComment = {
       ...selectedPassage,
+      anchorId: selectedAnchorId,
+      anchorOffset: selectedAnchorOffset,
       comment: commentText.trim(),
     };
+    const commentId = editingCommentId ?? crypto.randomUUID();
 
     setDraftComments((comments) =>
       editingCommentId
@@ -128,19 +390,34 @@ export function App() {
         : [
             ...comments,
             {
-              id: crypto.randomUUID(),
+              id: commentId,
               ...nextComment,
             },
           ],
     );
     setEditingCommentId(null);
+    setSelectedAnchorId(null);
+    setSelectedAnchorOffset(null);
+    setSelectionPosition(null);
     setSelectedPassage(null);
     setCommentText("");
     window.getSelection()?.removeAllRanges();
   }
 
   function editComment(draft: DraftComment): void {
+    const anchor = documentSurfaceRef.current?.querySelector<HTMLElement>(
+      `[data-annotation-block="${CSS.escape(draft.anchorId)}"]`,
+    );
+    const range = anchor
+      ? findTextRange(anchor, draft.selectedText, draft.anchorOffset)
+      : null;
+
     setEditingCommentId(draft.id);
+    setSelectedAnchorId(draft.anchorId);
+    setSelectedAnchorOffset(draft.anchorOffset);
+    setSelectionPosition(
+      range ? readSelectionPosition(range, documentStageRef.current) : null,
+    );
     setSelectedPassage({
       selectedText: draft.selectedText,
       contextBefore: draft.contextBefore,
@@ -152,18 +429,22 @@ export function App() {
 
   function cancelComment(): void {
     setEditingCommentId(null);
+    setSelectedAnchorId(null);
+    setSelectedAnchorOffset(null);
+    setSelectionPosition(null);
     setSelectedPassage(null);
     setCommentText("");
   }
 
-  function removeComment(commentId: string): void {
-    setDraftComments((comments) =>
-      comments.filter((comment) => comment.id !== commentId),
-    );
-
-    if (editingCommentId === commentId) {
-      cancelComment();
+  function deleteEditingComment(): void {
+    if (!editingCommentId) {
+      return;
     }
+
+    setDraftComments((comments) =>
+      comments.filter((comment) => comment.id !== editingCommentId),
+    );
+    cancelComment();
   }
 
   async function sendFeedback(): Promise<void> {
@@ -276,16 +557,81 @@ export function App() {
               <span className="loading-line" />
             </div>
           ) : currentDocument ? (
-            <article
-              className="markdown-body"
-              ref={documentSurfaceRef}
-              onMouseUp={handleDocumentSelection}
-              onKeyUp={handleDocumentSelection}
-            >
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {currentDocument.content}
-              </ReactMarkdown>
-            </article>
+            <div className="document-stage" ref={documentStageRef}>
+              <article
+                className="markdown-body"
+                ref={documentSurfaceRef}
+                onMouseUp={handleDocumentSelection}
+                onKeyUp={handleDocumentSelection}
+                onClick={handleDocumentClick}
+                onMouseMove={handleDocumentMouseMove}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.cursor = "";
+                }}
+              >
+                <ReactMarkdown
+                  components={annotatedMarkdownComponents}
+                  remarkPlugins={[remarkGfm]}
+                >
+                  {currentDocument.content}
+                </ReactMarkdown>
+              </article>
+
+              {draftComments.map((draft, index) => {
+                const position = draftPositions[draft.id];
+
+                if (!position) {
+                  return null;
+                }
+
+                return (
+                  <div
+                    className="comment-footnote"
+                    data-pena-annotation
+                    key={draft.id}
+                    style={{
+                      top: position.marker.top,
+                      left: position.marker.left,
+                    }}
+                  >
+                    <button
+                      className="comment-marker"
+                      type="button"
+                      aria-label={`Edit comment ${index + 1}`}
+                      title={draft.comment}
+                      onClick={() => editComment(draft)}
+                    >
+                      {(index + 1).toString().padStart(2, "0")}
+                    </button>
+                  </div>
+                );
+              })}
+
+              {selectedPassage && selectionPosition ? (
+                <div
+                  className="selection-comment-popover"
+                  data-pena-annotation
+                  ref={commentPopoverRef}
+                  style={{
+                    top: selectionPosition.top,
+                    left: selectionPosition.left,
+                  }}
+                >
+                  <CommentComposer
+                    passage={selectedPassage}
+                    isEditing={editingCommentId !== null}
+                    commentText={commentText}
+                    commentInputRef={commentInputRef}
+                    onCommentChange={setCommentText}
+                    onSubmit={addComment}
+                    onCancel={cancelComment}
+                    onDelete={
+                      editingCommentId ? deleteEditingComment : undefined
+                    }
+                  />
+                </div>
+              ) : null}
+            </div>
           ) : (
             <div className="document-state empty-state">
               <span className="empty-glyph" aria-hidden="true">
@@ -298,134 +644,305 @@ export function App() {
               </p>
             </div>
           )}
-        </section>
 
-        <aside className="review-pane" aria-label="Review comments">
-          <div className="review-heading">
-            <div>
-              <p className="section-label">Review</p>
-              <h2>Comments</h2>
-            </div>
-            <span className="comment-count" aria-label="Draft comment count">
-              {draftComments.length.toString().padStart(2, "0")}
-            </span>
-          </div>
-
-          <div className="comment-composer" aria-live="polite">
-            {selectedPassage ? (
-              <form onSubmit={addComment}>
-                <blockquote>{selectedPassage.selectedText}</blockquote>
-                <label htmlFor="comment">
-                  {editingCommentId ? "Edit comment" : "Your comment"}
-                </label>
-                <textarea
-                  id="comment"
-                  ref={commentInputRef}
-                  value={commentText}
-                  onChange={(event) => setCommentText(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === "Enter" &&
-                      !event.shiftKey &&
-                      !event.nativeEvent.isComposing
-                    ) {
-                      event.preventDefault();
-                      event.currentTarget.form?.requestSubmit();
-                    }
-                  }}
-                  placeholder="What should change?"
-                  rows={4}
-                />
-                <div className="composer-actions">
-                  <button
-                    className="quiet-button"
-                    type="button"
-                    onClick={cancelComment}
-                  >
-                    {editingCommentId ? "Cancel edit" : "Cancel"}
-                  </button>
-                  <button
-                    className="primary-button"
-                    type="submit"
-                    disabled={!commentText.trim()}
-                  >
-                    {editingCommentId ? "Save comment" : "Add comment"}
-                  </button>
+          {currentDocument && !selectedPassage ? (
+            <footer className="feedback-bar" aria-label="Draft feedback">
+              <div className="feedback-summary">
+                <span className="comment-count" aria-label="Draft comment count">
+                  {draftComments.length.toString().padStart(2, "0")}
+                </span>
+                <div>
+                  <p className="section-label">Draft feedback</p>
+                  {notice ? (
+                    <p className={`notice ${notice.kind}`} role="status">
+                      {notice.message}
+                    </p>
+                  ) : (
+                    <p className="feedback-hint">
+                      {draftComments.length === 0
+                        ? "Select text in the document to start."
+                        : `${draftComments.length} ${
+                            draftComments.length === 1 ? "comment" : "comments"
+                          } ready to submit.`}
+                    </p>
+                  )}
                 </div>
-              </form>
-            ) : (
-              <div className="selection-prompt">
-                <SelectionIcon />
-                <p>Select text in the document to start a comment.</p>
               </div>
-            )}
-          </div>
-
-          <div className="draft-list">
-            {draftComments.length > 0 ? (
-              draftComments.map((draft, index) => (
-                <article
-                  className={`draft-comment${
-                    editingCommentId === draft.id ? " editing" : ""
-                  }`}
-                  key={draft.id}
-                >
-                  <div className="draft-index">
-                    {(index + 1).toString().padStart(2, "0")}
-                  </div>
-                  <div>
-                    <blockquote>{draft.selectedText}</blockquote>
-                    <p>{draft.comment}</p>
-                  </div>
-                  <div className="draft-actions">
-                    <button
-                      className="draft-action-button edit-button"
-                      type="button"
-                      aria-label={`Edit comment ${index + 1}`}
-                      onClick={() => editComment(draft)}
-                    >
-                      <EditIcon />
-                    </button>
-                    <button
-                      className="draft-action-button remove-button"
-                      type="button"
-                      aria-label={`Remove comment ${index + 1}`}
-                      onClick={() => removeComment(draft.id)}
-                    >
-                      <CloseIcon />
-                    </button>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <p className="no-drafts">No draft comments yet.</p>
-            )}
-          </div>
-
-          <div className="review-footer">
-            {notice ? (
-              <p className={`notice ${notice.kind}`} role="status">
-                {notice.message}
-              </p>
-            ) : null}
-            <button
-              className="submit-button"
-              type="button"
-              disabled={
-                draftComments.length === 0 ||
-                isSubmitting ||
-                editingCommentId !== null
-              }
-              onClick={() => void sendFeedback()}
-            >
-              <span>{isSubmitting ? "Submitting" : "Submit feedback"}</span>
-              <ArrowIcon />
-            </button>
-          </div>
-        </aside>
+              <button
+                className="submit-button"
+                type="button"
+                disabled={
+                  draftComments.length === 0 ||
+                  isSubmitting ||
+                  editingCommentId !== null
+                }
+                onClick={() => void sendFeedback()}
+              >
+                <span>{isSubmitting ? "Submitting" : "Submit feedback"}</span>
+                <ArrowIcon />
+              </button>
+            </footer>
+          ) : null}
+        </section>
       </main>
     </div>
   );
+}
+
+interface CommentComposerProps {
+  passage: SelectedPassage;
+  isEditing: boolean;
+  commentText: string;
+  commentInputRef: RefObject<HTMLTextAreaElement | null>;
+  onCommentChange: (comment: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onCancel: () => void;
+  onDelete?: () => void;
+}
+
+function CommentComposer({
+  passage,
+  isEditing,
+  commentText,
+  commentInputRef,
+  onCommentChange,
+  onSubmit,
+  onCancel,
+  onDelete,
+}: CommentComposerProps) {
+  return (
+    <div className="inline-comment-composer">
+      <form onSubmit={onSubmit}>
+        <p className="annotation-label">
+          {isEditing ? "Edit comment" : "New comment"}
+        </p>
+        <blockquote>{passage.selectedText}</blockquote>
+        <label htmlFor="comment">
+          {isEditing ? "Update your note" : "Your comment"}
+        </label>
+        <textarea
+          id="comment"
+          ref={commentInputRef}
+          value={commentText}
+          onChange={(event) => onCommentChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing
+            ) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
+          placeholder="What should change?"
+          rows={3}
+        />
+        <div className="composer-actions">
+          {isEditing && onDelete ? (
+            <button
+              className="delete-comment-button"
+              type="button"
+              onClick={onDelete}
+            >
+              Delete comment
+            </button>
+          ) : null}
+          <button
+            className="quiet-button"
+            type="button"
+            onClick={onCancel}
+          >
+            {isEditing ? "Cancel edit" : "Cancel"}
+          </button>
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={!commentText.trim()}
+          >
+            {isEditing ? "Save comment" : "Add comment"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+const annotatedMarkdownComponents: Components = {
+  p: ({ node, ...props }) => (
+    <p data-annotation-block={readAnnotationBlockId(node)} {...props} />
+  ),
+  h1: ({ node, ...props }) => (
+    <h1 data-annotation-block={readAnnotationBlockId(node)} {...props} />
+  ),
+  h2: ({ node, ...props }) => (
+    <h2 data-annotation-block={readAnnotationBlockId(node)} {...props} />
+  ),
+  h3: ({ node, ...props }) => (
+    <h3 data-annotation-block={readAnnotationBlockId(node)} {...props} />
+  ),
+  h4: ({ node, ...props }) => (
+    <h4 data-annotation-block={readAnnotationBlockId(node)} {...props} />
+  ),
+  ul: ({ node, ...props }) => (
+    <ul data-annotation-block={readAnnotationBlockId(node)} {...props} />
+  ),
+  ol: ({ node, ...props }) => (
+    <ol data-annotation-block={readAnnotationBlockId(node)} {...props} />
+  ),
+  li: ({ node, ...props }) => (
+    <li data-annotation-block={readAnnotationBlockId(node)} {...props} />
+  ),
+  blockquote: ({ node, ...props }) => (
+    <blockquote
+      data-annotation-block={readAnnotationBlockId(node)}
+      {...props}
+    />
+  ),
+  pre: ({ node, ...props }) => (
+    <pre data-annotation-block={readAnnotationBlockId(node)} {...props} />
+  ),
+  table: ({ node, ...props }) => (
+    <table data-annotation-block={readAnnotationBlockId(node)} {...props} />
+  ),
+  th: ({ node, ...props }) => (
+    <th data-annotation-block={readAnnotationBlockId(node)} {...props} />
+  ),
+  td: ({ node, ...props }) => (
+    <td data-annotation-block={readAnnotationBlockId(node)} {...props} />
+  ),
+};
+
+const draftHighlightStyles = `
+  ::highlight(pena-draft-comments) {
+    background: rgb(217 164 65 / 20%);
+    text-decoration: underline;
+    text-decoration-color: rgb(237 187 91 / 70%);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+`;
+
+const COMMENT_POPOVER_WIDTH = 360;
+const COMMENT_POPOVER_GAP = 10;
+const COMMENT_MARKER_SIZE = 20;
+const COMMENT_MARKER_GAP = 4;
+
+function readSelectionPosition(
+  range: Range,
+  stage: HTMLElement | null,
+): SelectionPosition | null {
+  if (!stage) {
+    return null;
+  }
+
+  const stageRect = stage.getBoundingClientRect();
+  const anchorRect = readRangeAnchorRect(range);
+  const popoverWidth = Math.min(COMMENT_POPOVER_WIDTH, stageRect.width);
+  const positionToRight =
+    anchorRect.right - stageRect.left + COMMENT_POPOVER_GAP;
+  const fitsToRight =
+    positionToRight + popoverWidth <= stageRect.width;
+  const left = fitsToRight
+    ? positionToRight
+    : Math.max(
+        0,
+        Math.min(
+          anchorRect.left - stageRect.left,
+          stageRect.width - popoverWidth,
+        ),
+      );
+
+  return {
+    top:
+      (fitsToRight ? anchorRect.top : anchorRect.bottom) -
+      stageRect.top +
+      (fitsToRight ? 0 : COMMENT_POPOVER_GAP),
+    left,
+  };
+}
+
+function readMarkerPosition(
+  range: Range,
+  stage: HTMLElement | null,
+): SelectionPosition | null {
+  if (!stage) {
+    return null;
+  }
+
+  const stageRect = stage.getBoundingClientRect();
+  const anchorRect = readRangeAnchorRect(range);
+  const positionToRight =
+    anchorRect.right - stageRect.left + COMMENT_MARKER_GAP;
+  const fitsToRight =
+    positionToRight + COMMENT_MARKER_SIZE <= stageRect.width;
+  const positionAbove =
+    anchorRect.top -
+    stageRect.top -
+    COMMENT_MARKER_SIZE +
+    COMMENT_MARKER_GAP;
+
+  return {
+    top:
+      positionAbove >= 0
+        ? positionAbove
+        : anchorRect.bottom - stageRect.top + COMMENT_MARKER_GAP,
+    left: fitsToRight
+      ? positionToRight
+      : Math.max(
+          0,
+          Math.min(
+            anchorRect.right - stageRect.left - COMMENT_MARKER_SIZE,
+            stageRect.width - COMMENT_MARKER_SIZE,
+          ),
+        ),
+  };
+}
+
+function readRangeAnchorRect(range: Range): DOMRect {
+  return (
+    Array.from(range.getClientRects()).at(-1) ?? range.getBoundingClientRect()
+  );
+}
+
+function haveSameDraftPositions(
+  currentPositions: Record<string, DraftPosition>,
+  nextPositions: Record<string, DraftPosition>,
+): boolean {
+  const currentKeys = Object.keys(currentPositions);
+  const nextKeys = Object.keys(nextPositions);
+
+  return (
+    currentKeys.length === nextKeys.length &&
+    nextKeys.every((key) => {
+      const current = currentPositions[key];
+      const next = nextPositions[key];
+
+      return (
+        current !== undefined &&
+        next !== undefined &&
+        Math.abs(current.marker.top - next.marker.top) < 0.5 &&
+        Math.abs(current.marker.left - next.marker.left) < 0.5
+      );
+    })
+  );
+}
+
+function readAnnotationBlockId(
+  node:
+    | {
+        position?: {
+          start?: {
+            offset?: number;
+            line?: number;
+            column?: number;
+          };
+        };
+      }
+    | undefined,
+): string {
+  const start = node?.position?.start;
+  return `block-${start?.offset ?? `${start?.line ?? 0}-${start?.column ?? 0}`}`;
 }
 
 function readDocumentSlug(pathname: string): string | null {
@@ -457,32 +974,6 @@ function RefreshIcon() {
     <svg viewBox="0 0 20 20" aria-hidden="true">
       <path d="M15.7 6.4A6.5 6.5 0 1 0 16.5 12" />
       <path d="M15.8 2.8v3.8H12" />
-    </svg>
-  );
-}
-
-function SelectionIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8 4H5a1 1 0 0 0-1 1v3M16 4h3a1 1 0 0 1 1 1v3M8 20H5a1 1 0 0 1-1-1v-3M16 20h3a1 1 0 0 0 1-1v-3" />
-      <path d="M9 9h6M12 9v7M9 16h6" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="m4 4 8 8M12 4l-8 8" />
-    </svg>
-  );
-}
-
-function EditIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="m3 13 2.5-.5L13 5a1.4 1.4 0 0 0-2-2l-7.5 7.5L3 13Z" />
-      <path d="m9.8 4.2 2 2" />
     </svg>
   );
 }

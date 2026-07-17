@@ -21,7 +21,7 @@ export function readSelection(
     return null;
   }
 
-  const rawSelectedText = selection.toString();
+  const rawSelectedText = readRangeText(range);
   const selectedText = rawSelectedText.trim();
 
   if (!selectedText) {
@@ -38,8 +38,100 @@ export function readSelection(
 
   return {
     selectedText,
-    contextBefore: precedingRange.toString().slice(-CONTEXT_LENGTH),
-    contextAfter: followingRange.toString().slice(0, CONTEXT_LENGTH),
+    contextBefore: readRangeText(precedingRange).slice(-CONTEXT_LENGTH),
+    contextAfter: readRangeText(followingRange).slice(0, CONTEXT_LENGTH),
   };
 }
 
+function readRangeText(range: Range): string {
+  const contents = range.cloneContents();
+  contents
+    .querySelectorAll("[data-pena-annotation]")
+    .forEach((annotation) => annotation.remove());
+  return contents.textContent ?? "";
+}
+
+export function findTextRange(
+  root: HTMLElement,
+  selectedText: string,
+  exactStart?: number,
+): Range | null {
+  const walker = window.document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let fullText = "";
+
+  while (walker.nextNode()) {
+    const textNode = walker.currentNode as Text;
+    textNodes.push(textNode);
+    fullText += textNode.data;
+  }
+
+  const matchStart =
+    exactStart === undefined ? fullText.indexOf(selectedText) : exactStart;
+
+  if (
+    matchStart < 0 ||
+    fullText.slice(matchStart, matchStart + selectedText.length) !== selectedText
+  ) {
+    return null;
+  }
+
+  const matchEnd = matchStart + selectedText.length;
+  let traversedLength = 0;
+  let startNode: Text | null = null;
+  let startOffset = 0;
+  let endNode: Text | null = null;
+  let endOffset = 0;
+
+  for (const textNode of textNodes) {
+    const nodeEnd = traversedLength + textNode.length;
+
+    if (!startNode && matchStart <= nodeEnd) {
+      startNode = textNode;
+      startOffset = matchStart - traversedLength;
+    }
+
+    if (matchEnd <= nodeEnd) {
+      endNode = textNode;
+      endOffset = matchEnd - traversedLength;
+      break;
+    }
+
+    traversedLength = nodeEnd;
+  }
+
+  if (!startNode || !endNode) {
+    return null;
+  }
+
+  const range = window.document.createRange();
+  range.setStart(startNode, startOffset);
+  range.setEnd(endNode, endOffset);
+  return range;
+}
+
+export function readTextOffset(
+  root: HTMLElement,
+  range: Range,
+  selectedText: string,
+): number | null {
+  if (
+    !root.contains(range.startContainer) ||
+    !root.contains(range.endContainer)
+  ) {
+    return null;
+  }
+
+  const rawSelectedText = readRangeText(range);
+  const leadingOffset = rawSelectedText.indexOf(selectedText);
+
+  if (leadingOffset === -1) {
+    return null;
+  }
+
+  const precedingRange = window.document.createRange();
+  precedingRange.selectNodeContents(root);
+  precedingRange.setEnd(range.startContainer, range.startOffset);
+
+  return readRangeText(precedingRange).length + leadingOffset;
+}

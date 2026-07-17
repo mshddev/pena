@@ -1,11 +1,15 @@
-- [] persistent storage with sqlite
 - [x] each doc should have it's own url slug
-- [] comments should be displayed inline, not on side
+- [x] comment composer and clickable footnote-only highlights stay anchored to the exact selection
 - [x] comments: enter to "add comment", shift enter for a new line
-- [x] comments can be edited before submission
+- [x] comments can be edited or deleted from the edit composer before submission
+- [x] clicking outside the comment composer closes it
 - [x] selecting text keeps the selection available for copying
-- [] make sure it can submit feedback multiple times
+- [x] make sure it can submit feedback multiple times
+- [x] keep the submit feedback action visible while reviewing
+- [] persistent storage with sqlite
 - [] it should still be able to see comments after submitted
 - [] improve design: add sidebars as pointer to sections
 - [] need capablities to accept/reject lists
-- []
+- [] make a skill to work with pena and installable
+- [] support board or workspace and list of all docs
+- [] separate command for pena client and server so can be deployed separately

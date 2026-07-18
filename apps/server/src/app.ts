@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  DecisionBlockSyntaxError,
   DocumentSlugSchema,
   FeedbackSubmissionSchema,
+  parseDecisionDocument,
   type FeedbackBatch,
   type FeedbackResponse,
   type PenaDocument,
@@ -44,6 +46,16 @@ export function buildApp(): FastifyInstance {
         return reply.code(400).send({
           error: "The request body must contain Markdown text.",
         });
+      }
+
+      try {
+        parseDecisionDocument(request.body);
+      } catch (error) {
+        if (error instanceof DecisionBlockSyntaxError) {
+          return reply.code(400).send({ error: error.message });
+        }
+
+        throw error;
       }
 
       const document: PenaDocument = {

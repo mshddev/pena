@@ -28,6 +28,34 @@ export function readSelection(
     return null;
   }
 
+  return readPassageAroundRange(root, range, selectedText);
+}
+
+export function readElementPassage(
+  root: HTMLElement,
+  element: HTMLElement,
+): SelectedPassage | null {
+  if (!root.contains(element)) {
+    return null;
+  }
+
+  const selectedText = element.innerText.trim();
+
+  if (!selectedText) {
+    return null;
+  }
+
+  const range = window.document.createRange();
+  range.selectNodeContents(element);
+
+  return readPassageAroundRange(root, range, selectedText);
+}
+
+function readPassageAroundRange(
+  root: HTMLElement,
+  range: Range,
+  selectedText: string,
+): SelectedPassage {
   const precedingRange = window.document.createRange();
   precedingRange.selectNodeContents(root);
   precedingRange.setEnd(range.startContainer, range.startOffset);
@@ -62,6 +90,11 @@ export function findTextRange(
 
   while (walker.nextNode()) {
     const textNode = walker.currentNode as Text;
+
+    if (textNode.parentElement?.closest("[data-pena-annotation]")) {
+      continue;
+    }
+
     textNodes.push(textNode);
     fullText += textNode.data;
   }

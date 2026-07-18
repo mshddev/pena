@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+export {
+  DecisionBlockSyntaxError,
+  parseDecisionDocument,
+  type DecisionBlock,
+  type DecisionDocumentSegment,
+  type ParsedDecisionDocument,
+} from "./decision-blocks.js";
+
 const NonBlankStringSchema = z
   .string()
   .min(1)

@@ -1,4 +1,7 @@
-import type { PenaDocument } from "@pena/contracts";
+import {
+  parseDecisionDocument,
+  type PenaDocument,
+} from "@pena/contracts";
 import {
   useCallback,
   useEffect,
@@ -6,9 +9,22 @@ import {
   type ReactNode,
 } from "react";
 
-import { fetchDocument, submitFeedback } from "../../api";
+import {
+  fetchDocument,
+  fetchFeedback,
+  submitFeedback,
+} from "../../api";
 import { DocumentViewer } from "./components/DocumentViewer";
-import type { DraftComment, Notice } from "./types";
+import {
+  formatFeedbackCount,
+  readSubmittedDecisions,
+} from "./decision-feedback";
+import type {
+  DraftComment,
+  DraftDecision,
+  DraftFeedback,
+  Notice,
+} from "./types";
 
 interface DocumentReviewPageProps {
   documentSlug: string | null;
@@ -22,7 +38,10 @@ export function DocumentReviewPage({
   );
   const [isLoading, setIsLoading] = useState(documentSlug !== null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [draftComments, setDraftComments] = useState<DraftComment[]>([]);
+  const [draftFeedback, setDraftFeedback] = useState<DraftFeedback[]>([]);
+  const [submittedDecisions, setSubmittedDecisions] = useState<
+    Record<string, string>
+  >({});
   const [notice, setNotice] = useState<Notice>(null);
 
   const loadDocument = useCallback(async () => {
@@ -34,8 +53,28 @@ export function DocumentReviewPage({
     setNotice(null);
 
     try {
-      setCurrentDocument(await fetchDocument(documentSlug));
+      const nextDocument = await fetchDocument(documentSlug);
+
+      if (!nextDocument) {
+        setCurrentDocument(null);
+        setSubmittedDecisions({});
+        return;
+      }
+
+      const parsedDocument = parseDecisionDocument(nextDocument.content);
+      const nextSubmittedDecisions =
+        parsedDocument.decisions.length > 0
+          ? readSubmittedDecisions(
+              await fetchFeedback(documentSlug),
+              parsedDocument.decisions,
+            )
+          : {};
+
+      setCurrentDocument(nextDocument);
+      setSubmittedDecisions(nextSubmittedDecisions);
     } catch (error) {
+      setCurrentDocument(null);
+      setSubmittedDecisions({});
       setNotice({
         kind: "error",
         message:
@@ -54,10 +93,10 @@ export function DocumentReviewPage({
   }, [documentSlug, loadDocument]);
 
   function handleRefresh(): void {
-    if (draftComments.length > 0) {
+    if (draftFeedback.length > 0) {
       setNotice({
         kind: "error",
-        message: "Submit or remove the draft comments before refreshing.",
+        message: "Submit or remove the draft feedback before refreshing.",
       });
       return;
     }
@@ -66,29 +105,54 @@ export function DocumentReviewPage({
   }
 
   function saveDraft(nextDraft: DraftComment): void {
-    setDraftComments((comments) => {
-      const draftExists = comments.some(
-        (comment) => comment.id === nextDraft.id,
-      );
+    setDraftFeedback((drafts) => {
+      const draftExists = drafts.some((draft) => draft.id === nextDraft.id);
       return draftExists
-        ? comments.map((comment) =>
-            comment.id === nextDraft.id ? nextDraft : comment,
+        ? drafts.map((draft) =>
+            draft.id === nextDraft.id ? nextDraft : draft,
           )
-        : [...comments, nextDraft];
+        : [...drafts, nextDraft];
+    });
+  }
+
+  function saveDecisionDraft(
+    decisionId: string,
+    nextDraft: DraftDecision | null,
+  ): void {
+    setDraftFeedback((drafts) => {
+      const existingIndex = drafts.findIndex(
+        (draft) =>
+          draft.kind === "decision" && draft.decisionId === decisionId,
+      );
+
+      if (!nextDraft) {
+        return existingIndex === -1
+          ? drafts
+          : drafts.filter((_, index) => index !== existingIndex);
+      }
+
+      if (existingIndex === -1) {
+        return [...drafts, nextDraft];
+      }
+
+      return drafts.map((draft, index) =>
+        index === existingIndex ? nextDraft : draft,
+      );
     });
   }
 
   async function sendFeedback(): Promise<void> {
-    if (!documentSlug || draftComments.length === 0) {
+    if (!documentSlug || draftFeedback.length === 0) {
       return;
     }
 
+    const submittedDrafts = draftFeedback;
     setIsSubmitting(true);
     setNotice(null);
 
     try {
       await submitFeedback(documentSlug, {
-        comments: draftComments.map(
+        comments: submittedDrafts.map(
           ({ selectedText, comment, contextBefore, contextAfter }) => ({
             selectedText,
             comment,
@@ -97,13 +161,33 @@ export function DocumentReviewPage({
           }),
         ),
       });
-      const submittedCount = draftComments.length;
-      setDraftComments([]);
+      const submittedIds = new Set(
+        submittedDrafts.map((draft) => draft.id),
+      );
+      const submittedDecisionDrafts = submittedDrafts.filter(
+        (draft): draft is DraftDecision => draft.kind === "decision",
+      );
+      const decisionCount = submittedDecisionDrafts.length;
+      const commentCount = submittedDrafts.length - decisionCount;
+
+      setDraftFeedback((drafts) =>
+        drafts.filter((draft) => !submittedIds.has(draft.id)),
+      );
+      setSubmittedDecisions((current) => ({
+        ...current,
+        ...Object.fromEntries(
+          submittedDecisionDrafts.map((draft) => [
+            draft.decisionId,
+            draft.choice,
+          ]),
+        ),
+      }));
       setNotice({
         kind: "success",
-        message: `${submittedCount} ${
-          submittedCount === 1 ? "comment" : "comments"
-        } submitted. Ask Claude to read your Pena feedback.`,
+        message: `${formatFeedbackCount(
+          decisionCount,
+          commentCount,
+        )} submitted. Ask Claude to read your Pena feedback.`,
       });
     } catch (error) {
       setNotice({
@@ -189,17 +273,25 @@ export function DocumentReviewPage({
           ) : currentDocument ? (
             <DocumentViewer
               document={currentDocument}
-              draftComments={draftComments}
+              draftFeedback={draftFeedback}
+              submittedDecisions={submittedDecisions}
               isSubmitting={isSubmitting}
               notice={notice}
               onDraftSaved={saveDraft}
               onDraftDeleted={(draftId) =>
-                setDraftComments((comments) =>
-                  comments.filter((comment) => comment.id !== draftId),
+                setDraftFeedback((drafts) =>
+                  drafts.filter((draft) => draft.id !== draftId),
                 )
               }
+              onDecisionDraftChanged={saveDecisionDraft}
               onNoticeClear={() => setNotice(null)}
               onSubmitFeedback={() => void sendFeedback()}
+            />
+          ) : notice?.kind === "error" ? (
+            <DocumentState
+              glyph="!"
+              title="Could not load document"
+              description={notice.message}
             />
           ) : (
             <DocumentState

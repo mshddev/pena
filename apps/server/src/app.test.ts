@@ -171,4 +171,130 @@ describe("Pena API", () => {
     });
     expect(invalidFeedbackResponse.statusCode).toBe(400);
   });
+
+  it("publishes valid decision blocks and preserves their Markdown", async () => {
+    const app = createApp();
+    const content = [
+      "# Review",
+      "",
+      ':::pena-decision{#add-request-cache choice-a="Apply" choice-b="Skip"}',
+      "## Add request caching",
+      "",
+      "Cache repeated reads for five minutes.",
+      ":::",
+    ].join("\n");
+
+    const publishResponse = await publishDocument(
+      app,
+      DOCUMENT_URL,
+      content,
+    );
+    const documentResponse = await app.inject({
+      method: "GET",
+      url: DOCUMENT_URL,
+    });
+
+    expect(publishResponse.statusCode).toBe(200);
+    expect(documentResponse.json().content).toBe(content);
+  });
+
+  it("accepts ten uniquely identified decision blocks", async () => {
+    const app = createApp();
+    const content = Array.from(
+      { length: 10 },
+      (_, index) =>
+        [
+          `:::pena-decision{#decision-${index + 1} choice-a="Apply" choice-b="Skip"}`,
+          `## Decision ${index + 1}`,
+          "Review this change.",
+          ":::",
+        ].join("\n"),
+    ).join("\n\n");
+
+    const response = await publishDocument(app, DOCUMENT_URL, content);
+
+    expect(response.statusCode).toBe(200);
+  });
+
+  it.each([
+    {
+      name: "malformed attributes",
+      content:
+        ':::pena-decision{#cache choice-a="Apply"}\nReview caching.\n:::',
+    },
+    {
+      name: "duplicate IDs",
+      content: [
+        ':::pena-decision{#cache choice-a="Apply" choice-b="Skip"}',
+        "First.",
+        ":::",
+        ':::pena-decision{#cache choice-a="Keep" choice-b="Remove"}',
+        "Second.",
+        ":::",
+      ].join("\n"),
+    },
+    {
+      name: "nested blocks",
+      content: [
+        ':::pena-decision{#outer choice-a="Apply" choice-b="Skip"}',
+        "Outer.",
+        ':::pena-decision{#inner choice-a="Keep" choice-b="Remove"}',
+        "Inner.",
+        ":::",
+        ":::",
+      ].join("\n"),
+    },
+    {
+      name: "non-top-level blocks",
+      content: [
+        '- Item',
+        '  :::pena-decision{#nested choice-a="Apply" choice-b="Skip"}',
+        "  Nested.",
+        "  :::",
+      ].join("\n"),
+    },
+    {
+      name: "blank choices",
+      content:
+        ':::pena-decision{#cache choice-a=" " choice-b="Skip"}\nReview caching.\n:::',
+    },
+    {
+      name: "identical choices",
+      content:
+        ':::pena-decision{#cache choice-a="Apply" choice-b="Apply"}\nReview caching.\n:::',
+    },
+    {
+      name: "missing closing marker",
+      content:
+        ':::pena-decision{#cache choice-a="Apply" choice-b="Skip"}\nReview caching.',
+    },
+  ])("rejects $name without replacing the current document", async ({ content }) => {
+    const app = createApp();
+    await publishDocument(app, DOCUMENT_URL, "Previous document");
+
+    const response = await publishDocument(app, DOCUMENT_URL, content);
+    const documentResponse = await app.inject({
+      method: "GET",
+      url: DOCUMENT_URL,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toMatch(/^Invalid decision block on line /);
+    expect(documentResponse.json().content).toBe("Previous document");
+  });
+
+  it("ignores decision examples inside fenced code blocks", async () => {
+    const app = createApp();
+    const content = [
+      "```markdown",
+      ':::pena-decision{#example choice-a="Apply" choice-b="Skip"}',
+      "Example body.",
+      ":::",
+      "```",
+    ].join("\n");
+
+    const response = await publishDocument(app, DOCUMENT_URL, content);
+
+    expect(response.statusCode).toBe(200);
+  });
 });

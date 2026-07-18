@@ -1,18 +1,25 @@
+import { formatFeedbackCount } from "../decision-feedback";
 import type { Notice } from "../types";
 
 interface FeedbackBarProps {
-  draftCount: number;
+  commentCount: number;
+  decisionCount: number;
+  hasDecisions: boolean;
   isSubmitting: boolean;
   notice: Notice;
   onSubmit: () => void;
 }
 
 export function FeedbackBar({
-  draftCount,
+  commentCount,
+  decisionCount,
+  hasDecisions,
   isSubmitting,
   notice,
   onSubmit,
 }: FeedbackBarProps) {
+  const draftCount = commentCount + decisionCount;
+
   return (
     <footer className="feedback-bar" aria-label="Draft feedback">
       <div className="feedback-summary">
@@ -28,10 +35,13 @@ export function FeedbackBar({
           ) : (
             <p className="feedback-hint">
               {draftCount === 0
-                ? "Select text in the document to start."
-                : `${draftCount} ${
-                    draftCount === 1 ? "comment" : "comments"
-                  } ready to submit.`}
+                ? hasDecisions
+                  ? "Choose a decision or select text to start."
+                  : "Select text in the document to start."
+                : `${formatFeedbackCount(
+                    decisionCount,
+                    commentCount,
+                  )} ready to submit`}
             </p>
           )}
         </div>

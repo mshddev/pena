@@ -1,5 +1,6 @@
 import type {
   FeedbackBatch,
+  FeedbackResponse,
   FeedbackSubmission,
   PenaDocument,
 } from "@pena/contracts";
@@ -41,4 +42,12 @@ export async function submitFeedback(
   );
 
   return parseResponse<FeedbackBatch>(response);
+}
+
+export async function fetchFeedback(slug: string): Promise<FeedbackResponse> {
+  const response = await fetch(
+    `/api/documents/${encodeURIComponent(slug)}/feedback`,
+  );
+
+  return parseResponse<FeedbackResponse>(response);
 }

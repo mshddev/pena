@@ -348,6 +348,101 @@ button:disabled {
   border-top: 1px solid var(--line);
 }
 
+.decision-block {
+  margin: 2.2em 0;
+  padding: 18px 0 20px 22px;
+  border-left: 2px solid var(--line-strong);
+  background: rgb(27 27 24 / 34%);
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.decision-block:has(.decision-choice.selected) {
+  border-left-color: var(--accent);
+  background: rgb(27 27 24 / 54%);
+}
+
+.decision-block.submitted {
+  border-left-color: rgb(169 201 137 / 72%);
+}
+
+.decision-label {
+  margin: 0 0 12px;
+  color: var(--text-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.13em;
+  line-height: 1.4;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.decision-block.submitted .decision-label {
+  color: var(--success);
+}
+
+.decision-body > :first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.decision-body > :last-child {
+  margin-bottom: 0;
+}
+
+.decision-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 18px;
+  user-select: none;
+}
+
+.decision-choice {
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-family:
+    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+
+.decision-choice:hover:not(:disabled) {
+  border-color: var(--text-faint);
+  background: var(--surface-raised);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.decision-choice.selected {
+  border-color: var(--accent);
+  background: rgb(217 164 65 / 14%);
+  color: var(--accent-bright);
+}
+
+.decision-block.submitted .decision-choice:disabled {
+  opacity: 0.62;
+}
+
+.decision-block.submitted .decision-choice.selected:disabled {
+  border-color: rgb(169 201 137 / 72%);
+  background: rgb(169 201 137 / 10%);
+  color: var(--success);
+  opacity: 1;
+}
+
 .comment-count {
   color: var(--text-faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -692,6 +787,14 @@ button:disabled {
 
   .markdown-body h1 {
     font-size: 38px;
+  }
+
+  .decision-block {
+    padding-left: 16px;
+  }
+
+  .decision-choice {
+    flex: 1 1 120px;
   }
 
   .feedback-bar {

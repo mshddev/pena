@@ -1,15 +1,23 @@
-import type { PenaDocument } from "@pena/contracts";
 import {
-  useEffect,
+  parseDecisionDocument,
+  type DecisionBlock as DecisionBlockDefinition,
+  type PenaDocument,
+} from "@pena/contracts";
+import {
+  Fragment,
   useLayoutEffect,
+  useEffect,
+  useMemo,
   useReducer,
   useRef,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
+  type SyntheticEvent,
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { readElementPassage } from "../../../selection";
 import {
   findDraftCommentAtPoint,
   findDraftRange,
@@ -25,29 +33,43 @@ import {
   commentEditorReducer,
   initialCommentEditorState,
 } from "../editor-state";
-import { annotatedMarkdownComponents } from "../markdown-components";
-import type { DraftComment, Notice } from "../types";
+import { createDraftDecision } from "../decision-feedback";
+import { createAnnotatedMarkdownComponents } from "../markdown-components";
+import type {
+  DraftComment,
+  DraftDecision,
+  DraftFeedback,
+  Notice,
+} from "../types";
 import { CommentComposer } from "./CommentComposer";
+import { DecisionBlock } from "./DecisionBlock";
 import { FeedbackBar } from "./FeedbackBar";
 
 interface DocumentViewerProps {
   document: PenaDocument;
-  draftComments: DraftComment[];
+  draftFeedback: DraftFeedback[];
+  submittedDecisions: Record<string, string>;
   isSubmitting: boolean;
   notice: Notice;
   onDraftSaved: (draft: DraftComment) => void;
   onDraftDeleted: (draftId: string) => void;
+  onDecisionDraftChanged: (
+    decisionId: string,
+    draft: DraftDecision | null,
+  ) => void;
   onNoticeClear: () => void;
   onSubmitFeedback: () => void;
 }
 
 export function DocumentViewer({
   document: penaDocument,
-  draftComments,
+  draftFeedback,
+  submittedDecisions,
   isSubmitting,
   notice,
   onDraftSaved,
   onDraftDeleted,
+  onDecisionDraftChanged,
   onNoticeClear,
   onSubmitFeedback,
 }: DocumentViewerProps) {
@@ -58,6 +80,24 @@ export function DocumentViewer({
   const [editor, dispatch] = useReducer(
     commentEditorReducer,
     initialCommentEditorState,
+  );
+  const parsedDocument = useMemo(
+    () => parseDecisionDocument(penaDocument.content),
+    [penaDocument.content],
+  );
+  const draftComments = useMemo(
+    () =>
+      draftFeedback.filter(
+        (draft): draft is DraftComment => draft.kind === "comment",
+      ),
+    [draftFeedback],
+  );
+  const draftDecisions = useMemo(
+    () =>
+      draftFeedback.filter(
+        (draft): draft is DraftDecision => draft.kind === "decision",
+      ),
+    [draftFeedback],
   );
   const draftPositions = useDraftPositions(
     documentSurfaceRef,
@@ -88,7 +128,11 @@ export function DocumentViewer({
 
       if (
         target instanceof Node &&
-        !commentPopoverRef.current?.contains(target)
+        !commentPopoverRef.current?.contains(target) &&
+        !(
+          target instanceof Element &&
+          target.closest("[data-pena-decision-control]")
+        )
       ) {
         dispatch({ type: "closed" });
       }
@@ -171,7 +215,14 @@ export function DocumentViewer({
     penaDocument.content,
   ]);
 
-  function handleDocumentSelection(): void {
+  function handleDocumentSelection(event: SyntheticEvent<HTMLElement>): void {
+    if (
+      event.target instanceof Element &&
+      event.target.closest("[data-pena-decision-control]")
+    ) {
+      return;
+    }
+
     const surface = documentSurfaceRef.current;
     const stage = documentStageRef.current;
 
@@ -253,6 +304,7 @@ export function DocumentViewer({
     }
 
     onDraftSaved({
+      kind: "comment",
       id: editor.editingCommentId ?? crypto.randomUUID(),
       ...editor.passage,
       anchorId: editor.anchorId,
@@ -272,6 +324,41 @@ export function DocumentViewer({
     dispatch({ type: "closed" });
   }
 
+  function chooseDecision(
+    decision: DecisionBlockDefinition,
+    choice: string,
+    bodyElement: HTMLElement,
+  ): void {
+    const surface = documentSurfaceRef.current;
+
+    if (!surface) {
+      return;
+    }
+
+    const passage = readElementPassage(surface, bodyElement);
+
+    if (!passage) {
+      return;
+    }
+
+    const currentDraft = draftDecisions.find(
+      (draft) => draft.decisionId === decision.id,
+    );
+    const nextDraft =
+      currentDraft?.choice === choice
+        ? null
+        : createDraftDecision(
+            decision,
+            choice,
+            passage.selectedText,
+            passage.contextBefore,
+            passage.contextAfter,
+          );
+
+    onDecisionDraftChanged(decision.id, nextDraft);
+    onNoticeClear();
+  }
+
   return (
     <>
       <div className="document-stage" ref={documentStageRef}>
@@ -286,12 +373,41 @@ export function DocumentViewer({
             event.currentTarget.style.cursor = "";
           }}
         >
-          <ReactMarkdown
-            components={annotatedMarkdownComponents}
-            remarkPlugins={[remarkGfm]}
-          >
-            {penaDocument.content}
-          </ReactMarkdown>
+          {parsedDocument.segments.map((segment, index) => {
+            const namespace = `segment-${index}`;
+
+            if (segment.type === "markdown") {
+              return (
+                <ReactMarkdown
+                  components={createAnnotatedMarkdownComponents(namespace)}
+                  remarkPlugins={[remarkGfm]}
+                  key={namespace}
+                >
+                  {segment.content}
+                </ReactMarkdown>
+              );
+            }
+
+            const draftChoice =
+              draftDecisions.find(
+                (draft) => draft.decisionId === segment.decision.id,
+              )?.choice ?? null;
+
+            return (
+              <Fragment key={segment.decision.id}>
+                <DecisionBlock
+                  decision={segment.decision}
+                  namespace={namespace}
+                  draftChoice={draftChoice}
+                  submittedChoice={
+                    submittedDecisions[segment.decision.id] ?? null
+                  }
+                  isSubmitting={isSubmitting}
+                  onChoice={chooseDecision}
+                />
+              </Fragment>
+            );
+          })}
         </article>
 
         {draftComments.map((draft, index) => {
@@ -354,7 +470,9 @@ export function DocumentViewer({
 
       {!editor.passage ? (
         <FeedbackBar
-          draftCount={draftComments.length}
+          commentCount={draftComments.length}
+          decisionCount={draftDecisions.length}
+          hasDecisions={parsedDocument.decisions.length > 0}
           isSubmitting={isSubmitting}
           notice={notice}
           onSubmit={onSubmitFeedback}

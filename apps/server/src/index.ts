@@ -5,7 +5,7 @@ const port = Number(process.env.PORT ?? 8788);
 
 await app.listen({ host: "127.0.0.1", port });
 
-console.log(`Pena is running at http://127.0.0.1:${port}`);
+console.log(`Pena SERVER is running at http://127.0.0.1:${port}`);
 
 async function closeServer(): Promise<void> {
   await app.close();

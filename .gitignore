@@ -4,6 +4,7 @@ coverage/
 playwright-report/
 .playwright-cli/
 test-results/
+.db/
 .DS_Store
 *.log
 *.tsbuildinfo

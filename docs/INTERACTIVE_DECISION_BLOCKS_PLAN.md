@@ -8,7 +8,7 @@ Add clickable decisions to Pena without changing its existing review model.
 
 An agent may include explicit decision blocks inside a Markdown document. Pena renders each block with two buttons. The selected answer joins the existing draft feedback and is submitted as a normal comment.
 
-Everything else stays the same: Markdown publishing, text-selection comments, batch submission, manual feedback retrieval, refresh behavior, and in-memory storage.
+Everything else stays the same: Markdown publishing, text-selection comments, batch submission, manual feedback retrieval, refresh behavior, and persistent SQLite storage.
 
 # The Decision Syntax
 
@@ -100,7 +100,7 @@ The following behavior does not change:
 - Refusing refresh while drafts exist
 - Manual agent feedback retrieval
 - Feedback clearing when a document is replaced
-- In-memory storage
+- Persistent SQLite storage
 
 Stale-submission protection and document revision tracking are not included.
 

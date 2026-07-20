@@ -167,8 +167,6 @@ export function DocumentReviewPage({
       const submittedDecisionDrafts = submittedDrafts.filter(
         (draft): draft is DraftDecision => draft.kind === "decision",
       );
-      const decisionCount = submittedDecisionDrafts.length;
-      const commentCount = submittedDrafts.length - decisionCount;
 
       setDraftFeedback((drafts) =>
         drafts.filter((draft) => !submittedIds.has(draft.id)),
@@ -185,8 +183,7 @@ export function DocumentReviewPage({
       setNotice({
         kind: "success",
         message: `${formatFeedbackCount(
-          decisionCount,
-          commentCount,
+          submittedDrafts.length,
         )} submitted. Ask Claude to read your Pena feedback.`,
       });
     } catch (error) {

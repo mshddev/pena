@@ -1,24 +1,24 @@
-import { randomUUID } from "node:crypto";
-
 import {
   DecisionBlockSyntaxError,
   DocumentSlugSchema,
   FeedbackSubmissionSchema,
   parseDecisionDocument,
-  type FeedbackBatch,
   type FeedbackResponse,
-  type PenaDocument,
 } from "@pena/contracts";
 import Fastify, { type FastifyInstance } from "fastify";
 
-interface DocumentState {
-  document: PenaDocument;
-  feedbackBatches: FeedbackBatch[];
-}
+import {
+  DocumentNotFoundError,
+  PersistedDataError,
+  type PenaStore,
+} from "./storage/pena-store.js";
 
-export function buildApp(): FastifyInstance {
+export function buildApp(store: PenaStore): FastifyInstance {
   const app = Fastify({ logger: false });
-  const documents = new Map<string, DocumentState>();
+
+  app.addHook("onClose", () => {
+    store.close();
+  });
 
   app.addContentTypeParser(
     "text/markdown",
@@ -58,16 +58,10 @@ export function buildApp(): FastifyInstance {
         throw error;
       }
 
-      const document: PenaDocument = {
-        slug: parsedSlug.data,
-        content: request.body,
-        updatedAt: new Date().toISOString(),
-      };
-
-      documents.set(parsedSlug.data, {
-        document,
-        feedbackBatches: [],
-      });
+      const document = store.publishDocument(
+        parsedSlug.data,
+        request.body,
+      );
 
       return reply.code(200).send(document);
     },
@@ -76,29 +70,21 @@ export function buildApp(): FastifyInstance {
   app.get<{ Params: { slug: string } }>(
     "/api/documents/:slug",
     async (request, reply) => {
-      const state = documents.get(request.params.slug);
+      const document = store.getDocument(request.params.slug);
 
-      if (!state) {
+      if (!document) {
         return reply.code(404).send({
           error: `No document has been published with slug "${request.params.slug}".`,
         });
       }
 
-      return reply.send(state.document);
+      return reply.send(document);
     },
   );
 
   app.post<{ Params: { slug: string } }>(
     "/api/documents/:slug/feedback",
     async (request, reply) => {
-      const state = documents.get(request.params.slug);
-
-      if (!state) {
-        return reply.code(409).send({
-          error: `Publish the "${request.params.slug}" document before submitting feedback.`,
-        });
-      }
-
       const parsedSubmission = FeedbackSubmissionSchema.safeParse(request.body);
 
       if (!parsedSubmission.success) {
@@ -107,31 +93,47 @@ export function buildApp(): FastifyInstance {
         });
       }
 
-      const batch: FeedbackBatch = {
-        id: randomUUID(),
-        submittedAt: new Date().toISOString(),
-        comments: parsedSubmission.data.comments,
-      };
+      try {
+        const batch = store.addFeedback(
+          request.params.slug,
+          parsedSubmission.data,
+        );
 
-      state.feedbackBatches.push(batch);
+        return reply.code(201).send(batch);
+      } catch (error) {
+        if (error instanceof DocumentNotFoundError) {
+          return reply.code(409).send({
+            error: `Publish the "${request.params.slug}" document before submitting feedback.`,
+          });
+        }
 
-      return reply.code(201).send(batch);
+        throw error;
+      }
     },
   );
 
   app.get<{ Params: { slug: string } }>(
     "/api/documents/:slug/feedback",
     async (request, reply): Promise<FeedbackResponse | void> => {
-      const state = documents.get(request.params.slug);
+      try {
+        return store.getFeedback(request.params.slug);
+      } catch (error) {
+        if (error instanceof DocumentNotFoundError) {
+          await reply.code(404).send({
+            error: `No document has been published with slug "${request.params.slug}".`,
+          });
+          return;
+        }
 
-      if (!state) {
-        await reply.code(404).send({
-          error: `No document has been published with slug "${request.params.slug}".`,
-        });
-        return;
+        if (error instanceof PersistedDataError) {
+          await reply.code(500).send({
+            error: "The document feedback contains invalid persisted data.",
+          });
+          return;
+        }
+
+        throw error;
       }
-
-      return { batches: state.feedbackBatches };
     },
   );
 

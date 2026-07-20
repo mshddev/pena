@@ -62,7 +62,7 @@ describe("interactive decision review", () => {
       if (init?.method === "POST") {
         submittedBodies.push(String(init.body));
         return jsonResponse({
-          id: "d2883d6f-09cb-4d96-bdbe-1085a12c2305",
+          id: 1,
           submittedAt: "2026-07-18T10:01:00.000Z",
           comments: JSON.parse(String(init.body)).comments,
         }, 201);
@@ -86,7 +86,7 @@ describe("interactive decision review", () => {
     expect(skip.getAttribute("aria-pressed")).toBe("false");
 
     await user.click(apply);
-    expect(screen.getByText("1 decision ready to submit")).toBeTruthy();
+    expect(screen.getByText("1 feedback ready to submit")).toBeTruthy();
     expect(apply.getAttribute("aria-pressed")).toBe("true");
 
     await user.click(apply);
@@ -99,7 +99,7 @@ describe("interactive decision review", () => {
     await user.click(screen.getByRole("button", { name: "Submit feedback" }));
 
     await screen.findByText(
-      "1 decision submitted. Ask Claude to read your Pena feedback.",
+      "1 feedback submitted. Ask Claude to read your Pena feedback.",
     );
     expect(submittedBodies).toHaveLength(1);
     expect(JSON.parse(submittedBodies[0] ?? "{}").comments).toEqual([
@@ -120,7 +120,7 @@ describe("interactive decision review", () => {
           ? jsonResponse({
               batches: [
                 {
-                  id: "0bc32cee-9f30-4551-82e8-61551d23cc81",
+                  id: 1,
                   submittedAt: "2026-07-18T10:01:00.000Z",
                   comments: [
                     {

@@ -65,18 +65,8 @@ export function readSubmittedDecisions(
   return submitted;
 }
 
-export function formatFeedbackCount(
-  decisionCount: number,
-  commentCount: number,
-): string {
-  return [
-    decisionCount > 0
-      ? `${decisionCount} ${decisionCount === 1 ? "decision" : "decisions"}`
-      : null,
-    commentCount > 0
-      ? `${commentCount} ${commentCount === 1 ? "comment" : "comments"}`
-      : null,
-  ]
-    .filter((part): part is string => part !== null)
-    .join(" · ");
+export function formatFeedbackCount(feedbackCount: number): string {
+  return `${feedbackCount} ${
+    feedbackCount === 1 ? "feedback" : "feedbacks"
+  }`;
 }

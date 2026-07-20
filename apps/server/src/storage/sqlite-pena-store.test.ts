@@ -1,0 +1,272 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import Database from "better-sqlite3";
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  DocumentNotFoundError,
+  PersistedDataError,
+  UnsupportedSchemaVersionError,
+} from "./pena-store.js";
+import { SqlitePenaStore } from "./sqlite-pena-store.js";
+
+const feedbackSubmission = {
+  comments: [
+    {
+      selectedText: "Current",
+      comment: "Change this.",
+      contextBefore: "",
+      contextAfter: " draft",
+    },
+  ],
+};
+
+const stores = new Set<SqlitePenaStore>();
+const temporaryDirectories = new Set<string>();
+
+function createStore(
+  filename = ":memory:",
+  clock?: () => Date,
+): SqlitePenaStore {
+  const store = new SqlitePenaStore(filename, { clock });
+  stores.add(store);
+  return store;
+}
+
+function createDatabasePath(): string {
+  const directory = mkdtempSync(join(tmpdir(), "pena-storage-"));
+  temporaryDirectories.add(directory);
+  return join(directory, "pena.sqlite");
+}
+
+afterEach(() => {
+  for (const store of stores) {
+    store.close();
+  }
+  stores.clear();
+
+  for (const directory of temporaryDirectories) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+  temporaryDirectories.clear();
+});
+
+describe("SqlitePenaStore", () => {
+  it("stores ordered feedback batches with numeric IDs", () => {
+    const store = createStore();
+    store.publishDocument("initial-spec", "Current draft");
+
+    const firstBatch = store.addFeedback(
+      "initial-spec",
+      feedbackSubmission,
+    );
+    const secondBatch = store.addFeedback("initial-spec", {
+      comments: [
+        {
+          selectedText: "draft",
+          comment: "Use proposal instead.",
+          contextBefore: "Current ",
+          contextAfter: "",
+        },
+      ],
+    });
+
+    expect(firstBatch.id).toBe(1);
+    expect(secondBatch.id).toBe(2);
+    expect(store.getFeedback("initial-spec")).toEqual({
+      batches: [firstBatch, secondBatch],
+    });
+  });
+
+  it("isolates feedback by document ID", () => {
+    const store = createStore();
+    store.publishDocument("initial-spec", "Initial draft");
+    store.publishDocument("article-draft", "Article draft");
+    store.addFeedback("initial-spec", feedbackSubmission);
+    store.addFeedback("article-draft", feedbackSubmission);
+
+    expect(store.getFeedback("initial-spec").batches).toHaveLength(1);
+    expect(store.getFeedback("article-draft").batches).toHaveLength(1);
+  });
+
+  it("preserves feedback and timestamps for identical content", () => {
+    const timestamps = [
+      new Date("2026-07-19T10:00:00.000Z"),
+      new Date("2026-07-19T10:01:00.000Z"),
+      new Date("2026-07-19T10:02:00.000Z"),
+    ];
+    const store = createStore(":memory:", () => {
+      const timestamp = timestamps.shift();
+
+      if (!timestamp) {
+        throw new Error("Test clock was called unexpectedly.");
+      }
+
+      return timestamp;
+    });
+    const firstDocument = store.publishDocument(
+      "initial-spec",
+      "Current draft",
+    );
+    store.addFeedback("initial-spec", feedbackSubmission);
+
+    const repeatedDocument = store.publishDocument(
+      "initial-spec",
+      "Current draft",
+    );
+
+    expect(repeatedDocument.updatedAt).toBe(firstDocument.updatedAt);
+    expect(store.getFeedback("initial-spec").batches).toHaveLength(1);
+  });
+
+  it("atomically replaces changed content and clears its feedback", () => {
+    const store = createStore();
+    store.publishDocument("initial-spec", "Current draft");
+    store.addFeedback("initial-spec", feedbackSubmission);
+
+    const replacement = store.publishDocument(
+      "initial-spec",
+      "Replacement draft",
+    );
+
+    expect(replacement.content).toBe("Replacement draft");
+    expect(store.getFeedback("initial-spec")).toEqual({ batches: [] });
+  });
+
+  it("rolls back feedback deletion when document replacement fails", () => {
+    const databasePath = createDatabasePath();
+    const store = createStore(databasePath);
+    store.publishDocument("initial-spec", "Current draft");
+    const batch = store.addFeedback("initial-spec", feedbackSubmission);
+    const triggerConnection = new Database(databasePath);
+    triggerConnection.exec(`
+      CREATE TRIGGER reject_document_update
+      BEFORE UPDATE ON documents
+      BEGIN
+        SELECT RAISE(ABORT, 'forced document update failure');
+      END;
+    `);
+    triggerConnection.close();
+
+    expect(() =>
+      store.publishDocument("initial-spec", "Replacement draft"),
+    ).toThrow("forced document update failure");
+    expect(store.getDocument("initial-spec")?.content).toBe(
+      "Current draft",
+    );
+    expect(store.getFeedback("initial-spec")).toEqual({
+      batches: [batch],
+    });
+  });
+
+  it("persists documents and feedback after the store is reopened", () => {
+    const databasePath = createDatabasePath();
+    const firstStore = createStore(databasePath);
+    const document = firstStore.publishDocument(
+      "initial-spec",
+      "Persistent draft",
+    );
+    const batch = firstStore.addFeedback(
+      "initial-spec",
+      feedbackSubmission,
+    );
+    firstStore.close();
+    stores.delete(firstStore);
+
+    const reopenedStore = createStore(databasePath);
+
+    expect(reopenedStore.getDocument("initial-spec")).toEqual(document);
+    expect(reopenedStore.getFeedback("initial-spec")).toEqual({
+      batches: [batch],
+    });
+  });
+
+  it("does not rerun migrations when an initialized database is reopened", () => {
+    const databasePath = createDatabasePath();
+    const firstStore = createStore(databasePath);
+    firstStore.publishDocument("initial-spec", "Persistent draft");
+    firstStore.close();
+    stores.delete(firstStore);
+
+    const reopenedStore = createStore(databasePath);
+
+    expect(reopenedStore.getDocument("initial-spec")?.content).toBe(
+      "Persistent draft",
+    );
+  });
+
+  it("rejects databases created by a newer schema version", () => {
+    const databasePath = createDatabasePath();
+    const database = new Database(databasePath);
+    database.pragma("user_version = 2");
+    database.close();
+
+    expect(() => createStore(databasePath)).toThrow(
+      UnsupportedSchemaVersionError,
+    );
+  });
+
+  it("rolls back a failed migration", () => {
+    const databasePath = createDatabasePath();
+    const database = new Database(databasePath);
+    database.exec(
+      "CREATE TABLE feedback_batches (sentinel TEXT NOT NULL) STRICT;",
+    );
+    database.close();
+
+    expect(() => createStore(databasePath)).toThrow(
+      /table feedback_batches already exists/,
+    );
+
+    const inspectionDatabase = new Database(databasePath);
+    const schemaVersion = inspectionDatabase.pragma("user_version", {
+      simple: true,
+    });
+    const documentsTable = inspectionDatabase
+      .prepare(
+        `
+          SELECT name
+          FROM sqlite_master
+          WHERE type = 'table' AND name = 'documents'
+        `,
+      )
+      .get();
+    inspectionDatabase.close();
+
+    expect(schemaVersion).toBe(0);
+    expect(documentsTable).toBeUndefined();
+  });
+
+  it("rejects invalid persisted comment data", () => {
+    const databasePath = createDatabasePath();
+    const firstStore = createStore(databasePath);
+    firstStore.publishDocument("initial-spec", "Persistent draft");
+    firstStore.addFeedback("initial-spec", feedbackSubmission);
+    firstStore.close();
+    stores.delete(firstStore);
+
+    const database = new Database(databasePath);
+    database
+      .prepare("UPDATE feedback_batches SET comments_json = ?")
+      .run("{not-json");
+    database.close();
+    const reopenedStore = createStore(databasePath);
+
+    expect(() => reopenedStore.getFeedback("initial-spec")).toThrow(
+      PersistedDataError,
+    );
+  });
+
+  it("rejects feedback operations for a missing document", () => {
+    const store = createStore();
+
+    expect(() =>
+      store.addFeedback("missing-document", feedbackSubmission),
+    ).toThrow(DocumentNotFoundError);
+    expect(() => store.getFeedback("missing-document")).toThrow(
+      DocumentNotFoundError,
+    );
+  });
+});

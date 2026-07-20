@@ -48,7 +48,7 @@ export const FeedbackSubmissionSchema = z.object({
 export type FeedbackSubmission = z.infer<typeof FeedbackSubmissionSchema>;
 
 export const FeedbackBatchSchema = FeedbackSubmissionSchema.extend({
-  id: z.uuid(),
+  id: z.number().int().positive(),
   submittedAt: z.iso.datetime(),
 });
 

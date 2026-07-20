@@ -5,6 +5,7 @@ import {
 } from "@pena/contracts";
 import {
   Fragment,
+  memo,
   useLayoutEffect,
   useEffect,
   useMemo,
@@ -378,13 +379,11 @@ export function DocumentViewer({
 
             if (segment.type === "markdown") {
               return (
-                <ReactMarkdown
-                  components={createAnnotatedMarkdownComponents(namespace)}
-                  remarkPlugins={[remarkGfm]}
+                <MarkdownSegment
+                  content={segment.content}
                   key={namespace}
-                >
-                  {segment.content}
-                </ReactMarkdown>
+                  namespace={namespace}
+                />
               );
             }
 
@@ -481,3 +480,24 @@ export function DocumentViewer({
     </>
   );
 }
+
+interface MarkdownSegmentProps {
+  content: string;
+  namespace: string;
+}
+
+const MarkdownSegment = memo(function MarkdownSegment({
+  content,
+  namespace,
+}: MarkdownSegmentProps) {
+  const components = useMemo(
+    () => createAnnotatedMarkdownComponents(namespace),
+    [namespace],
+  );
+
+  return (
+    <ReactMarkdown components={components} remarkPlugins={[remarkGfm]}>
+      {content}
+    </ReactMarkdown>
+  );
+});

@@ -38,10 +38,7 @@ export function FeedbackBar({
                 ? hasDecisions
                   ? "Choose a decision or select text to start."
                   : "Select text in the document to start."
-                : `${formatFeedbackCount(
-                    decisionCount,
-                    commentCount,
-                  )} ready to submit`}
+                : `${formatFeedbackCount(draftCount)} ready to submit`}
             </p>
           )}
         </div>

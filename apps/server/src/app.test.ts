@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildApp } from "./app.js";
+import {
+  PersistedDataError,
+  type PenaStore,
+} from "./storage/pena-store.js";
+import { SqlitePenaStore } from "./storage/sqlite-pena-store.js";
 
 const DOCUMENT_URL = "/api/documents/initial-spec";
 const FEEDBACK_URL = `${DOCUMENT_URL}/feedback`;
@@ -18,7 +23,7 @@ const feedbackPayload = {
 const apps = new Set<ReturnType<typeof buildApp>>();
 
 function createApp(): ReturnType<typeof buildApp> {
-  const app = buildApp();
+  const app = buildApp(new SqlitePenaStore(":memory:"));
   apps.add(app);
   return app;
 }
@@ -99,7 +104,29 @@ describe("Pena API", () => {
 
     const feedback = feedbackResponse.json();
     expect(feedback.batches).toHaveLength(1);
+    expect(feedback.batches[0].id).toBe(1);
     expect(feedback.batches[0].comments).toHaveLength(2);
+  });
+
+  it("keeps feedback when identical document content is published again", async () => {
+    const app = createApp();
+    const firstPublish = await publishDocument(app);
+    await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      payload: feedbackPayload,
+    });
+
+    const repeatedPublish = await publishDocument(app);
+    const feedbackResponse = await app.inject({
+      method: "GET",
+      url: FEEDBACK_URL,
+    });
+
+    expect(repeatedPublish.json().updatedAt).toBe(
+      firstPublish.json().updatedAt,
+    );
+    expect(feedbackResponse.json().batches).toHaveLength(1);
   });
 
   it("isolates documents and feedback by slug", async () => {
@@ -170,6 +197,58 @@ describe("Pena API", () => {
       payload: { comments: [] },
     });
     expect(invalidFeedbackResponse.statusCode).toBe(400);
+  });
+
+  it("returns the existing missing-document status codes", async () => {
+    const app = createApp();
+
+    const documentResponse = await app.inject({
+      method: "GET",
+      url: DOCUMENT_URL,
+    });
+    const feedbackResponse = await app.inject({
+      method: "GET",
+      url: FEEDBACK_URL,
+    });
+    const submitResponse = await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      payload: feedbackPayload,
+    });
+
+    expect(documentResponse.statusCode).toBe(404);
+    expect(feedbackResponse.statusCode).toBe(404);
+    expect(submitResponse.statusCode).toBe(409);
+  });
+
+  it("returns HTTP 500 for invalid persisted feedback", async () => {
+    const store: PenaStore = {
+      publishDocument() {
+        throw new Error("Not used in this test.");
+      },
+      getDocument() {
+        throw new Error("Not used in this test.");
+      },
+      addFeedback() {
+        throw new Error("Not used in this test.");
+      },
+      getFeedback() {
+        throw new PersistedDataError("Invalid persisted feedback.");
+      },
+      close() {},
+    };
+    const app = buildApp(store);
+    apps.add(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: FEEDBACK_URL,
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      error: "The document feedback contains invalid persisted data.",
+    });
   });
 
   it("publishes valid decision blocks and preserves their Markdown", async () => {

@@ -5,7 +5,7 @@ Pena — [Initial Specification](./INITIAL_SPEC.md)
 # Overview
 
 [!info]
-*This is the initial architecture. The implementation may introduce different or better decisions later.*
+*This is the initial architecture. Its in-memory storage design has been superseded by [Persistent Storage Architecture](./PERSISTENT_STORAGE_ARCHITECTURE.md). The rest of the initial review flow remains relevant.*
 
 Pena is a local web-based document review interface. Claude publishes a Markdown document to Pena under a document slug, the user reviews it in the browser, and Claude reads the submitted feedback for that slug when the user asks for it.
 
@@ -73,7 +73,7 @@ The instruction contains the HTTP endpoints and exact commands, so a Pena Skill,
 
 ## The Feedback Delivery
 
-The user submits one or more comments as a feedback batch. The server keeps every batch for the requested document slug in memory.
+The user submits one or more comments as a feedback batch. The server keeps every batch for the requested document in its local SQLite database.
 
 When the user says something like *"read my Pena feedback"*, Claude requests the stored batches for its document slug and decides how to apply them. Reading feedback does not mark it as handled. Publishing a replacement document clears feedback for that slug only.
 
@@ -164,7 +164,7 @@ Each comment contains:
 
 A feedback batch contains one or more comments submitted together. Pena returns all batches for the current document when Claude requests feedback.
 
-The initial storage can remain in memory because session recovery, revision history, and long-term feedback processing are out of scope. The server keeps a map of document slugs to their current document and feedback batches. Publishing a replacement document clears the existing feedback batches for that slug only.
+The first implementation used an in-memory map. Pena now stores the current document and feedback batches in SQLite so they survive server restarts. Publishing changed document content clears the existing feedback batches for that slug only; publishing identical content preserves them.
 
 # The Technical Stack
 
@@ -182,7 +182,7 @@ After careful consideration we recommend using the following stack:
 | Styling | Plain CSS with color variables | Build the dark-mode interface without introducing a styling framework yet |
 | Unit and integration tests | Vitest | Test the server, shared contracts, and browser logic |
 | Browser tests | Playwright | Test text selection, comments, submission, and document refresh behavior |
-| Storage | In memory | Keep the current document and pending feedback without adding a database |
+| Storage | SQLite through `better-sqlite3` | Keep the current document and submitted feedback across server restarts |
 
 Node.js 24 should be recorded in `.nvmrc`, so contributors using `nvm` can activate the expected runtime with `nvm use`.
 

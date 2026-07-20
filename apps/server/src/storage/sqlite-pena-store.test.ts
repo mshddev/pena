@@ -118,12 +118,16 @@ describe("SqlitePenaStore", () => {
     );
 
     expect(repeatedDocument.updatedAt).toBe(firstDocument.updatedAt);
+    expect(repeatedDocument.version).toBe(1);
     expect(store.getFeedback("initial-spec").batches).toHaveLength(1);
   });
 
-  it("atomically replaces changed content and clears its feedback", () => {
+  it("increments the version when changed content replaces a document", () => {
     const store = createStore();
-    store.publishDocument("initial-spec", "Current draft");
+    const firstDocument = store.publishDocument(
+      "initial-spec",
+      "Current draft",
+    );
     store.addFeedback("initial-spec", feedbackSubmission);
 
     const replacement = store.publishDocument(
@@ -131,7 +135,9 @@ describe("SqlitePenaStore", () => {
       "Replacement draft",
     );
 
+    expect(firstDocument.version).toBe(1);
     expect(replacement.content).toBe("Replacement draft");
+    expect(replacement.version).toBe(2);
     expect(store.getFeedback("initial-spec")).toEqual({ batches: [] });
   });
 
@@ -156,6 +162,7 @@ describe("SqlitePenaStore", () => {
     expect(store.getDocument("initial-spec")?.content).toBe(
       "Current draft",
     );
+    expect(store.getDocument("initial-spec")?.version).toBe(1);
     expect(store.getFeedback("initial-spec")).toEqual({
       batches: [batch],
     });
@@ -197,10 +204,53 @@ describe("SqlitePenaStore", () => {
     );
   });
 
+  it("migrates existing documents to version 1", () => {
+    const databasePath = createDatabasePath();
+    const database = new Database(databasePath);
+    database.exec(`
+      CREATE TABLE documents (
+        id         INTEGER PRIMARY KEY,
+        slug       TEXT NOT NULL UNIQUE,
+        content    TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE feedback_batches (
+        id            INTEGER PRIMARY KEY,
+        document_id   INTEGER NOT NULL
+                      REFERENCES documents(id) ON DELETE CASCADE,
+        submitted_at  TEXT NOT NULL,
+        comments_json TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX feedback_batches_document_id_id
+        ON feedback_batches(document_id, id);
+
+      INSERT INTO documents (slug, content, updated_at)
+      VALUES (
+        'initial-spec',
+        'Existing draft',
+        '2026-07-19T10:00:00.000Z'
+      );
+
+      PRAGMA user_version = 1;
+    `);
+    database.close();
+
+    const store = createStore(databasePath);
+
+    expect(store.getDocument("initial-spec")).toEqual({
+      slug: "initial-spec",
+      content: "Existing draft",
+      version: 1,
+      updatedAt: "2026-07-19T10:00:00.000Z",
+    });
+  });
+
   it("rejects databases created by a newer schema version", () => {
     const databasePath = createDatabasePath();
     const database = new Database(databasePath);
-    database.pragma("user_version = 2");
+    database.pragma("user_version = 3");
     database.close();
 
     expect(() => createStore(databasePath)).toThrow(

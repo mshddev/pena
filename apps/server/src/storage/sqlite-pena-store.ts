@@ -20,7 +20,7 @@ import {
   type PenaStore,
 } from "./pena-store.js";
 
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
 
 interface SqlitePenaStoreOptions {
@@ -31,6 +31,7 @@ interface DocumentRow {
   id: number;
   slug: string;
   content: string;
+  version: number;
   updated_at: string;
 }
 
@@ -84,7 +85,12 @@ export class SqlitePenaStore implements PenaStore {
             )
             .run(slug, content, updatedAt);
 
-          return DocumentSchema.parse({ slug, content, updatedAt });
+          return DocumentSchema.parse({
+            slug,
+            content,
+            version: 1,
+            updatedAt,
+          });
         }
 
         if (currentDocument.content === content) {
@@ -102,13 +108,18 @@ export class SqlitePenaStore implements PenaStore {
           .prepare<[string, string, number]>(
             `
               UPDATE documents
-              SET content = ?, updated_at = ?
+              SET content = ?, version = version + 1, updated_at = ?
               WHERE id = ?
             `,
           )
           .run(content, updatedAt, currentDocument.id);
 
-        return DocumentSchema.parse({ slug, content, updatedAt });
+        return DocumentSchema.parse({
+          slug,
+          content,
+          version: currentDocument.version + 1,
+          updatedAt,
+        });
       },
     );
   }
@@ -191,7 +202,7 @@ export class SqlitePenaStore implements PenaStore {
       this.database
         .prepare<[string], DocumentRow>(
           `
-            SELECT id, slug, content, updated_at
+            SELECT id, slug, content, version, updated_at
             FROM documents
             WHERE slug = ?
           `,
@@ -208,13 +219,15 @@ function configureDatabase(database: Database.Database): void {
 }
 
 function migrateDatabase(database: Database.Database): void {
-  const schemaVersion = database.pragma("user_version", {
+  const storedSchemaVersion = database.pragma("user_version", {
     simple: true,
   });
 
-  if (typeof schemaVersion !== "number") {
+  if (typeof storedSchemaVersion !== "number") {
     throw new Error("Could not read the Pena database schema version.");
   }
+
+  let schemaVersion = storedSchemaVersion;
 
   if (schemaVersion > CURRENT_SCHEMA_VERSION) {
     throw new UnsupportedSchemaVersionError(
@@ -247,6 +260,19 @@ function migrateDatabase(database: Database.Database): void {
         PRAGMA user_version = 1;
       `);
     })();
+    schemaVersion = 1;
+  }
+
+  if (schemaVersion < 2) {
+    database.transaction(() => {
+      database.exec(`
+        ALTER TABLE documents
+          ADD COLUMN version INTEGER NOT NULL DEFAULT 1
+          CHECK (version >= 1);
+
+        PRAGMA user_version = 2;
+      `);
+    })();
   }
 }
 
@@ -254,6 +280,7 @@ function toDocument(row: DocumentRow): PenaDocument {
   return DocumentSchema.parse({
     slug: row.slug,
     content: row.content,
+    version: row.version,
     updatedAt: row.updated_at,
   });
 }

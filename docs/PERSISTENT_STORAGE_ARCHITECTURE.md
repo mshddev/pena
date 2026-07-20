@@ -12,6 +12,7 @@ The goal is straightforward: once Pena successfully publishes a document or acce
 Persistence covers:
 
 - The current published document for every slug.
+- The document's current version number.
 - The document's `updatedAt` value.
 - Every submitted feedback batch.
 - Every submitted comment, including decision answers currently encoded as comments.
@@ -37,9 +38,12 @@ In short, the persistence guarantee is:
 3. Documents and feedback must remain isolated by document.
 4. Publishing different content under an existing slug must replace the document and clear its previous feedback atomically.
 5. Publishing identical content under an existing slug must preserve its feedback and `updatedAt`.
-6. Reading feedback must not consume, modify, or mark it as handled.
-7. Feedback batches must be returned in submission order.
-8. Pena must validate persisted comment data before returning it through the API.
+6. A new document must start at version `1`.
+7. Publishing changed content must increase the document version by one.
+8. Publishing identical content must preserve the current document version.
+9. Reading feedback must not consume, modify, or mark it as handled.
+10. Feedback batches must be returned in submission order.
+11. Pena must validate persisted comment data before returning it through the API.
 
 ## Operational Requirements
 
@@ -157,12 +161,14 @@ The data remains persistent as long as the selected database file remains intact
 ### Publishing a New Document
 
 `PUT /api/documents/:slug` inserts a new document when its slug does not exist.
+The document starts at version `1`.
 
 ### Republishing Identical Content
 
 If the stored Markdown and submitted Markdown are exactly equal — including whitespace and line endings — Pena treats the request as a retry:
 
 - Return the existing document.
+- Preserve the current version.
 - Preserve `updatedAt`.
 - Preserve all submitted feedback.
 
@@ -174,11 +180,14 @@ If the Markdown differs, Pena performs the following inside one transaction:
 
 1. Delete all feedback for the document.
 2. Update the document content.
-3. Set a new `updatedAt`.
+3. Increase the version by one.
+4. Set a new `updatedAt`.
 
 Either every step succeeds or none of them does.
 
 The document's internal ID remains unchanged. One slug continues to represent one current document, and all feedback applies exclusively to that exact document content.
+
+The version is only a revision counter. Pena does not retain old content or provide an API for retrieving previous versions.
 
 ### Submitting Feedback
 
@@ -216,6 +225,7 @@ CREATE TABLE documents (
   id         INTEGER PRIMARY KEY,
   slug       TEXT NOT NULL UNIQUE,
   content    TEXT NOT NULL,
+  version    INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
   updated_at TEXT NOT NULL
 ) STRICT;
 
@@ -239,6 +249,7 @@ erDiagram
         INTEGER id PK
         TEXT slug UK
         TEXT content
+        INTEGER version
         TEXT updated_at
     }
 
@@ -251,6 +262,8 @@ erDiagram
 ```
 
 DB Changelog: 2026-07-19 - [PENA] Define the initial persistent storage schema.
+
+DB Changelog: 2026-07-20 - [PENA] Add the current document version.
 
 # Database Initialization
 
@@ -266,7 +279,7 @@ On startup, Pena:
 6. Applies each missing migration inside a transaction.
 7. Starts the HTTP server only after initialization succeeds.
 
-The first migration creates the `documents` and `feedback_batches` tables and their index.
+The first migration creates the `documents` and `feedback_batches` tables and their index. The second migration adds `documents.version` and initializes existing documents at version `1`.
 
 If the database schema is newer than the running Pena version understands, Pena refuses to open it. This is safer than guessing whether an older server can write to a newer schema.
 
@@ -285,12 +298,13 @@ Existing route status codes remain unchanged. Posting feedback for a missing doc
 
 ## API Contracts
 
-The document contract does not change:
+The document contract includes the current version:
 
 ```json
 {
   "slug": "initial-spec",
   "content": "# Initial Spec",
+  "version": 1,
   "updatedAt": "2026-07-19T10:00:00.000Z"
 }
 ```
@@ -341,7 +355,9 @@ Internal document IDs are not exposed through the API.
 - Isolate documents and feedback.
 - Reject feedback for a missing document.
 - Replace changed content and clear only its feedback.
-- Republish identical content without changing its timestamp or feedback.
+- Start new documents at version `1`.
+- Increment the version when changed content replaces a document.
+- Republish identical content without changing its version, timestamp, or feedback.
 - Roll back replacement when part of the transaction fails.
 
 ## File Persistence Test
@@ -359,6 +375,7 @@ An in-memory database cannot prove this requirement.
 ## Migration and Integrity Tests
 
 - Initialize a new database with the first migration.
+- Migrate existing documents to version `1`.
 - Reopen an initialized database without rerunning migrations.
 - Reject a database with a newer unsupported schema version.
 - Return an error for invalid stored comment JSON.
@@ -367,6 +384,8 @@ An in-memory database cannot prove this requirement.
 
 - Preserve all existing endpoint behavior.
 - Return numeric feedback batch IDs.
+- Return the current document version.
+- Increment the version only after changed content is published.
 - Preserve feedback after an identical publish.
 - Delete feedback after a changed publish.
 - Return feedback in submission order.

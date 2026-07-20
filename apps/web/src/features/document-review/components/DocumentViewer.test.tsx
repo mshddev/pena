@@ -9,6 +9,7 @@ import { DocumentViewer } from "./DocumentViewer";
 const document = {
   slug: "highlight-test",
   content: "# Heading\n\nSelected passage.",
+  version: 1,
   updatedAt: "2026-07-20T10:00:00.000Z",
 };
 

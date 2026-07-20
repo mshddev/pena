@@ -67,6 +67,7 @@ describe("Pena API", () => {
     expect(documentResponse.json()).toMatchObject({
       slug: "initial-spec",
       content: "# First draft\n\nHello Pena.",
+      version: 1,
     });
   });
 
@@ -126,7 +127,28 @@ describe("Pena API", () => {
     expect(repeatedPublish.json().updatedAt).toBe(
       firstPublish.json().updatedAt,
     );
+    expect(repeatedPublish.json().version).toBe(1);
     expect(feedbackResponse.json().batches).toHaveLength(1);
+  });
+
+  it("increments the document version only when content changes", async () => {
+    const app = createApp();
+
+    const firstPublish = await publishDocument(app);
+    const changedPublish = await publishDocument(
+      app,
+      DOCUMENT_URL,
+      "Replacement draft",
+    );
+    const repeatedPublish = await publishDocument(
+      app,
+      DOCUMENT_URL,
+      "Replacement draft",
+    );
+
+    expect(firstPublish.json().version).toBe(1);
+    expect(changedPublish.json().version).toBe(2);
+    expect(repeatedPublish.json().version).toBe(2);
   });
 
   it("isolates documents and feedback by slug", async () => {

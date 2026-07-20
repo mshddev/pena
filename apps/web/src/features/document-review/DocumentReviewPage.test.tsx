@@ -24,6 +24,7 @@ const DECISION_DOCUMENT = [
 const documentResponse = {
   slug: "review",
   content: DECISION_DOCUMENT,
+  version: 1,
   updatedAt: "2026-07-18T10:00:00.000Z",
 };
 

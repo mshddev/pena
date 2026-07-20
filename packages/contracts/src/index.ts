@@ -27,6 +27,7 @@ export type DocumentSlug = z.infer<typeof DocumentSlugSchema>;
 export const DocumentSchema = z.object({
   slug: DocumentSlugSchema,
   content: z.string(),
+  version: z.number().int().positive(),
   updatedAt: z.iso.datetime(),
 });
 

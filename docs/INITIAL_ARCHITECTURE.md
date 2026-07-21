@@ -205,12 +205,15 @@ apps/
 packages/
   contracts/
 docs/
-  CLAUDE_PROMPT.md
+resources/
+  skills/
+    pena/
+      SKILL.md
 tests/
   e2e/
 ```
 
-The server and web application have different build and runtime boundaries, while `packages/contracts` contains the schemas and types used by both. The copy-paste Claude instruction stays under `docs` until the workflow is stable enough to turn into a skill.
+The server and web application have different build and runtime boundaries, while `packages/contracts` contains the schemas and types used by both. The Pena skill stays under `resources` so users can copy it into their agent environment without confusing it with repository-development tooling.
 
 We do not need Turborepo or another build orchestrator initially. pnpm workspaces and root-level scripts are enough for this repository size. We can introduce additional orchestration later if the build graph becomes difficult to manage.
 
@@ -246,7 +249,7 @@ The first slice is complete when:
 # Related Documentation
 
 - [Pena Initial Specification](./INITIAL_SPEC.md)
-- [Claude Code Instruction](./CLAUDE_PROMPT.md)
+- [Pena Skill](../resources/skills/pena/SKILL.md)
 - [Claude Code Monitor Tool](https://code.claude.com/docs/en/tools-reference#monitor-tool)
 - [Claude Code Plugin Monitors](https://code.claude.com/docs/en/plugins-reference#monitors)
 - [Claude Code Channels](https://code.claude.com/docs/en/channels)

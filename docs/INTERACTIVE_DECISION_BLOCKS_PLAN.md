@@ -113,7 +113,7 @@ Stale-submission protection and document revision tracking are not included.
 5. Convert selected choices into synthetic comments during submission.
 6. Load existing feedback for interactive documents and render submitted decisions as read-only.
 7. Update the draft count and submission state.
-8. Update [CLAUDE_PROMPT.md](./CLAUDE_PROMPT.md) with the directive syntax and encoded comment convention.
+8. Update the [Pena skill](../resources/skills/pena/SKILL.md) with the directive syntax and encoded comment convention.
 9. Add contract, API, parser, renderer, interaction, and submission tests.
 
 # Acceptance Criteria

@@ -243,9 +243,14 @@ export function DocumentReviewPage({
                 <code className="document-slug">/{documentSlug}</code>
               ) : null}
               {currentDocument ? (
-                <time dateTime={currentDocument.updatedAt}>
-                  Updated {formatTime(currentDocument.updatedAt)}
-                </time>
+                <>
+                  <span className="document-version">
+                    Version {currentDocument.version}
+                  </span>
+                  <time dateTime={currentDocument.updatedAt}>
+                    Updated {formatTime(currentDocument.updatedAt)}
+                  </time>
+                </>
               ) : null}
             </div>
           </div>

@@ -200,12 +200,14 @@ button:disabled {
 }
 
 .document-hint,
+.document-version,
 .document-meta time {
   margin: 5px 0 0;
   color: var(--text-faint);
   font-size: 12px;
 }
 
+.document-version,
 .document-meta time {
   flex: 0 0 auto;
 }

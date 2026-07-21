@@ -83,6 +83,7 @@ describe("interactive decision review", () => {
     const apply = await screen.findByRole("button", { name: "Apply" });
     const skip = screen.getByRole("button", { name: "Skip" });
 
+    expect(screen.getByText("Version 1")).toBeTruthy();
     expect(apply.getAttribute("aria-pressed")).toBe("false");
     expect(skip.getAttribute("aria-pressed")).toBe("false");
 

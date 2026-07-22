@@ -1,5 +1,6 @@
 import type {
   DocumentSummary,
+  DocumentStatus,
   FeedbackBatch,
   FeedbackResponse,
   FeedbackSubmission,
@@ -9,7 +10,10 @@ import type {
 export interface PenaStore {
   publishDocument(slug: string, content: string): PenaDocument;
   getDocument(slug: string): PenaDocument | null;
-  listDocuments(): DocumentSummary[];
+  listDocuments(status?: DocumentStatus): DocumentSummary[];
+  archiveDocument(slug: string): DocumentSummary;
+  restoreDocument(slug: string): DocumentSummary;
+  deleteArchivedDocument(slug: string): void;
   addFeedback(
     slug: string,
     submission: FeedbackSubmission,
@@ -22,6 +26,13 @@ export class DocumentNotFoundError extends Error {
   constructor(slug: string) {
     super(`No document has been published with slug "${slug}".`);
     this.name = "DocumentNotFoundError";
+  }
+}
+
+export class DocumentNotArchivedError extends Error {
+  constructor(slug: string) {
+    super(`The document "${slug}" must be archived before it can be deleted.`);
+    this.name = "DocumentNotArchivedError";
   }
 }
 

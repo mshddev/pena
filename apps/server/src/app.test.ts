@@ -75,6 +75,66 @@ describe("Pena API", () => {
     expect(response.json().documents[0]).not.toHaveProperty("content");
   });
 
+  it("archives, restores, and permanently deletes documents", async () => {
+    const app = createApp();
+    await publishDocument(app);
+
+    const activeDelete = await app.inject({
+      method: "DELETE",
+      url: DOCUMENT_URL,
+    });
+    expect(activeDelete.statusCode).toBe(409);
+
+    const archiveResponse = await app.inject({
+      method: "POST",
+      url: `${DOCUMENT_URL}/archive`,
+    });
+    expect(archiveResponse.statusCode).toBe(200);
+    expect(archiveResponse.json().archivedAt).toBeTruthy();
+
+    const activeDocuments = await app.inject({
+      method: "GET",
+      url: "/api/documents",
+    });
+    const archivedDocuments = await app.inject({
+      method: "GET",
+      url: "/api/documents?status=archived",
+    });
+    expect(activeDocuments.json()).toEqual({ documents: [] });
+    expect(archivedDocuments.json().documents).toHaveLength(1);
+
+    const restoreResponse = await app.inject({
+      method: "DELETE",
+      url: `${DOCUMENT_URL}/archive`,
+    });
+    expect(restoreResponse.statusCode).toBe(200);
+    expect(restoreResponse.json().archivedAt).toBeNull();
+
+    await app.inject({ method: "POST", url: `${DOCUMENT_URL}/archive` });
+    const deleteResponse = await app.inject({
+      method: "DELETE",
+      url: DOCUMENT_URL,
+    });
+    expect(deleteResponse.statusCode).toBe(204);
+
+    const documentResponse = await app.inject({
+      method: "GET",
+      url: DOCUMENT_URL,
+    });
+    expect(documentResponse.statusCode).toBe(404);
+  });
+
+  it("rejects an invalid document list status", async () => {
+    const app = createApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/documents?status=deleted",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain("active");
+  });
+
   it("publishes and returns a Markdown document by slug", async () => {
     const app = createApp();
 
@@ -280,6 +340,15 @@ describe("Pena API", () => {
         throw new Error("Not used in this test.");
       },
       listDocuments() {
+        throw new Error("Not used in this test.");
+      },
+      archiveDocument() {
+        throw new Error("Not used in this test.");
+      },
+      restoreDocument() {
+        throw new Error("Not used in this test.");
+      },
+      deleteArchivedDocument() {
         throw new Error("Not used in this test.");
       },
       addFeedback() {

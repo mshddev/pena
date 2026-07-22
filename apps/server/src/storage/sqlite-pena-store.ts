@@ -9,6 +9,7 @@ import {
   FeedbackSubmissionSchema,
   type FeedbackBatch,
   type DocumentSummary,
+  type DocumentStatus,
   type FeedbackResponse,
   type FeedbackSubmission,
   type PenaDocument,
@@ -16,13 +17,14 @@ import {
 import Database from "better-sqlite3";
 
 import {
+  DocumentNotArchivedError,
   DocumentNotFoundError,
   PersistedDataError,
   UnsupportedSchemaVersionError,
   type PenaStore,
 } from "./pena-store.js";
 
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
 
 interface SqlitePenaStoreOptions {
@@ -35,12 +37,14 @@ interface DocumentRow {
   content: string;
   version: number;
   updated_at: string;
+  archived_at: string | null;
 }
 
 interface DocumentSummaryRow {
   slug: string;
   version: number;
   updated_at: string;
+  archived_at: string | null;
 }
 
 interface FeedbackBatchRow {
@@ -101,11 +105,33 @@ export class SqlitePenaStore implements PenaStore {
           });
         }
 
-        if (currentDocument.content === content) {
+        if (
+          currentDocument.content === content &&
+          currentDocument.archived_at === null
+        ) {
           return toDocument(currentDocument);
         }
 
         const updatedAt = this.clock().toISOString();
+
+        if (currentDocument.content === content) {
+          this.database
+            .prepare<[string, number]>(
+              `
+                UPDATE documents
+                SET archived_at = NULL, updated_at = ?
+                WHERE id = ?
+              `,
+            )
+            .run(updatedAt, currentDocument.id);
+
+          return DocumentSchema.parse({
+            slug,
+            content,
+            version: currentDocument.version,
+            updatedAt,
+          });
+        }
 
         this.database
           .prepare<[number]>(
@@ -116,7 +142,10 @@ export class SqlitePenaStore implements PenaStore {
           .prepare<[string, string, number]>(
             `
               UPDATE documents
-              SET content = ?, version = version + 1, updated_at = ?
+              SET content = ?,
+                  version = version + 1,
+                  updated_at = ?,
+                  archived_at = NULL
               WHERE id = ?
             `,
           )
@@ -141,24 +170,79 @@ export class SqlitePenaStore implements PenaStore {
     return row ? toDocument(row) : null;
   }
 
-  listDocuments(): DocumentSummary[] {
+  listDocuments(status: DocumentStatus = "active"): DocumentSummary[] {
+    const statusFilter =
+      status === "archived"
+        ? "archived_at IS NOT NULL"
+        : "archived_at IS NULL";
+    const orderColumn = status === "archived" ? "archived_at" : "updated_at";
     const rows = this.database
       .prepare<[], DocumentSummaryRow>(
         `
-          SELECT slug, version, updated_at
+          SELECT slug, version, updated_at, archived_at
           FROM documents
-          ORDER BY updated_at DESC, id DESC
+          WHERE ${statusFilter}
+          ORDER BY ${orderColumn} DESC, id DESC
         `,
       )
       .all();
 
-    return rows.map((row) =>
-      DocumentSummarySchema.parse({
-        slug: row.slug,
-        version: row.version,
-        updatedAt: row.updated_at,
-      }),
-    );
+    return rows.map(toDocumentSummary);
+  }
+
+  archiveDocument(slug: string): DocumentSummary {
+    const document = this.requireDocumentRow(slug);
+
+    if (document.archived_at !== null) {
+      return toDocumentSummary(document);
+    }
+
+    const archivedAt = this.clock().toISOString();
+    this.database
+      .prepare<[string, number]>(
+        "UPDATE documents SET archived_at = ? WHERE id = ?",
+      )
+      .run(archivedAt, document.id);
+
+    return DocumentSummarySchema.parse({
+      slug: document.slug,
+      version: document.version,
+      updatedAt: document.updated_at,
+      archivedAt,
+    });
+  }
+
+  restoreDocument(slug: string): DocumentSummary {
+    const document = this.requireDocumentRow(slug);
+
+    if (document.archived_at === null) {
+      return toDocumentSummary(document);
+    }
+
+    this.database
+      .prepare<[number]>(
+        "UPDATE documents SET archived_at = NULL WHERE id = ?",
+      )
+      .run(document.id);
+
+    return DocumentSummarySchema.parse({
+      slug: document.slug,
+      version: document.version,
+      updatedAt: document.updated_at,
+      archivedAt: null,
+    });
+  }
+
+  deleteArchivedDocument(slug: string): void {
+    const document = this.requireDocumentRow(slug);
+
+    if (document.archived_at === null) {
+      throw new DocumentNotArchivedError(slug);
+    }
+
+    this.database
+      .prepare<[number]>("DELETE FROM documents WHERE id = ?")
+      .run(document.id);
   }
 
   addFeedback(
@@ -230,13 +314,23 @@ export class SqlitePenaStore implements PenaStore {
       this.database
         .prepare<[string], DocumentRow>(
           `
-            SELECT id, slug, content, version, updated_at
+            SELECT id, slug, content, version, updated_at, archived_at
             FROM documents
             WHERE slug = ?
           `,
         )
         .get(slug) ?? null
     );
+  }
+
+  private requireDocumentRow(slug: string): DocumentRow {
+    const document = this.getDocumentRow(slug);
+
+    if (!document) {
+      throw new DocumentNotFoundError(slug);
+    }
+
+    return document;
   }
 }
 
@@ -301,6 +395,18 @@ function migrateDatabase(database: Database.Database): void {
         PRAGMA user_version = 2;
       `);
     })();
+    schemaVersion = 2;
+  }
+
+  if (schemaVersion < 3) {
+    database.transaction(() => {
+      database.exec(`
+        ALTER TABLE documents
+          ADD COLUMN archived_at TEXT;
+
+        PRAGMA user_version = 3;
+      `);
+    })();
   }
 }
 
@@ -310,6 +416,15 @@ function toDocument(row: DocumentRow): PenaDocument {
     content: row.content,
     version: row.version,
     updatedAt: row.updated_at,
+  });
+}
+
+function toDocumentSummary(row: DocumentSummaryRow): DocumentSummary {
+  return DocumentSummarySchema.parse({
+    slug: row.slug,
+    version: row.version,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at,
   });
 }
 

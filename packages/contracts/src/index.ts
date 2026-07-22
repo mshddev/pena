@@ -33,7 +33,15 @@ export const DocumentSchema = z.object({
 
 export type PenaDocument = z.infer<typeof DocumentSchema>;
 
-export const DocumentSummarySchema = DocumentSchema.omit({ content: true });
+export const DocumentStatusSchema = z.enum(["active", "archived"]);
+
+export type DocumentStatus = z.infer<typeof DocumentStatusSchema>;
+
+export const DocumentSummarySchema = DocumentSchema.omit({
+  content: true,
+}).extend({
+  archivedAt: z.iso.datetime().nullable(),
+});
 
 export type DocumentSummary = z.infer<typeof DocumentSummarySchema>;
 

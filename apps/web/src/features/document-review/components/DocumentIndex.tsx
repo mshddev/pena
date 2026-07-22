@@ -4,6 +4,7 @@ interface DocumentIndexProps {
   activeSlug: string | null;
   documents: DocumentSummary[];
   error: string | null;
+  isArchiveActive: boolean;
   isLoading: boolean;
 }
 
@@ -11,6 +12,7 @@ export function DocumentIndex({
   activeSlug,
   documents,
   error,
+  isArchiveActive,
   isLoading,
 }: DocumentIndexProps) {
   return (
@@ -61,6 +63,16 @@ export function DocumentIndex({
           })}
         </nav>
       )}
+
+      <a
+        className={`archive-link${isArchiveActive ? " active" : ""}`}
+        href="/archive"
+        aria-current={isArchiveActive ? "page" : undefined}
+      >
+        <ArchiveIcon />
+        <span>Archive</span>
+        <ArrowIcon />
+      </a>
     </aside>
   );
 }
@@ -91,6 +103,16 @@ function ArrowIcon() {
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3 8h9" />
       <path d="m9 4 4 4-4 4" />
+    </svg>
+  );
+}
+
+function ArchiveIcon() {
+  return (
+    <svg className="archive-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 5h11v8h-11z" />
+      <path d="M2 2.5h12V5H2z" />
+      <path d="M6 8h4" />
     </svg>
   );
 }

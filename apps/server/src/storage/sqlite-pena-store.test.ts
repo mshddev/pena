@@ -6,6 +6,7 @@ import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  DocumentNotArchivedError,
   DocumentNotFoundError,
   PersistedDataError,
   UnsupportedSchemaVersionError,
@@ -78,13 +79,97 @@ describe("SqlitePenaStore", () => {
         slug: "first-draft",
         version: 2,
         updatedAt: "2026-07-19T10:02:00.000Z",
+        archivedAt: null,
       },
       {
         slug: "second-draft",
         version: 1,
         updatedAt: "2026-07-19T10:01:00.000Z",
+        archivedAt: null,
       },
     ]);
+  });
+
+  it("archives and restores a document without losing feedback", () => {
+    const timestamps = [
+      new Date("2026-07-19T10:00:00.000Z"),
+      new Date("2026-07-19T10:01:00.000Z"),
+      new Date("2026-07-19T10:02:00.000Z"),
+    ];
+    const store = createStore(":memory:", () => {
+      const timestamp = timestamps.shift();
+
+      if (!timestamp) {
+        throw new Error("Test clock was called unexpectedly.");
+      }
+
+      return timestamp;
+    });
+    store.publishDocument("initial-spec", "Current draft");
+    store.addFeedback("initial-spec", feedbackSubmission);
+
+    const archived = store.archiveDocument("initial-spec");
+
+    expect(archived.archivedAt).toBe("2026-07-19T10:02:00.000Z");
+    expect(store.listDocuments()).toEqual([]);
+    expect(store.listDocuments("archived")).toEqual([archived]);
+    expect(store.getFeedback("initial-spec").batches).toHaveLength(1);
+
+    const restored = store.restoreDocument("initial-spec");
+
+    expect(restored.archivedAt).toBeNull();
+    expect(store.listDocuments()).toEqual([restored]);
+    expect(store.listDocuments("archived")).toEqual([]);
+    expect(store.getFeedback("initial-spec").batches).toHaveLength(1);
+  });
+
+  it("only permanently deletes archived documents and cascades feedback", () => {
+    const store = createStore();
+    store.publishDocument("initial-spec", "Current draft");
+    store.addFeedback("initial-spec", feedbackSubmission);
+
+    expect(() => store.deleteArchivedDocument("initial-spec")).toThrow(
+      DocumentNotArchivedError,
+    );
+
+    store.archiveDocument("initial-spec");
+    store.deleteArchivedDocument("initial-spec");
+
+    expect(store.getDocument("initial-spec")).toBeNull();
+    expect(() => store.getFeedback("initial-spec")).toThrow(
+      DocumentNotFoundError,
+    );
+  });
+
+  it("automatically restores an archived slug when it is published again", () => {
+    const timestamps = [
+      new Date("2026-07-19T10:00:00.000Z"),
+      new Date("2026-07-19T10:01:00.000Z"),
+      new Date("2026-07-19T10:02:00.000Z"),
+    ];
+    const store = createStore(":memory:", () => {
+      const timestamp = timestamps.shift();
+
+      if (!timestamp) {
+        throw new Error("Test clock was called unexpectedly.");
+      }
+
+      return timestamp;
+    });
+    store.publishDocument("initial-spec", "Current draft");
+    store.archiveDocument("initial-spec");
+
+    const republished = store.publishDocument(
+      "initial-spec",
+      "Current draft",
+    );
+
+    expect(republished.version).toBe(1);
+    expect(republished.updatedAt).toBe("2026-07-19T10:02:00.000Z");
+    expect(store.listDocuments()).toEqual([
+      expect.objectContaining({ slug: "initial-spec", archivedAt: null }),
+    ]);
+    expect(store.listDocuments("archived")).toEqual([]);
   });
 
   it("stores ordered feedback batches with numeric IDs", () => {
@@ -283,7 +368,7 @@ describe("SqlitePenaStore", () => {
   it("rejects databases created by a newer schema version", () => {
     const databasePath = createDatabasePath();
     const database = new Database(databasePath);
-    database.pragma("user_version = 3");
+    database.pragma("user_version = 4");
     database.close();
 
     expect(() => createStore(databasePath)).toThrow(

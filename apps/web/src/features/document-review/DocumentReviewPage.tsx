@@ -11,13 +11,14 @@ import {
 } from "react";
 
 import {
+  archiveDocument,
   fetchDocument,
   fetchDocuments,
   fetchFeedback,
   submitFeedback,
 } from "../../api";
 import { DocumentViewer } from "./components/DocumentViewer";
-import { DocumentIndex } from "./components/DocumentIndex";
+import { PenaLayout } from "./components/PenaLayout";
 import {
   formatFeedbackCount,
   readSubmittedDecisions,
@@ -46,6 +47,7 @@ export function DocumentReviewPage({
     null,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
   const [draftFeedback, setDraftFeedback] = useState<DraftFeedback[]>([]);
   const [submittedDecisions, setSubmittedDecisions] = useState<
     Record<string, string>
@@ -228,44 +230,47 @@ export function DocumentReviewPage({
     }
   }
 
+  async function handleArchive(): Promise<void> {
+    if (!documentSlug || !currentDocument) {
+      return;
+    }
+
+    if (draftFeedback.length > 0) {
+      setNotice({
+        kind: "error",
+        message: "Submit or remove the draft feedback before archiving.",
+      });
+      return;
+    }
+
+    setIsArchiving(true);
+    setNotice(null);
+
+    try {
+      await archiveDocument(documentSlug);
+      window.location.assign("/");
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not archive the document.",
+      });
+      setIsArchiving(false);
+    }
+  }
+
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="brand-lockup">
-          <div className="brand-mark" aria-hidden="true">
-            P
-          </div>
-          <div>
-            <p className="eyebrow">Local document review</p>
-            <h1>Pena</h1>
-          </div>
-        </div>
-
-        <div className="topbar-actions">
-          <span className="local-status">
-            <span className="status-dot" aria-hidden="true" />
-            Local
-          </span>
-          <button
-            className="quiet-button"
-            type="button"
-            onClick={handleRefresh}
-            disabled={isLoading || isLoadingDocuments}
-          >
-            <RefreshIcon />
-            {isLoading || isLoadingDocuments ? "Loading" : "Refresh"}
-          </button>
-        </div>
-      </header>
-
-      <main className="workspace">
-        <DocumentIndex
-          activeSlug={documentSlug}
-          documents={documents}
-          error={documentListError}
-          isLoading={isLoadingDocuments}
-        />
-        <section className="document-pane" aria-label="Document">
+    <PenaLayout
+      activeSlug={documentSlug}
+      documents={documents}
+      documentListError={documentListError}
+      isLoadingDocuments={isLoadingDocuments}
+      isRefreshing={isLoading || isLoadingDocuments}
+      onRefresh={handleRefresh}
+    >
+      <section className="document-pane" aria-label="Document">
           <div className="document-meta">
             <div>
               <p className="section-label">Current document</p>
@@ -287,6 +292,15 @@ export function DocumentReviewPage({
                   <time dateTime={currentDocument.updatedAt}>
                     Updated {formatTime(currentDocument.updatedAt)}
                   </time>
+                  <button
+                    className="archive-document-button"
+                    type="button"
+                    onClick={() => void handleArchive()}
+                    disabled={isArchiving}
+                  >
+                    <ArchiveIcon />
+                    {isArchiving ? "Archiving" : "Archive"}
+                  </button>
                 </>
               ) : null}
             </div>
@@ -352,9 +366,8 @@ export function DocumentReviewPage({
               }
             />
           )}
-        </section>
-      </main>
-    </div>
+      </section>
+    </PenaLayout>
   );
 }
 
@@ -387,11 +400,12 @@ function formatTime(date: string): string {
   }).format(new Date(date));
 }
 
-function RefreshIcon() {
+function ArchiveIcon() {
   return (
-    <svg viewBox="0 0 20 20" aria-hidden="true">
-      <path d="M15.7 6.4A6.5 6.5 0 1 0 16.5 12" />
-      <path d="M15.8 2.8v3.8H12" />
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 5h11v8h-11z" />
+      <path d="M2 2.5h12V5H2z" />
+      <path d="M6 8h4" />
     </svg>
   );
 }

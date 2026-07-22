@@ -1,6 +1,7 @@
 import {
   DecisionBlockSyntaxError,
   DocumentSlugSchema,
+  DocumentStatusSchema,
   FeedbackSubmissionSchema,
   parseDecisionDocument,
   type FeedbackResponse,
@@ -8,6 +9,7 @@ import {
 import Fastify, { type FastifyInstance } from "fastify";
 
 import {
+  DocumentNotArchivedError,
   DocumentNotFoundError,
   PersistedDataError,
   type PenaStore,
@@ -30,9 +32,24 @@ export function buildApp(store: PenaStore): FastifyInstance {
 
   app.get("/api/health", async () => ({ status: "ok" }));
 
-  app.get("/api/documents", async () => ({
-    documents: store.listDocuments(),
-  }));
+  app.get<{ Querystring: { status?: string } }>(
+    "/api/documents",
+    async (request, reply) => {
+      const parsedStatus = DocumentStatusSchema.safeParse(
+        request.query.status ?? "active",
+      );
+
+      if (!parsedStatus.success) {
+        return reply.code(400).send({
+          error: 'The document status must be either "active" or "archived".',
+        });
+      }
+
+      return reply.send({
+        documents: store.listDocuments(parsedStatus.data),
+      });
+    },
+  );
 
   app.put<{ Params: { slug: string } }>(
     "/api/documents/:slug",
@@ -83,6 +100,56 @@ export function buildApp(store: PenaStore): FastifyInstance {
       }
 
       return reply.send(document);
+    },
+  );
+
+  app.post<{ Params: { slug: string } }>(
+    "/api/documents/:slug/archive",
+    async (request, reply) => {
+      try {
+        return store.archiveDocument(request.params.slug);
+      } catch (error) {
+        if (error instanceof DocumentNotFoundError) {
+          return reply.code(404).send({ error: error.message });
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  app.delete<{ Params: { slug: string } }>(
+    "/api/documents/:slug/archive",
+    async (request, reply) => {
+      try {
+        return store.restoreDocument(request.params.slug);
+      } catch (error) {
+        if (error instanceof DocumentNotFoundError) {
+          return reply.code(404).send({ error: error.message });
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  app.delete<{ Params: { slug: string } }>(
+    "/api/documents/:slug",
+    async (request, reply) => {
+      try {
+        store.deleteArchivedDocument(request.params.slug);
+        return reply.code(204).send();
+      } catch (error) {
+        if (error instanceof DocumentNotFoundError) {
+          return reply.code(404).send({ error: error.message });
+        }
+
+        if (error instanceof DocumentNotArchivedError) {
+          return reply.code(409).send({ error: error.message });
+        }
+
+        throw error;
+      }
     },
   );
 

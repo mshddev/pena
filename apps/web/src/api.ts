@@ -1,4 +1,5 @@
 import type {
+  DocumentListResponse,
   FeedbackBatch,
   FeedbackResponse,
   FeedbackSubmission,
@@ -26,6 +27,11 @@ export async function fetchDocument(slug: string): Promise<PenaDocument | null> 
   }
 
   return parseResponse<PenaDocument>(response);
+}
+
+export async function fetchDocuments(): Promise<DocumentListResponse> {
+  const response = await fetch("/api/documents");
+  return parseResponse<DocumentListResponse>(response);
 }
 
 export async function submitFeedback(

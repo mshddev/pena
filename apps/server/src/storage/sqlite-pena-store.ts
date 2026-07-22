@@ -3,10 +3,12 @@ import { dirname } from "node:path";
 
 import {
   DocumentSchema,
+  DocumentSummarySchema,
   FeedbackBatchSchema,
   FeedbackResponseSchema,
   FeedbackSubmissionSchema,
   type FeedbackBatch,
+  type DocumentSummary,
   type FeedbackResponse,
   type FeedbackSubmission,
   type PenaDocument,
@@ -31,6 +33,12 @@ interface DocumentRow {
   id: number;
   slug: string;
   content: string;
+  version: number;
+  updated_at: string;
+}
+
+interface DocumentSummaryRow {
+  slug: string;
   version: number;
   updated_at: string;
 }
@@ -131,6 +139,26 @@ export class SqlitePenaStore implements PenaStore {
   getDocument(slug: string): PenaDocument | null {
     const row = this.getDocumentRow(slug);
     return row ? toDocument(row) : null;
+  }
+
+  listDocuments(): DocumentSummary[] {
+    const rows = this.database
+      .prepare<[], DocumentSummaryRow>(
+        `
+          SELECT slug, version, updated_at
+          FROM documents
+          ORDER BY updated_at DESC, id DESC
+        `,
+      )
+      .all();
+
+    return rows.map((row) =>
+      DocumentSummarySchema.parse({
+        slug: row.slug,
+        version: row.version,
+        updatedAt: row.updated_at,
+      }),
+    );
   }
 
   addFeedback(

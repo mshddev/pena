@@ -54,6 +54,39 @@ afterEach(() => {
 });
 
 describe("SqlitePenaStore", () => {
+  it("lists document summaries by newest update without their content", () => {
+    const timestamps = [
+      new Date("2026-07-19T10:00:00.000Z"),
+      new Date("2026-07-19T10:01:00.000Z"),
+      new Date("2026-07-19T10:02:00.000Z"),
+    ];
+    const store = createStore(":memory:", () => {
+      const timestamp = timestamps.shift();
+
+      if (!timestamp) {
+        throw new Error("Test clock was called unexpectedly.");
+      }
+
+      return timestamp;
+    });
+    store.publishDocument("first-draft", "First");
+    store.publishDocument("second-draft", "Second");
+    store.publishDocument("first-draft", "First, revised");
+
+    expect(store.listDocuments()).toEqual([
+      {
+        slug: "first-draft",
+        version: 2,
+        updatedAt: "2026-07-19T10:02:00.000Z",
+      },
+      {
+        slug: "second-draft",
+        version: 1,
+        updatedAt: "2026-07-19T10:01:00.000Z",
+      },
+    ]);
+  });
+
   it("stores ordered feedback batches with numeric IDs", () => {
     const store = createStore();
     store.publishDocument("initial-spec", "Current draft");

@@ -181,7 +181,157 @@ button:disabled {
 }
 
 .workspace {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
   min-height: calc(100vh - 80px);
+}
+
+.document-index {
+  position: sticky;
+  top: 80px;
+  overflow-y: auto;
+  height: calc(100vh - 80px);
+  padding: 42px 24px;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.document-index-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 17px;
+  border-bottom: 1px solid var(--line);
+}
+
+.document-total {
+  color: var(--text-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+
+.document-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.document-list-item {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 12px;
+  padding: 17px 28px 16px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-soft);
+  text-decoration: none;
+  animation: index-item-enter 260ms ease-out both;
+  transition:
+    color 150ms ease,
+    padding-left 150ms ease,
+    background 150ms ease;
+}
+
+.document-list-item:nth-child(2) {
+  animation-delay: 35ms;
+}
+
+.document-list-item:nth-child(3) {
+  animation-delay: 70ms;
+}
+
+.document-list-item:nth-child(4) {
+  animation-delay: 105ms;
+}
+
+.document-list-item:hover,
+.document-list-item:focus-visible,
+.document-list-item.active {
+  padding-left: 12px;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.document-list-item.active::before {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  content: "";
+}
+
+.document-list-title {
+  overflow: hidden;
+  font-family: Charter, Georgia, serif;
+  font-size: 15px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-list-meta {
+  display: flex;
+  grid-column: 1;
+  gap: 8px;
+  color: var(--text-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+
+.document-list-item svg {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.25;
+  opacity: 0;
+  transform: translate(-4px, -50%);
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+.document-list-item:hover svg,
+.document-list-item:focus-visible svg,
+.document-list-item.active svg {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+.index-message {
+  margin: 18px 8px 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.index-message.error {
+  color: var(--danger);
+}
+
+.index-loading {
+  display: grid;
+  gap: 12px;
+  padding: 20px 8px;
+}
+
+.index-loading span {
+  height: 34px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--surface-raised) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: loading 1.4s infinite linear;
 }
 
 .document-pane {
@@ -596,7 +746,7 @@ button:disabled {
   z-index: 12;
   right: 0;
   bottom: 20px;
-  left: 0;
+  left: 268px;
   display: flex;
   width: min(780px, calc(100vw - 48px));
   align-items: center;
@@ -755,6 +905,63 @@ button:disabled {
 @keyframes loading {
   to {
     background-position: -200% 0;
+  }
+}
+
+@keyframes index-item-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-5px);
+  }
+}
+
+@media (max-width: 900px) {
+  .workspace {
+    display: block;
+  }
+
+  .document-index {
+    position: static;
+    overflow: hidden;
+    width: 100%;
+    height: auto;
+    padding: 22px 24px 20px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .document-index-heading {
+    padding: 0 0 13px;
+  }
+
+  .document-list {
+    overflow-x: auto;
+    flex-direction: row;
+    margin: 0 -24px;
+    padding: 0 24px;
+    scrollbar-width: thin;
+  }
+
+  .document-list-item {
+    min-width: 210px;
+    border-bottom: 0;
+    border-left: 1px solid var(--line);
+    padding: 15px 34px 8px 13px;
+  }
+
+  .document-list-item:hover,
+  .document-list-item:focus-visible,
+  .document-list-item.active {
+    padding-left: 17px;
+  }
+
+  .document-list-item.active::before {
+    top: 12px;
+    bottom: 5px;
+  }
+
+  .feedback-bar {
+    left: 0;
   }
 }
 

@@ -47,6 +47,34 @@ afterEach(async () => {
 });
 
 describe("Pena API", () => {
+  it("lists published documents by most recent update", async () => {
+    const app = createApp();
+    await publishDocument(
+      app,
+      "/api/documents/older-draft",
+      "# Older draft",
+    );
+    await publishDocument(
+      app,
+      "/api/documents/newer-draft",
+      "# Newer draft",
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/documents",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      documents: [
+        expect.objectContaining({ slug: "newer-draft", version: 1 }),
+        expect.objectContaining({ slug: "older-draft", version: 1 }),
+      ],
+    });
+    expect(response.json().documents[0]).not.toHaveProperty("content");
+  });
+
   it("publishes and returns a Markdown document by slug", async () => {
     const app = createApp();
 
@@ -249,6 +277,9 @@ describe("Pena API", () => {
         throw new Error("Not used in this test.");
       },
       getDocument() {
+        throw new Error("Not used in this test.");
+      },
+      listDocuments() {
         throw new Error("Not used in this test.");
       },
       addFeedback() {

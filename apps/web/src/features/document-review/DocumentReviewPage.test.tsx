@@ -60,6 +60,10 @@ describe("interactive decision review", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
 
+      if (url === "/api/documents") {
+        return documentListResponse();
+      }
+
       if (init?.method === "POST") {
         submittedBodies.push(String(init.body));
         return jsonResponse({
@@ -118,7 +122,9 @@ describe("interactive decision review", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) =>
-        String(input).endsWith("/feedback")
+        String(input) === "/api/documents"
+          ? documentListResponse()
+          : String(input).endsWith("/feedback")
           ? jsonResponse({
               batches: [
                 {
@@ -154,6 +160,10 @@ describe("interactive decision review", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) === "/api/documents") {
+          return documentListResponse();
+        }
+
         if (String(input).endsWith("/feedback")) {
           throw new TypeError("Failed to fetch");
         }
@@ -174,11 +184,13 @@ describe("interactive decision review", () => {
   });
 
   it("keeps Markdown-only loading behavior unchanged", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({
-        ...documentResponse,
-        content: "# Markdown only\n\nSelect this passage.",
-      }),
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+      String(input) === "/api/documents"
+        ? documentListResponse()
+        : jsonResponse({
+            ...documentResponse,
+            content: "# Markdown only\n\nSelect this passage.",
+          }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -191,9 +203,95 @@ describe("interactive decision review", () => {
     expect(
       screen.getByText("Select text in the document to start."),
     ).toBeTruthy();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 });
+
+describe("saved document index", () => {
+  it("shows saved documents and marks the current document", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+
+        if (url === "/api/documents") {
+          return jsonResponse({
+            documents: [
+              {
+                slug: "review",
+                version: 1,
+                updatedAt: "2026-07-18T10:00:00.000Z",
+              },
+              {
+                slug: "architecture-notes",
+                version: 3,
+                updatedAt: "2026-07-17T10:00:00.000Z",
+              },
+            ],
+          });
+        }
+
+        if (url.endsWith("/feedback")) {
+          return jsonResponse({ batches: [] });
+        }
+
+        return jsonResponse(documentResponse);
+      }),
+    );
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    const currentDocument = await screen.findByRole("link", {
+      name: /Review/,
+    });
+    const otherDocument = screen.getByRole("link", {
+      name: /Architecture Notes/,
+    });
+
+    expect(currentDocument.getAttribute("aria-current")).toBe("page");
+    expect(currentDocument.getAttribute("href")).toBe("/documents/review");
+    expect(otherDocument.getAttribute("href")).toBe(
+      "/documents/architecture-notes",
+    );
+    expect(screen.getByText("v3")).toBeTruthy();
+  });
+
+  it("uses the index as the landing view", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({
+          documents: [
+            {
+              slug: "review",
+              version: 1,
+              updatedAt: "2026-07-18T10:00:00.000Z",
+            },
+          ],
+        }),
+      ),
+    );
+
+    render(<DocumentReviewPage documentSlug={null} />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Select a document" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Review/ })).toBeTruthy();
+  });
+});
+
+function documentListResponse(): Response {
+  return jsonResponse({
+    documents: [
+      {
+        slug: "review",
+        version: 1,
+        updatedAt: "2026-07-18T10:00:00.000Z",
+      },
+    ],
+  });
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

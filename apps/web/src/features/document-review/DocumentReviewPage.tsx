@@ -1,5 +1,6 @@
 import {
   parseDecisionDocument,
+  type DocumentSummary,
   type PenaDocument,
 } from "@pena/contracts";
 import {
@@ -11,10 +12,12 @@ import {
 
 import {
   fetchDocument,
+  fetchDocuments,
   fetchFeedback,
   submitFeedback,
 } from "../../api";
 import { DocumentViewer } from "./components/DocumentViewer";
+import { DocumentIndex } from "./components/DocumentIndex";
 import {
   formatFeedbackCount,
   readSubmittedDecisions,
@@ -36,7 +39,12 @@ export function DocumentReviewPage({
   const [currentDocument, setCurrentDocument] = useState<PenaDocument | null>(
     null,
   );
+  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [isLoading, setIsLoading] = useState(documentSlug !== null);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
+  const [documentListError, setDocumentListError] = useState<string | null>(
+    null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draftFeedback, setDraftFeedback] = useState<DraftFeedback[]>([]);
   const [submittedDecisions, setSubmittedDecisions] = useState<
@@ -85,10 +93,32 @@ export function DocumentReviewPage({
     }
   }, [documentSlug]);
 
+  const loadDocuments = useCallback(async () => {
+    setIsLoadingDocuments(true);
+    setDocumentListError(null);
+
+    try {
+      const response = await fetchDocuments();
+      setDocuments(response.documents);
+    } catch (error) {
+      setDocumentListError(
+        error instanceof Error ? error.message : "Could not load documents.",
+      );
+    } finally {
+      setIsLoadingDocuments(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDocuments();
+  }, [loadDocuments]);
+
   useEffect(() => {
     if (documentSlug) {
       window.document.title = `${documentSlug} · Pena`;
       void loadDocument();
+    } else {
+      window.document.title = "Pena · Documents";
     }
   }, [documentSlug, loadDocument]);
 
@@ -101,6 +131,7 @@ export function DocumentReviewPage({
       return;
     }
 
+    void loadDocuments();
     void loadDocument();
   }
 
@@ -219,15 +250,21 @@ export function DocumentReviewPage({
             className="quiet-button"
             type="button"
             onClick={handleRefresh}
-            disabled={isLoading || !documentSlug}
+            disabled={isLoading || isLoadingDocuments}
           >
             <RefreshIcon />
-            {isLoading ? "Loading" : "Refresh document"}
+            {isLoading || isLoadingDocuments ? "Loading" : "Refresh"}
           </button>
         </div>
       </header>
 
       <main className="workspace">
+        <DocumentIndex
+          activeSlug={documentSlug}
+          documents={documents}
+          error={documentListError}
+          isLoading={isLoadingDocuments}
+        />
         <section className="document-pane" aria-label="Document">
           <div className="document-meta">
             <div>
@@ -257,13 +294,21 @@ export function DocumentReviewPage({
 
           {!documentSlug ? (
             <DocumentState
-              glyph="/"
-              title="Document slug required"
+              glyph={documents.length > 0 ? "↗" : "/"}
+              title={
+                documents.length > 0
+                  ? "Select a document"
+                  : "No documents published yet"
+              }
               description={
-                <>
-                  Open a direct URL such as{" "}
-                  <code>/documents/my-document</code>.
-                </>
+                documents.length > 0 ? (
+                  "Choose a saved document from the index to start reviewing."
+                ) : (
+                  <>
+                    Publish Markdown with the Pena skill. Saved documents will
+                    appear in this index automatically.
+                  </>
+                )
               }
             />
           ) : isLoading ? (

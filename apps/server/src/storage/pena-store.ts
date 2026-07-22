@@ -1,4 +1,5 @@
 import type {
+  DocumentSummary,
   FeedbackBatch,
   FeedbackResponse,
   FeedbackSubmission,
@@ -8,6 +9,7 @@ import type {
 export interface PenaStore {
   publishDocument(slug: string, content: string): PenaDocument;
   getDocument(slug: string): PenaDocument | null;
+  listDocuments(): DocumentSummary[];
   addFeedback(
     slug: string,
     submission: FeedbackSubmission,

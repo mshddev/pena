@@ -33,6 +33,18 @@ export const DocumentSchema = z.object({
 
 export type PenaDocument = z.infer<typeof DocumentSchema>;
 
+export const DocumentSummarySchema = DocumentSchema.omit({ content: true });
+
+export type DocumentSummary = z.infer<typeof DocumentSummarySchema>;
+
+export const DocumentListResponseSchema = z.object({
+  documents: z.array(DocumentSummarySchema),
+});
+
+export type DocumentListResponse = z.infer<
+  typeof DocumentListResponseSchema
+>;
+
 export const CommentInputSchema = z.object({
   selectedText: NonBlankStringSchema.max(10_000),
   comment: NonBlankStringSchema.max(10_000),

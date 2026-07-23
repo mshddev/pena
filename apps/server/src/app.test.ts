@@ -7,7 +7,7 @@ import {
 } from "./storage/pena-store.js";
 import { SqlitePenaStore } from "./storage/sqlite-pena-store.js";
 
-const DOCUMENT_URL = "/api/documents/initial-spec";
+const DOCUMENT_URL = "/api/workspaces/default/documents/initial-spec";
 const FEEDBACK_URL = `${DOCUMENT_URL}/feedback`;
 const feedbackPayload = {
   comments: [
@@ -47,22 +47,128 @@ afterEach(async () => {
 });
 
 describe("Pena API", () => {
+  it("requires workspace scope for every document route", async () => {
+    const app = createApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/documents/initial-spec",
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("creates, renames, lists, and deletes an empty workspace", async () => {
+    const app = createApp();
+    const defaultList = await app.inject({ method: "GET", url: "/api/workspaces" });
+
+    expect(defaultList.json()).toEqual({
+      workspaces: [
+        expect.objectContaining({
+          slug: "default",
+          name: "Default",
+          documentCount: 0,
+        }),
+      ],
+    });
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/workspaces",
+      payload: { name: "Product Notes" },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      slug: "product-notes",
+      name: "Product Notes",
+    });
+
+    const renamed = await app.inject({
+      method: "PATCH",
+      url: "/api/workspaces/product-notes",
+      payload: { name: "Product Team" },
+    });
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.json()).toMatchObject({
+      slug: "product-notes",
+      name: "Product Team",
+    });
+
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: "/api/workspaces/product-notes",
+    });
+    expect(deleted.statusCode).toBe(204);
+  });
+
+  it("protects default and blocks deletion of a non-empty workspace", async () => {
+    const app = createApp();
+    const defaultDelete = await app.inject({
+      method: "DELETE",
+      url: "/api/workspaces/default",
+    });
+    expect(defaultDelete.statusCode).toBe(403);
+
+    await app.inject({
+      method: "POST",
+      url: "/api/workspaces",
+      payload: { name: "Research" },
+    });
+    await publishDocument(
+      app,
+      "/api/workspaces/research/documents/shared-spec",
+    );
+    const nonEmptyDelete = await app.inject({
+      method: "DELETE",
+      url: "/api/workspaces/research",
+    });
+    expect(nonEmptyDelete.statusCode).toBe(409);
+  });
+
+  it("scopes identical document slugs and feedback by workspace", async () => {
+    const app = createApp();
+    await app.inject({
+      method: "POST",
+      url: "/api/workspaces",
+      payload: { name: "Research" },
+    });
+    await publishDocument(app, DOCUMENT_URL, "Default copy");
+    const researchUrl = "/api/workspaces/research/documents/initial-spec";
+    await publishDocument(app, researchUrl, "Research copy");
+    await app.inject({
+      method: "POST",
+      url: `${researchUrl}/feedback`,
+      payload: feedbackPayload,
+    });
+
+    expect((await app.inject({ method: "GET", url: DOCUMENT_URL })).json())
+      .toMatchObject({ workspaceSlug: "default", content: "Default copy" });
+    expect((await app.inject({ method: "GET", url: researchUrl })).json())
+      .toMatchObject({ workspaceSlug: "research", content: "Research copy" });
+    expect(
+      (await app.inject({ method: "GET", url: FEEDBACK_URL })).json().batches,
+    ).toEqual([]);
+    expect(
+      (await app.inject({ method: "GET", url: `${researchUrl}/feedback` }))
+        .json().batches,
+    ).toHaveLength(1);
+  });
+
   it("lists published documents by most recent update", async () => {
     const app = createApp();
     await publishDocument(
       app,
-      "/api/documents/older-draft",
+      "/api/workspaces/default/documents/older-draft",
       "# Older draft",
     );
     await publishDocument(
       app,
-      "/api/documents/newer-draft",
+      "/api/workspaces/default/documents/newer-draft",
       "# Newer draft",
     );
 
     const response = await app.inject({
       method: "GET",
-      url: "/api/documents",
+      url: "/api/workspaces/default/documents",
     });
 
     expect(response.statusCode).toBe(200);
@@ -86,31 +192,37 @@ describe("Pena API", () => {
     expect(activeDelete.statusCode).toBe(409);
 
     const archiveResponse = await app.inject({
-      method: "POST",
-      url: `${DOCUMENT_URL}/archive`,
+      method: "PATCH",
+      url: DOCUMENT_URL,
+      payload: { status: "archived" },
     });
     expect(archiveResponse.statusCode).toBe(200);
     expect(archiveResponse.json().archivedAt).toBeTruthy();
 
     const activeDocuments = await app.inject({
       method: "GET",
-      url: "/api/documents",
+      url: "/api/workspaces/default/documents",
     });
     const archivedDocuments = await app.inject({
       method: "GET",
-      url: "/api/documents?status=archived",
+      url: "/api/workspaces/default/documents?status=archived",
     });
     expect(activeDocuments.json()).toEqual({ documents: [] });
     expect(archivedDocuments.json().documents).toHaveLength(1);
 
     const restoreResponse = await app.inject({
-      method: "DELETE",
-      url: `${DOCUMENT_URL}/archive`,
+      method: "PATCH",
+      url: DOCUMENT_URL,
+      payload: { status: "active" },
     });
     expect(restoreResponse.statusCode).toBe(200);
     expect(restoreResponse.json().archivedAt).toBeNull();
 
-    await app.inject({ method: "POST", url: `${DOCUMENT_URL}/archive` });
+    await app.inject({
+      method: "PATCH",
+      url: DOCUMENT_URL,
+      payload: { status: "archived" },
+    });
     const deleteResponse = await app.inject({
       method: "DELETE",
       url: DOCUMENT_URL,
@@ -128,7 +240,7 @@ describe("Pena API", () => {
     const app = createApp();
     const response = await app.inject({
       method: "GET",
-      url: "/api/documents?status=deleted",
+      url: "/api/workspaces/default/documents?status=deleted",
     });
 
     expect(response.statusCode).toBe(400);
@@ -241,7 +353,7 @@ describe("Pena API", () => {
 
   it("isolates documents and feedback by slug", async () => {
     const app = createApp();
-    const articleUrl = "/api/documents/article-draft";
+    const articleUrl = "/api/workspaces/default/documents/article-draft";
     const articleFeedbackUrl = `${articleUrl}/feedback`;
 
     await publishDocument(app);
@@ -296,7 +408,7 @@ describe("Pena API", () => {
 
     const invalidSlugResponse = await publishDocument(
       app,
-      "/api/documents/Invalid_Slug",
+      "/api/workspaces/default/documents/Invalid_Slug",
     );
     expect(invalidSlugResponse.statusCode).toBe(400);
 
@@ -333,6 +445,18 @@ describe("Pena API", () => {
 
   it("returns HTTP 500 for invalid persisted feedback", async () => {
     const store: PenaStore = {
+      listWorkspaces() {
+        throw new Error("Not used in this test.");
+      },
+      createWorkspace() {
+        throw new Error("Not used in this test.");
+      },
+      renameWorkspace() {
+        throw new Error("Not used in this test.");
+      },
+      deleteWorkspace() {
+        throw new Error("Not used in this test.");
+      },
       publishDocument() {
         throw new Error("Not used in this test.");
       },

@@ -6,6 +6,8 @@ import type {
   FeedbackResponse,
   FeedbackSubmission,
   PenaDocument,
+  Workspace,
+  WorkspaceListResponse,
 } from "@pena/contracts";
 
 interface ApiErrorBody {
@@ -21,8 +23,60 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function fetchDocument(slug: string): Promise<PenaDocument | null> {
-  const response = await fetch(`/api/documents/${encodeURIComponent(slug)}`);
+function documentsUrl(workspaceSlug: string): string {
+  return `/api/workspaces/${encodeURIComponent(workspaceSlug)}/documents`;
+}
+
+function documentUrl(workspaceSlug: string, documentSlug: string): string {
+  return `${documentsUrl(workspaceSlug)}/${encodeURIComponent(documentSlug)}`;
+}
+
+export async function fetchWorkspaces(): Promise<WorkspaceListResponse> {
+  const response = await fetch("/api/workspaces");
+  return parseResponse<WorkspaceListResponse>(response);
+}
+
+export async function createWorkspace(name: string): Promise<Workspace> {
+  const response = await fetch("/api/workspaces", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  return parseResponse<Workspace>(response);
+}
+
+export async function renameWorkspace(
+  workspaceSlug: string,
+  name: string,
+): Promise<Workspace> {
+  const response = await fetch(
+    `/api/workspaces/${encodeURIComponent(workspaceSlug)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    },
+  );
+  return parseResponse<Workspace>(response);
+}
+
+export async function deleteWorkspace(workspaceSlug: string): Promise<void> {
+  const response = await fetch(
+    `/api/workspaces/${encodeURIComponent(workspaceSlug)}`,
+    { method: "DELETE" },
+  );
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(body.error ?? `Pena returned HTTP ${response.status}.`);
+  }
+}
+
+export async function fetchDocument(
+  workspaceSlug: string,
+  documentSlug: string,
+): Promise<PenaDocument | null> {
+  const response = await fetch(documentUrl(workspaceSlug, documentSlug));
 
   if (response.status === 404) {
     return null;
@@ -32,31 +86,46 @@ export async function fetchDocument(slug: string): Promise<PenaDocument | null> 
 }
 
 export async function fetchDocuments(
+  workspaceSlug: string,
   status: DocumentStatus = "active",
 ): Promise<DocumentListResponse> {
   const query = status === "archived" ? "?status=archived" : "";
-  const response = await fetch(`/api/documents${query}`);
+  const response = await fetch(`${documentsUrl(workspaceSlug)}${query}`);
   return parseResponse<DocumentListResponse>(response);
 }
 
-export async function archiveDocument(slug: string): Promise<DocumentSummary> {
-  const response = await fetch(
-    `/api/documents/${encodeURIComponent(slug)}/archive`,
-    { method: "POST" },
-  );
+async function updateDocumentStatus(
+  workspaceSlug: string,
+  documentSlug: string,
+  status: DocumentStatus,
+): Promise<DocumentSummary> {
+  const response = await fetch(documentUrl(workspaceSlug, documentSlug), {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
   return parseResponse<DocumentSummary>(response);
 }
 
-export async function restoreDocument(slug: string): Promise<DocumentSummary> {
-  const response = await fetch(
-    `/api/documents/${encodeURIComponent(slug)}/archive`,
-    { method: "DELETE" },
-  );
-  return parseResponse<DocumentSummary>(response);
+export async function archiveDocument(
+  workspaceSlug: string,
+  documentSlug: string,
+): Promise<DocumentSummary> {
+  return updateDocumentStatus(workspaceSlug, documentSlug, "archived");
 }
 
-export async function deleteDocument(slug: string): Promise<void> {
-  const response = await fetch(`/api/documents/${encodeURIComponent(slug)}`, {
+export async function restoreDocument(
+  workspaceSlug: string,
+  documentSlug: string,
+): Promise<DocumentSummary> {
+  return updateDocumentStatus(workspaceSlug, documentSlug, "active");
+}
+
+export async function deleteDocument(
+  workspaceSlug: string,
+  documentSlug: string,
+): Promise<void> {
+  const response = await fetch(documentUrl(workspaceSlug, documentSlug), {
     method: "DELETE",
   });
 
@@ -67,11 +136,12 @@ export async function deleteDocument(slug: string): Promise<void> {
 }
 
 export async function submitFeedback(
-  slug: string,
+  workspaceSlug: string,
+  documentSlug: string,
   submission: FeedbackSubmission,
 ): Promise<FeedbackBatch> {
   const response = await fetch(
-    `/api/documents/${encodeURIComponent(slug)}/feedback`,
+    `${documentUrl(workspaceSlug, documentSlug)}/feedback`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -82,10 +152,12 @@ export async function submitFeedback(
   return parseResponse<FeedbackBatch>(response);
 }
 
-export async function fetchFeedback(slug: string): Promise<FeedbackResponse> {
+export async function fetchFeedback(
+  workspaceSlug: string,
+  documentSlug: string,
+): Promise<FeedbackResponse> {
   const response = await fetch(
-    `/api/documents/${encodeURIComponent(slug)}/feedback`,
+    `${documentUrl(workspaceSlug, documentSlug)}/feedback`,
   );
-
   return parseResponse<FeedbackResponse>(response);
 }

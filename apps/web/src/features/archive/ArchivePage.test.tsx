@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ArchivePage } from "./ArchivePage";
 
 const archivedDocument = {
+  workspaceSlug: "default",
   slug: "old-draft",
   version: 2,
   updatedAt: "2026-07-18T10:00:00.000Z",
@@ -25,15 +26,22 @@ describe("archive", () => {
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
 
-        if (url === "/api/documents") {
+        if (url === "/api/workspaces") {
+          return jsonResponse({ workspaces: [] });
+        }
+
+        if (url === "/api/workspaces/default/documents") {
           return jsonResponse({ documents: [] });
         }
 
-        if (url === "/api/documents?status=archived") {
+        if (url === "/api/workspaces/default/documents?status=archived") {
           return jsonResponse({ documents: [archivedDocument] });
         }
 
-        if (url.endsWith("/archive") && init?.method === "DELETE") {
+        if (
+          url === "/api/workspaces/default/documents/old-draft" &&
+          init?.method === "PATCH"
+        ) {
           return jsonResponse({ ...archivedDocument, archivedAt: null });
         }
 
@@ -43,7 +51,7 @@ describe("archive", () => {
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
 
-    render(<ArchivePage />);
+    render(<ArchivePage workspaceSlug="default" />);
 
     expect(
       await screen.findByRole("heading", { name: "Old Draft" }),
@@ -56,8 +64,12 @@ describe("archive", () => {
     ).toBeNull();
     expect(screen.getByRole("link", { name: /Old Draft/ })).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/documents/old-draft/archive",
-      { method: "DELETE" },
+      "/api/workspaces/default/documents/old-draft",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "active" }),
+      },
     );
   });
 
@@ -66,15 +78,22 @@ describe("archive", () => {
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
 
-        if (url === "/api/documents") {
+        if (url === "/api/workspaces") {
+          return jsonResponse({ workspaces: [] });
+        }
+
+        if (url === "/api/workspaces/default/documents") {
           return jsonResponse({ documents: [] });
         }
 
-        if (url === "/api/documents?status=archived") {
+        if (url === "/api/workspaces/default/documents?status=archived") {
           return jsonResponse({ documents: [archivedDocument] });
         }
 
-        if (url === "/api/documents/old-draft" && init?.method === "DELETE") {
+        if (
+          url === "/api/workspaces/default/documents/old-draft" &&
+          init?.method === "DELETE"
+        ) {
           return new Response(null, { status: 204 });
         }
 
@@ -84,7 +103,7 @@ describe("archive", () => {
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
 
-    render(<ArchivePage />);
+    render(<ArchivePage workspaceSlug="default" />);
     await screen.findByRole("heading", { name: "Old Draft" });
     await user.click(
       screen.getByRole("button", { name: "Delete permanently" }),
@@ -108,9 +127,10 @@ describe("archive", () => {
         screen.queryByRole("heading", { name: "Old Draft" }),
       ).toBeNull(),
     );
-    expect(fetchMock).toHaveBeenCalledWith("/api/documents/old-draft", {
-      method: "DELETE",
-    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/workspaces/default/documents/old-draft",
+      { method: "DELETE" },
+    );
   });
 });
 

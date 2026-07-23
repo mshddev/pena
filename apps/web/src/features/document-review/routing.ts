@@ -1,17 +1,55 @@
-import { DocumentSlugSchema } from "@pena/contracts";
+import { DocumentSlugSchema, WorkspaceSlugSchema } from "@pena/contracts";
 
-export function readDocumentSlug(pathname: string): string | null {
-  const match = /^\/documents\/([^/]+)\/?$/.exec(pathname);
+export type AppRoute =
+  | { kind: "workspaces" }
+  | { kind: "documents"; workspaceSlug: string; documentSlug: string | null }
+  | { kind: "archive"; workspaceSlug: string }
+  | { kind: "not-found" };
 
-  if (!match?.[1]) {
-    return null;
+export function readAppRoute(pathname: string): AppRoute {
+  if (/^\/workspaces\/?$/.test(pathname)) {
+    return { kind: "workspaces" };
   }
 
+  const archiveMatch = /^\/workspaces\/([^/]+)\/archive\/?$/.exec(pathname);
+
+  if (archiveMatch?.[1]) {
+    const workspaceSlug = parseSlug(archiveMatch[1], WorkspaceSlugSchema);
+    return workspaceSlug
+      ? { kind: "archive", workspaceSlug }
+      : { kind: "not-found" };
+  }
+
+  const documentMatch =
+    /^\/workspaces\/([^/]+)\/documents\/([^/]+)\/?$/.exec(pathname);
+
+  if (documentMatch?.[1] && documentMatch[2]) {
+    const workspaceSlug = parseSlug(documentMatch[1], WorkspaceSlugSchema);
+    const documentSlug = parseSlug(documentMatch[2], DocumentSlugSchema);
+    return workspaceSlug && documentSlug
+      ? { kind: "documents", workspaceSlug, documentSlug }
+      : { kind: "not-found" };
+  }
+
+  const workspaceMatch = /^\/workspaces\/([^/]+)\/?$/.exec(pathname);
+
+  if (workspaceMatch?.[1]) {
+    const workspaceSlug = parseSlug(workspaceMatch[1], WorkspaceSlugSchema);
+    return workspaceSlug
+      ? { kind: "documents", workspaceSlug, documentSlug: null }
+      : { kind: "not-found" };
+  }
+
+  return { kind: "not-found" };
+}
+
+function parseSlug(
+  value: string,
+  schema: typeof WorkspaceSlugSchema,
+): string | null {
   try {
-    const parsedSlug = DocumentSlugSchema.safeParse(
-      decodeURIComponent(match[1]),
-    );
-    return parsedSlug.success ? parsedSlug.data : null;
+    const parsed = schema.safeParse(decodeURIComponent(value));
+    return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }

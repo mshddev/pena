@@ -22,6 +22,7 @@ const DECISION_DOCUMENT = [
 ].join("\n");
 
 const documentResponse = {
+  workspaceSlug: "default",
   slug: "review",
   content: DECISION_DOCUMENT,
   version: 1,
@@ -60,7 +61,7 @@ describe("interactive decision review", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
 
-      if (url === "/api/documents") {
+      if (url === "/api/workspaces/default/documents") {
         return documentListResponse();
       }
 
@@ -82,7 +83,7 @@ describe("interactive decision review", () => {
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
 
-    render(<DocumentReviewPage documentSlug="review" />);
+    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
 
     const apply = await screen.findByRole("button", { name: "Apply" });
     const skip = screen.getByRole("button", { name: "Skip" });
@@ -122,7 +123,7 @@ describe("interactive decision review", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) =>
-        String(input) === "/api/documents"
+        String(input) === "/api/workspaces/default/documents"
           ? documentListResponse()
           : String(input).endsWith("/feedback")
           ? jsonResponse({
@@ -145,7 +146,7 @@ describe("interactive decision review", () => {
       ),
     );
 
-    render(<DocumentReviewPage documentSlug="review" />);
+    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
 
     const apply = await screen.findByRole("button", { name: "Apply" });
     const skip = screen.getByRole("button", { name: "Skip" });
@@ -160,7 +161,7 @@ describe("interactive decision review", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
-        if (String(input) === "/api/documents") {
+        if (String(input) === "/api/workspaces/default/documents") {
           return documentListResponse();
         }
 
@@ -172,7 +173,7 @@ describe("interactive decision review", () => {
       }),
     );
 
-    render(<DocumentReviewPage documentSlug="review" />);
+    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
 
     expect(
       await screen.findByRole("heading", {
@@ -185,7 +186,7 @@ describe("interactive decision review", () => {
 
   it("keeps Markdown-only loading behavior unchanged", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
-      String(input) === "/api/documents"
+      String(input) === "/api/workspaces/default/documents"
         ? documentListResponse()
         : jsonResponse({
             ...documentResponse,
@@ -194,7 +195,7 @@ describe("interactive decision review", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<DocumentReviewPage documentSlug="review" />);
+    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
 
     expect(
       await screen.findByRole("heading", { name: "Markdown only" }),
@@ -203,7 +204,7 @@ describe("interactive decision review", () => {
     expect(
       screen.getByText("Select text in the document to start."),
     ).toBeTruthy();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
   });
 });
 
@@ -214,7 +215,7 @@ describe("saved document index", () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
 
-        if (url === "/api/documents") {
+        if (url === "/api/workspaces/default/documents") {
           return jsonResponse({
             documents: [
               {
@@ -239,7 +240,7 @@ describe("saved document index", () => {
       }),
     );
 
-    render(<DocumentReviewPage documentSlug="review" />);
+    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
 
     const currentDocument = await screen.findByRole("link", {
       name: /Review/,
@@ -249,9 +250,9 @@ describe("saved document index", () => {
     });
 
     expect(currentDocument.getAttribute("aria-current")).toBe("page");
-    expect(currentDocument.getAttribute("href")).toBe("/documents/review");
+    expect(currentDocument.getAttribute("href")).toBe("/workspaces/default/documents/review");
     expect(otherDocument.getAttribute("href")).toBe(
-      "/documents/architecture-notes",
+      "/workspaces/default/documents/architecture-notes",
     );
     expect(screen.getByText("v3")).toBeTruthy();
   });
@@ -272,7 +273,7 @@ describe("saved document index", () => {
       ),
     );
 
-    render(<DocumentReviewPage documentSlug={null} />);
+    render(<DocumentReviewPage workspaceSlug="default" documentSlug={null} />);
 
     expect(
       await screen.findByRole("heading", { name: "Select a document" }),

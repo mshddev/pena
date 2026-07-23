@@ -9,7 +9,11 @@ import {
 import { PenaLayout } from "../document-review/components/PenaLayout";
 import type { Notice } from "../document-review/types";
 
-export function ArchivePage() {
+interface ArchivePageProps {
+  workspaceSlug: string;
+}
+
+export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [archivedDocuments, setArchivedDocuments] = useState<
     DocumentSummary[]
@@ -28,8 +32,8 @@ export function ArchivePage() {
 
     try {
       const [activeResponse, archivedResponse] = await Promise.all([
-        fetchDocuments(),
-        fetchDocuments("archived"),
+        fetchDocuments(workspaceSlug),
+        fetchDocuments(workspaceSlug, "archived"),
       ]);
       setDocuments(activeResponse.documents);
       setArchivedDocuments(archivedResponse.documents);
@@ -42,10 +46,10 @@ export function ArchivePage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [workspaceSlug]);
 
   useEffect(() => {
-    window.document.title = "Archive · Pena";
+    window.document.title = `Archive · ${workspaceSlug} · Pena`;
     void loadDocuments();
   }, [loadDocuments]);
 
@@ -54,7 +58,7 @@ export function ArchivePage() {
     setNotice(null);
 
     try {
-      const restoredDocument = await restoreDocument(slug);
+      const restoredDocument = await restoreDocument(workspaceSlug, slug);
       setArchivedDocuments((current) =>
         current.filter((document) => document.slug !== slug),
       );
@@ -96,7 +100,7 @@ export function ArchivePage() {
     setNotice(null);
 
     try {
-      await deleteDocument(slug);
+      await deleteDocument(workspaceSlug, slug);
       setArchivedDocuments((current) =>
         current.filter((document) => document.slug !== slug),
       );
@@ -127,6 +131,7 @@ export function ArchivePage() {
       isLoadingDocuments={isLoading}
       isRefreshing={isLoading}
       onRefresh={() => void loadDocuments()}
+      workspaceSlug={workspaceSlug}
     >
       <section className="archive-pane" aria-labelledby="archive-title">
         <header className="archive-heading">
@@ -167,7 +172,7 @@ export function ArchivePage() {
             <span aria-hidden="true">□</span>
             <h2>The archive is empty</h2>
             <p>Documents you archive will remain available here.</p>
-            <a href="/">Return to documents</a>
+            <a href={`/workspaces/${workspaceSlug}`}>Return to documents</a>
           </div>
         ) : (
           <div className="archive-list">

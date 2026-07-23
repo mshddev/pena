@@ -24,7 +24,55 @@ export const DocumentSlugSchema = z
 
 export type DocumentSlug = z.infer<typeof DocumentSlugSchema>;
 
+export const WorkspaceSlugSchema = DocumentSlugSchema;
+
+export type WorkspaceSlug = z.infer<typeof WorkspaceSlugSchema>;
+
+export const WorkspaceNameSchema = NonBlankStringSchema.max(80).transform(
+  (value) => value.trim(),
+);
+
+export type WorkspaceName = z.infer<typeof WorkspaceNameSchema>;
+
+export const WorkspaceSchema = z.object({
+  slug: WorkspaceSlugSchema,
+  name: WorkspaceNameSchema,
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export type Workspace = z.infer<typeof WorkspaceSchema>;
+
+export const WorkspaceSummarySchema = WorkspaceSchema.extend({
+  documentCount: z.number().int().nonnegative(),
+});
+
+export type WorkspaceSummary = z.infer<typeof WorkspaceSummarySchema>;
+
+export const WorkspaceListResponseSchema = z.object({
+  workspaces: z.array(WorkspaceSummarySchema),
+});
+
+export type WorkspaceListResponse = z.infer<
+  typeof WorkspaceListResponseSchema
+>;
+
+export const WorkspaceCreateRequestSchema = z.object({
+  name: WorkspaceNameSchema,
+});
+
+export type WorkspaceCreateRequest = z.infer<
+  typeof WorkspaceCreateRequestSchema
+>;
+
+export const WorkspaceUpdateRequestSchema = WorkspaceCreateRequestSchema;
+
+export type WorkspaceUpdateRequest = z.infer<
+  typeof WorkspaceUpdateRequestSchema
+>;
+
 export const DocumentSchema = z.object({
+  workspaceSlug: WorkspaceSlugSchema,
   slug: DocumentSlugSchema,
   content: z.string(),
   version: z.number().int().positive(),
@@ -36,6 +84,14 @@ export type PenaDocument = z.infer<typeof DocumentSchema>;
 export const DocumentStatusSchema = z.enum(["active", "archived"]);
 
 export type DocumentStatus = z.infer<typeof DocumentStatusSchema>;
+
+export const DocumentUpdateRequestSchema = z.object({
+  status: DocumentStatusSchema,
+});
+
+export type DocumentUpdateRequest = z.infer<
+  typeof DocumentUpdateRequestSchema
+>;
 
 export const DocumentSummarySchema = DocumentSchema.omit({
   content: true,

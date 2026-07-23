@@ -32,10 +32,12 @@ import type {
 
 interface DocumentReviewPageProps {
   documentSlug: string | null;
+  workspaceSlug: string;
 }
 
 export function DocumentReviewPage({
   documentSlug,
+  workspaceSlug,
 }: DocumentReviewPageProps) {
   const [currentDocument, setCurrentDocument] = useState<PenaDocument | null>(
     null,
@@ -63,7 +65,7 @@ export function DocumentReviewPage({
     setNotice(null);
 
     try {
-      const nextDocument = await fetchDocument(documentSlug);
+      const nextDocument = await fetchDocument(workspaceSlug, documentSlug);
 
       if (!nextDocument) {
         setCurrentDocument(null);
@@ -75,7 +77,7 @@ export function DocumentReviewPage({
       const nextSubmittedDecisions =
         parsedDocument.decisions.length > 0
           ? readSubmittedDecisions(
-              await fetchFeedback(documentSlug),
+              await fetchFeedback(workspaceSlug, documentSlug),
               parsedDocument.decisions,
             )
           : {};
@@ -93,14 +95,14 @@ export function DocumentReviewPage({
     } finally {
       setIsLoading(false);
     }
-  }, [documentSlug]);
+  }, [documentSlug, workspaceSlug]);
 
   const loadDocuments = useCallback(async () => {
     setIsLoadingDocuments(true);
     setDocumentListError(null);
 
     try {
-      const response = await fetchDocuments();
+      const response = await fetchDocuments(workspaceSlug);
       setDocuments(response.documents);
     } catch (error) {
       setDocumentListError(
@@ -109,7 +111,7 @@ export function DocumentReviewPage({
     } finally {
       setIsLoadingDocuments(false);
     }
-  }, []);
+  }, [workspaceSlug]);
 
   useEffect(() => {
     void loadDocuments();
@@ -117,10 +119,10 @@ export function DocumentReviewPage({
 
   useEffect(() => {
     if (documentSlug) {
-      window.document.title = `${documentSlug} · Pena`;
+      window.document.title = `${documentSlug} · ${workspaceSlug} · Pena`;
       void loadDocument();
     } else {
-      window.document.title = "Pena · Documents";
+      window.document.title = `${workspaceSlug} · Pena`;
     }
   }, [documentSlug, loadDocument]);
 
@@ -184,7 +186,7 @@ export function DocumentReviewPage({
     setNotice(null);
 
     try {
-      await submitFeedback(documentSlug, {
+      await submitFeedback(workspaceSlug, documentSlug, {
         comments: submittedDrafts.map(
           ({ selectedText, comment, contextBefore, contextAfter }) => ({
             selectedText,
@@ -247,8 +249,8 @@ export function DocumentReviewPage({
     setNotice(null);
 
     try {
-      await archiveDocument(documentSlug);
-      window.location.assign("/");
+      await archiveDocument(workspaceSlug, documentSlug);
+      window.location.assign(`/workspaces/${workspaceSlug}`);
     } catch (error) {
       setNotice({
         kind: "error",
@@ -269,6 +271,7 @@ export function DocumentReviewPage({
       isLoadingDocuments={isLoadingDocuments}
       isRefreshing={isLoading || isLoadingDocuments}
       onRefresh={handleRefresh}
+      workspaceSlug={workspaceSlug}
     >
       <section className="document-pane" aria-label="Document">
           <div className="document-meta">
@@ -282,7 +285,9 @@ export function DocumentReviewPage({
             </div>
             <div className="document-identity">
               {documentSlug ? (
-                <code className="document-slug">/{documentSlug}</code>
+                <code className="document-slug">
+                  /{workspaceSlug}/{documentSlug}
+                </code>
               ) : null}
               {currentDocument ? (
                 <>

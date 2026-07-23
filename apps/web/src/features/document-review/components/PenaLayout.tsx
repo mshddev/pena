@@ -1,5 +1,7 @@
-import type { DocumentSummary } from "@pena/contracts";
-import type { ReactNode } from "react";
+import type { DocumentSummary, WorkspaceSummary } from "@pena/contracts";
+import { useEffect, useState, type ReactNode } from "react";
+
+import { fetchWorkspaces } from "../../../api";
 
 import { DocumentIndex } from "./DocumentIndex";
 
@@ -12,6 +14,7 @@ interface PenaLayoutProps {
   isLoadingDocuments: boolean;
   isRefreshing: boolean;
   onRefresh: () => void;
+  workspaceSlug: string;
 }
 
 export function PenaLayout({
@@ -23,11 +26,24 @@ export function PenaLayout({
   isLoadingDocuments,
   isRefreshing,
   onRefresh,
+  workspaceSlug,
 }: PenaLayoutProps) {
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+
+  useEffect(() => {
+    void fetchWorkspaces()
+      .then((response) => setWorkspaces(response.workspaces ?? []))
+      .catch(() => setWorkspaces([]));
+  }, []);
+
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand-lockup" href="/" aria-label="Pena documents">
+        <a
+          className="brand-lockup"
+          href={`/workspaces/${workspaceSlug}`}
+          aria-label="Pena documents"
+        >
           <div className="brand-mark" aria-hidden="true">
             P
           </div>
@@ -38,6 +54,29 @@ export function PenaLayout({
         </a>
 
         <div className="topbar-actions">
+          <label className="workspace-switcher">
+            <span>Workspace</span>
+            <select
+              aria-label="Current workspace"
+              value={workspaceSlug}
+              onChange={(event) =>
+                window.location.assign(`/workspaces/${event.target.value}`)
+              }
+            >
+              {workspaces.length === 0 ? (
+                <option value={workspaceSlug}>{workspaceSlug}</option>
+              ) : (
+                workspaces.map((workspace) => (
+                  <option value={workspace.slug} key={workspace.slug}>
+                    {workspace.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+          <a className="manage-workspaces-link" href="/workspaces">
+            Manage
+          </a>
           <span className="local-status">
             <span className="status-dot" aria-hidden="true" />
             Local
@@ -61,6 +100,7 @@ export function PenaLayout({
           error={documentListError}
           isArchiveActive={isArchiveActive}
           isLoading={isLoadingDocuments}
+          workspaceSlug={workspaceSlug}
         />
         {children}
       </main>

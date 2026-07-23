@@ -6,6 +6,7 @@ interface DocumentIndexProps {
   error: string | null;
   isArchiveActive: boolean;
   isLoading: boolean;
+  workspaceSlug: string;
 }
 
 export function DocumentIndex({
@@ -14,6 +15,7 @@ export function DocumentIndex({
   error,
   isArchiveActive,
   isLoading,
+  workspaceSlug,
 }: DocumentIndexProps) {
   return (
     <aside className="document-index" aria-label="Saved documents">
@@ -42,7 +44,7 @@ export function DocumentIndex({
             return (
               <a
                 className={`document-list-item${isActive ? " active" : ""}`}
-                href={`/documents/${document.slug}`}
+                href={`/workspaces/${workspaceSlug}/documents/${document.slug}`}
                 aria-current={isActive ? "page" : undefined}
                 key={document.slug}
               >
@@ -66,7 +68,7 @@ export function DocumentIndex({
 
       <a
         className={`archive-link${isArchiveActive ? " active" : ""}`}
-        href="/archive"
+        href={`/workspaces/${workspaceSlug}/archive`}
         aria-current={isArchiveActive ? "page" : undefined}
       >
         <ArchiveIcon />

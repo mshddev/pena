@@ -236,6 +236,45 @@ describe("Pena API", () => {
     expect(documentResponse.statusCode).toBe(404);
   });
 
+  it("lists the global archive and filters it by workspace", async () => {
+    const app = createApp();
+    await app.inject({
+      method: "POST",
+      url: "/api/workspaces",
+      payload: { name: "Research" },
+    });
+    const defaultUrl = "/api/workspaces/default/documents/shared-draft";
+    const researchUrl = "/api/workspaces/research/documents/shared-draft";
+    await publishDocument(app, defaultUrl, "Default copy");
+    await publishDocument(app, researchUrl, "Research copy");
+    await app.inject({
+      method: "PATCH",
+      url: defaultUrl,
+      payload: { status: "archived" },
+    });
+    await app.inject({
+      method: "PATCH",
+      url: researchUrl,
+      payload: { status: "archived" },
+    });
+
+    const allArchive = await app.inject({ method: "GET", url: "/api/archive" });
+    expect(allArchive.statusCode).toBe(200);
+    expect(allArchive.json().documents).toEqual([
+      expect.objectContaining({ workspaceSlug: "research", slug: "shared-draft" }),
+      expect.objectContaining({ workspaceSlug: "default", slug: "shared-draft" }),
+    ]);
+
+    const researchArchive = await app.inject({
+      method: "GET",
+      url: "/api/archive?workspace=research",
+    });
+    expect(researchArchive.statusCode).toBe(200);
+    expect(researchArchive.json().documents).toEqual([
+      expect.objectContaining({ workspaceSlug: "research", slug: "shared-draft" }),
+    ]);
+  });
+
   it("rejects an invalid document list status", async () => {
     const app = createApp();
     const response = await app.inject({
@@ -464,6 +503,9 @@ describe("Pena API", () => {
         throw new Error("Not used in this test.");
       },
       listDocuments() {
+        throw new Error("Not used in this test.");
+      },
+      listArchivedDocuments() {
         throw new Error("Not used in this test.");
       },
       archiveDocument() {

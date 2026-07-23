@@ -3,21 +3,22 @@ import { DocumentSlugSchema, WorkspaceSlugSchema } from "@pena/contracts";
 export type AppRoute =
   | { kind: "workspaces" }
   | { kind: "documents"; workspaceSlug: string; documentSlug: string | null }
-  | { kind: "archive"; workspaceSlug: string }
+  | { kind: "archive"; workspaceSlug: string | null }
   | { kind: "not-found" };
 
-export function readAppRoute(pathname: string): AppRoute {
+export function readAppRoute(pathname: string, search = ""): AppRoute {
   if (/^\/workspaces\/?$/.test(pathname)) {
     return { kind: "workspaces" };
   }
 
-  const archiveMatch = /^\/workspaces\/([^/]+)\/archive\/?$/.exec(pathname);
-
-  if (archiveMatch?.[1]) {
-    const workspaceSlug = parseSlug(archiveMatch[1], WorkspaceSlugSchema);
-    return workspaceSlug
-      ? { kind: "archive", workspaceSlug }
-      : { kind: "not-found" };
+  if (/^\/archive\/?$/.test(pathname)) {
+    const requestedWorkspace = new URLSearchParams(search).get("workspace");
+    const workspaceSlug = requestedWorkspace
+      ? parseSlug(requestedWorkspace, WorkspaceSlugSchema)
+      : null;
+    return requestedWorkspace && !workspaceSlug
+      ? { kind: "not-found" }
+      : { kind: "archive", workspaceSlug };
   }
 
   const documentMatch =

@@ -362,6 +362,48 @@ export class SqlitePenaStore implements PenaStore {
     return rows.map(toDocumentSummary);
   }
 
+  listArchivedDocuments(workspaceSlug?: string): DocumentSummary[] {
+    const workspace = workspaceSlug
+      ? this.requireWorkspaceRow(workspaceSlug)
+      : null;
+    const rows = workspace
+      ? this.database
+          .prepare<[number], DocumentSummaryRow>(
+            `
+              SELECT
+                workspaces.slug AS workspace_slug,
+                documents.slug,
+                documents.version,
+                documents.updated_at,
+                documents.archived_at
+              FROM documents
+              JOIN workspaces ON workspaces.id = documents.workspace_id
+              WHERE documents.workspace_id = ?
+                AND documents.archived_at IS NOT NULL
+              ORDER BY documents.archived_at DESC, documents.id DESC
+            `,
+          )
+          .all(workspace.id)
+      : this.database
+          .prepare<[], DocumentSummaryRow>(
+            `
+              SELECT
+                workspaces.slug AS workspace_slug,
+                documents.slug,
+                documents.version,
+                documents.updated_at,
+                documents.archived_at
+              FROM documents
+              JOIN workspaces ON workspaces.id = documents.workspace_id
+              WHERE documents.archived_at IS NOT NULL
+              ORDER BY documents.archived_at DESC, documents.id DESC
+            `,
+          )
+          .all();
+
+    return rows.map(toDocumentSummary);
+  }
+
   archiveDocument(workspaceSlug: string, slug: string): DocumentSummary {
     const document = this.requireDocumentRow(workspaceSlug, slug);
 

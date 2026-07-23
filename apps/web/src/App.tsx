@@ -9,7 +9,7 @@ export function App() {
     return null;
   }
 
-  const route = readAppRoute(window.location.pathname);
+  const route = readAppRoute(window.location.pathname, window.location.search);
 
   if (route.kind === "workspaces") {
     return <WorkspacesPage />;

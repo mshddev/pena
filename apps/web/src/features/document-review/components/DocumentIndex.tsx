@@ -1,4 +1,4 @@
-import type { DocumentSummary } from "@pena/contracts";
+import type { DocumentSummary, WorkspaceSummary } from "@pena/contracts";
 
 interface DocumentIndexProps {
   activeSlug: string | null;
@@ -6,7 +6,8 @@ interface DocumentIndexProps {
   error: string | null;
   isArchiveActive: boolean;
   isLoading: boolean;
-  workspaceSlug: string;
+  workspaces: WorkspaceSummary[];
+  workspaceSlug: string | null;
 }
 
 export function DocumentIndex({
@@ -15,8 +16,37 @@ export function DocumentIndex({
   error,
   isArchiveActive,
   isLoading,
+  workspaces,
   workspaceSlug,
 }: DocumentIndexProps) {
+  if (isArchiveActive) {
+    return (
+      <aside className="document-index archive-scope-index" aria-label="Archive filters">
+        <div className="document-index-heading">
+          <div>
+            <p className="section-label">Archive</p>
+            <p className="archive-scope-hint">Filter by workspace</p>
+          </div>
+        </div>
+        <nav className="archive-scope-list" aria-label="Workspace archive filters">
+          <ArchiveScopeLink
+            href="/archive"
+            isActive={workspaceSlug === null}
+            label="All workspaces"
+          />
+          {workspaces.map((workspace) => (
+            <ArchiveScopeLink
+              href={`/archive?workspace=${encodeURIComponent(workspace.slug)}`}
+              isActive={workspaceSlug === workspace.slug}
+              key={workspace.slug}
+              label={workspace.name}
+            />
+          ))}
+        </nav>
+      </aside>
+    );
+  }
+
   return (
     <aside className="document-index" aria-label="Saved documents">
       <div className="document-index-heading">
@@ -67,15 +97,33 @@ export function DocumentIndex({
       )}
 
       <a
-        className={`archive-link${isArchiveActive ? " active" : ""}`}
-        href={`/workspaces/${workspaceSlug}/archive`}
-        aria-current={isArchiveActive ? "page" : undefined}
+        className="archive-link"
+        href={`/archive?workspace=${encodeURIComponent(workspaceSlug ?? "default")}`}
       >
         <ArchiveIcon />
         <span>Archive</span>
         <ArrowIcon />
       </a>
     </aside>
+  );
+}
+
+interface ArchiveScopeLinkProps {
+  href: string;
+  isActive: boolean;
+  label: string;
+}
+
+function ArchiveScopeLink({ href, isActive, label }: ArchiveScopeLinkProps) {
+  return (
+    <a
+      className={`archive-scope-item${isActive ? " active" : ""}`}
+      href={href}
+      aria-current={isActive ? "page" : undefined}
+    >
+      <span>{label}</span>
+      <ArrowIcon />
+    </a>
   );
 }
 

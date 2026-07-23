@@ -21,20 +21,26 @@ afterEach(() => {
 });
 
 describe("archive", () => {
-  it("restores a document to the active index", async () => {
+  it("shows the global archive and restores to the original workspace", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
 
         if (url === "/api/workspaces") {
-          return jsonResponse({ workspaces: [] });
+          return jsonResponse({
+            workspaces: [
+              {
+                slug: "default",
+                name: "Default",
+                documentCount: 1,
+                createdAt: "2026-07-18T10:00:00.000Z",
+                updatedAt: "2026-07-18T10:00:00.000Z",
+              },
+            ],
+          });
         }
 
-        if (url === "/api/workspaces/default/documents") {
-          return jsonResponse({ documents: [] });
-        }
-
-        if (url === "/api/workspaces/default/documents?status=archived") {
+        if (url === "/api/archive") {
           return jsonResponse({ documents: [archivedDocument] });
         }
 
@@ -51,18 +57,22 @@ describe("archive", () => {
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
 
-    render(<ArchivePage workspaceSlug="default" />);
+    render(<ArchivePage workspaceSlug={null} />);
 
     expect(
       await screen.findByRole("heading", { name: "Old Draft" }),
     ).toBeTruthy();
+    expect(
+      screen
+        .getAllByRole("link", { name: "Default" })
+        .some((link) => link.getAttribute("href") === "/workspaces/default"),
+    ).toBe(true);
     await user.click(screen.getByRole("button", { name: "Restore" }));
 
-    expect(await screen.findByText("Old Draft restored to Documents.")).toBeTruthy();
+    expect(await screen.findByText("Old Draft restored to Default.")).toBeTruthy();
     expect(
       screen.queryByRole("heading", { name: "Old Draft" }),
     ).toBeNull();
-    expect(screen.getByRole("link", { name: /Old Draft/ })).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/workspaces/default/documents/old-draft",
       {
@@ -82,11 +92,7 @@ describe("archive", () => {
           return jsonResponse({ workspaces: [] });
         }
 
-        if (url === "/api/workspaces/default/documents") {
-          return jsonResponse({ documents: [] });
-        }
-
-        if (url === "/api/workspaces/default/documents?status=archived") {
+        if (url === "/api/archive?workspace=default") {
           return jsonResponse({ documents: [archivedDocument] });
         }
 
@@ -109,13 +115,15 @@ describe("archive", () => {
       screen.getByRole("button", { name: "Delete permanently" }),
     );
 
-    const confirmation = screen.getByLabelText(/Type old-draft to confirm/);
+    const confirmation = screen.getByLabelText(
+      /Type default\/old-draft to confirm/,
+    );
     const confirmButton = screen.getAllByRole("button", {
       name: "Delete permanently",
     })[1] as HTMLButtonElement;
 
     expect(confirmButton.disabled).toBe(true);
-    await user.type(confirmation, "old-draft");
+    await user.type(confirmation, "default/old-draft");
     expect(confirmButton.disabled).toBe(false);
     await user.click(confirmButton);
 

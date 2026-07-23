@@ -24,6 +24,7 @@ export interface PenaStore {
     workspaceSlug: string,
     status?: DocumentStatus,
   ): DocumentSummary[];
+  listArchivedDocuments(workspaceSlug?: string): DocumentSummary[];
   archiveDocument(workspaceSlug: string, slug: string): DocumentSummary;
   restoreDocument(workspaceSlug: string, slug: string): DocumentSummary;
   deleteArchivedDocument(workspaceSlug: string, slug: string): void;

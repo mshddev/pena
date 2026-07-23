@@ -57,6 +57,35 @@ export function buildApp(store: PenaStore): FastifyInstance {
     reply.send({ workspaces: store.listWorkspaces() }),
   );
 
+  app.get<{ Querystring: { workspace?: string } }>(
+    "/api/archive",
+    async (request, reply) => {
+      const requestedWorkspace = request.query.workspace;
+      let workspaceSlug: string | undefined;
+
+      if (requestedWorkspace) {
+        const parsedWorkspaceSlug = parseWorkspaceSlug(
+          requestedWorkspace,
+          reply,
+        );
+
+        if (!parsedWorkspaceSlug) {
+          return;
+        }
+
+        workspaceSlug = parsedWorkspaceSlug;
+      }
+
+      try {
+        return reply.send({
+          documents: store.listArchivedDocuments(workspaceSlug),
+        });
+      } catch (error) {
+        return sendDocumentError(reply, error);
+      }
+    },
+  );
+
   app.post("/api/workspaces", async (request, reply) => {
     const parsedRequest = WorkspaceCreateRequestSchema.safeParse(request.body);
 

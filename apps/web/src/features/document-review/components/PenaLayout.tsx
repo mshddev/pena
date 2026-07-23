@@ -14,7 +14,8 @@ interface PenaLayoutProps {
   isLoadingDocuments: boolean;
   isRefreshing: boolean;
   onRefresh: () => void;
-  workspaceSlug: string;
+  workspaces?: WorkspaceSummary[];
+  workspaceSlug: string | null;
 }
 
 export function PenaLayout({
@@ -26,22 +27,32 @@ export function PenaLayout({
   isLoadingDocuments,
   isRefreshing,
   onRefresh,
+  workspaces: providedWorkspaces,
   workspaceSlug,
 }: PenaLayoutProps) {
-  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+  const [loadedWorkspaces, setLoadedWorkspaces] = useState<WorkspaceSummary[]>(
+    [],
+  );
+  const workspaces = providedWorkspaces ?? loadedWorkspaces;
 
   useEffect(() => {
+    if (providedWorkspaces) {
+      return;
+    }
+
     void fetchWorkspaces()
-      .then((response) => setWorkspaces(response.workspaces ?? []))
-      .catch(() => setWorkspaces([]));
-  }, []);
+      .then((response) => setLoadedWorkspaces(response.workspaces ?? []))
+      .catch(() => setLoadedWorkspaces([]));
+  }, [providedWorkspaces]);
+
+  const fallbackWorkspaceSlug = workspaceSlug ?? "default";
 
   return (
     <div className="app-shell">
       <header className="topbar">
         <a
           className="brand-lockup"
-          href={`/workspaces/${workspaceSlug}`}
+          href={`/workspaces/${fallbackWorkspaceSlug}`}
           aria-label="Pena documents"
         >
           <div className="brand-mark" aria-hidden="true">
@@ -57,14 +68,32 @@ export function PenaLayout({
           <label className="workspace-switcher">
             <span>Workspace</span>
             <select
-              aria-label="Current workspace"
-              value={workspaceSlug}
-              onChange={(event) =>
-                window.location.assign(`/workspaces/${event.target.value}`)
+              aria-label={
+                isArchiveActive ? "Archive workspace filter" : "Current workspace"
               }
+              value={workspaceSlug ?? "__all__"}
+              onChange={(event) => {
+                const nextWorkspace = event.target.value;
+
+                if (isArchiveActive) {
+                  window.location.assign(
+                    nextWorkspace === "__all__"
+                      ? "/archive"
+                      : `/archive?workspace=${encodeURIComponent(nextWorkspace)}`,
+                  );
+                  return;
+                }
+
+                window.location.assign(`/workspaces/${nextWorkspace}`);
+              }}
             >
+              {isArchiveActive ? (
+                <option value="__all__">All workspaces</option>
+              ) : null}
               {workspaces.length === 0 ? (
-                <option value={workspaceSlug}>{workspaceSlug}</option>
+                workspaceSlug ? (
+                  <option value={workspaceSlug}>{workspaceSlug}</option>
+                ) : null
               ) : (
                 workspaces.map((workspace) => (
                   <option value={workspace.slug} key={workspace.slug}>
@@ -74,6 +103,9 @@ export function PenaLayout({
               )}
             </select>
           </label>
+          <a className="manage-workspaces-link" href="/archive">
+            Archive
+          </a>
           <a className="manage-workspaces-link" href="/workspaces">
             Manage
           </a>
@@ -100,6 +132,7 @@ export function PenaLayout({
           error={documentListError}
           isArchiveActive={isArchiveActive}
           isLoading={isLoadingDocuments}
+          workspaces={workspaces}
           workspaceSlug={workspaceSlug}
         />
         {children}

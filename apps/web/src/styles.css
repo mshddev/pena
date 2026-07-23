@@ -441,6 +441,74 @@ button:disabled {
   transform: translateX(0);
 }
 
+.archive-scope-hint {
+  margin: 5px 0 0;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.archive-scope-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.archive-scope-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 14px;
+  gap: 12px;
+  align-items: center;
+  padding: 15px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-soft);
+  font: 12px Charter, Georgia, serif;
+  text-decoration: none;
+  transition:
+    padding 150ms ease,
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.archive-scope-item:hover,
+.archive-scope-item:focus-visible,
+.archive-scope-item.active {
+  padding-right: 11px;
+  padding-left: 12px;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.archive-scope-item.active::before {
+  position: absolute;
+  top: 11px;
+  bottom: 11px;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  content: "";
+}
+
+.archive-scope-item svg {
+  width: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.25;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+.archive-scope-item:hover svg,
+.archive-scope-item:focus-visible svg,
+.archive-scope-item.active svg {
+  opacity: 1;
+  transform: translateX(0);
+}
+
 .document-pane {
   min-width: 0;
   padding: clamp(32px, 5vw, 76px) clamp(24px, 5vw, 72px) 152px;
@@ -624,6 +692,22 @@ button:disabled {
 .archive-document-name code {
   color: var(--text-faint);
   font-size: 9px;
+}
+
+.archive-workspace-link {
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--accent-bright);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.archive-workspace-link:hover,
+.archive-workspace-link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .archive-actions {
@@ -1662,6 +1746,24 @@ button:disabled {
     margin: 0 -24px;
     padding: 0 24px;
     scrollbar-width: thin;
+  }
+
+  .archive-scope-index {
+    padding-bottom: 0;
+  }
+
+  .archive-scope-list {
+    overflow-x: auto;
+    flex-direction: row;
+    margin: 0 -24px;
+    padding: 0 24px;
+    scrollbar-width: thin;
+  }
+
+  .archive-scope-item {
+    min-width: 170px;
+    border-right: 1px solid var(--line);
+    border-bottom: 0;
   }
 
   .document-list-item {

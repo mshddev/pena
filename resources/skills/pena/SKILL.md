@@ -1,6 +1,6 @@
 ---
 name: pena
-description: Use Pena to publish Markdown documents for review and retrieve, apply, and republish user feedback. Use when the user asks to send or publish a document to Pena, add Pena decision blocks, read Pena feedback, or revise a document reviewed in Pena.
+description: Use Pena to publish Markdown documents for review; retrieve, apply, and republish user feedback; and inspect archived documents. Use when the user asks to send or publish a document to Pena, add Pena decision blocks, read Pena feedback, revise a document reviewed in Pena, or browse its archive.
 ---
 
 # Pena
@@ -66,3 +66,14 @@ Retrieve feedback only when the user explicitly asks.
 6. If the document changes, republish it under the same workspace and document slug.
 
 If Pena cannot be reached, report the error instead of guessing.
+
+## Browse archived documents
+
+Retrieve the global archive when the user does not specify a workspace:
+
+```bash
+curl --fail --silent --show-error \
+  http://127.0.0.1:8788/api/archive
+```
+
+To filter the archive to one resolved workspace, add `?workspace=<workspace-slug>`. Each result retains its `workspaceSlug`; use that workspace in any later document request. The browser archive is available at `http://127.0.0.1:5173/archive` and accepts the same optional workspace filter.

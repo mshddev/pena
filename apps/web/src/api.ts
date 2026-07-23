@@ -94,6 +94,16 @@ export async function fetchDocuments(
   return parseResponse<DocumentListResponse>(response);
 }
 
+export async function fetchArchive(
+  workspaceSlug: string | null = null,
+): Promise<DocumentListResponse> {
+  const query = workspaceSlug
+    ? `?workspace=${encodeURIComponent(workspaceSlug)}`
+    : "";
+  const response = await fetch(`/api/archive${query}`);
+  return parseResponse<DocumentListResponse>(response);
+}
+
 async function updateDocumentStatus(
   workspaceSlug: string,
   documentSlug: string,

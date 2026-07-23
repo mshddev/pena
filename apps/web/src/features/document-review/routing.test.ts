@@ -17,7 +17,11 @@ describe("workspace routing", () => {
       workspaceSlug: "research",
       documentSlug: "initial-spec",
     });
-    expect(readAppRoute("/workspaces/research/archive")).toEqual({
+    expect(readAppRoute("/archive")).toEqual({
+      kind: "archive",
+      workspaceSlug: null,
+    });
+    expect(readAppRoute("/archive", "?workspace=research")).toEqual({
       kind: "archive",
       workspaceSlug: "research",
     });
@@ -29,6 +33,12 @@ describe("workspace routing", () => {
       kind: "not-found",
     });
     expect(readAppRoute("/workspaces/Invalid_Name")).toEqual({
+      kind: "not-found",
+    });
+    expect(readAppRoute("/archive", "?workspace=Invalid_Name")).toEqual({
+      kind: "not-found",
+    });
+    expect(readAppRoute("/workspaces/research/archive")).toEqual({
       kind: "not-found",
     });
   });

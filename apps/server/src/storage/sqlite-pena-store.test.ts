@@ -125,6 +125,47 @@ describe("SqlitePenaStore", () => {
     expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches).toHaveLength(1);
   });
 
+  it("lists archived documents across workspaces and supports filtering", () => {
+    const timestamps = [
+      new Date("2026-07-19T10:00:00.000Z"),
+      new Date("2026-07-19T10:01:00.000Z"),
+      new Date("2026-07-19T10:02:00.000Z"),
+      new Date("2026-07-19T10:03:00.000Z"),
+      new Date("2026-07-19T10:04:00.000Z"),
+    ];
+    const store = createStore(":memory:", () => {
+      const timestamp = timestamps.shift();
+
+      if (!timestamp) {
+        throw new Error("Test clock was called unexpectedly.");
+      }
+
+      return timestamp;
+    });
+    store.createWorkspace("Research");
+    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "shared-draft", "Default");
+    store.publishDocument("research", "shared-draft", "Research");
+    store.archiveDocument(DEFAULT_WORKSPACE_SLUG, "shared-draft");
+    store.archiveDocument("research", "shared-draft");
+
+    expect(store.listArchivedDocuments()).toEqual([
+      expect.objectContaining({
+        workspaceSlug: "research",
+        slug: "shared-draft",
+      }),
+      expect.objectContaining({
+        workspaceSlug: DEFAULT_WORKSPACE_SLUG,
+        slug: "shared-draft",
+      }),
+    ]);
+    expect(store.listArchivedDocuments("research")).toEqual([
+      expect.objectContaining({
+        workspaceSlug: "research",
+        slug: "shared-draft",
+      }),
+    ]);
+  });
+
   it("only permanently deletes archived documents and cascades feedback", () => {
     const store = createStore();
     store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Current draft");

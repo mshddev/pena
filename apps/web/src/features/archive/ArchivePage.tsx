@@ -1,28 +1,29 @@
-import type { DocumentSummary } from "@pena/contracts";
+import type { DocumentSummary, WorkspaceSummary } from "@pena/contracts";
 import { useCallback, useEffect, useState } from "react";
 
 import {
   deleteDocument,
-  fetchDocuments,
+  fetchArchive,
+  fetchWorkspaces,
   restoreDocument,
 } from "../../api";
 import { PenaLayout } from "../document-review/components/PenaLayout";
 import type { Notice } from "../document-review/types";
 
 interface ArchivePageProps {
-  workspaceSlug: string;
+  workspaceSlug: string | null;
 }
 
 export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
-  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [archivedDocuments, setArchivedDocuments] = useState<
     DocumentSummary[]
   >([]);
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
-  const [restoringSlug, setRestoringSlug] = useState<string | null>(null);
-  const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
+  const [restoringKey, setRestoringKey] = useState<string | null>(null);
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<string | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
 
@@ -31,12 +32,12 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
     setError(null);
 
     try {
-      const [activeResponse, archivedResponse] = await Promise.all([
-        fetchDocuments(workspaceSlug),
-        fetchDocuments(workspaceSlug, "archived"),
+      const [archiveResponse, workspaceResponse] = await Promise.all([
+        fetchArchive(workspaceSlug),
+        fetchWorkspaces(),
       ]);
-      setDocuments(activeResponse.documents);
-      setArchivedDocuments(archivedResponse.documents);
+      setArchivedDocuments(archiveResponse.documents);
+      setWorkspaces(workspaceResponse.workspaces);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -49,23 +50,31 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
   }, [workspaceSlug]);
 
   useEffect(() => {
-    window.document.title = `Archive · ${workspaceSlug} · Pena`;
+    window.document.title = workspaceSlug
+      ? `Archive · ${workspaceSlug} · Pena`
+      : "Archive · Pena";
     void loadDocuments();
   }, [loadDocuments]);
 
-  async function handleRestore(slug: string): Promise<void> {
-    setRestoringSlug(slug);
+  async function handleRestore(
+    documentWorkspaceSlug: string,
+    slug: string,
+  ): Promise<void> {
+    const key = documentKey(documentWorkspaceSlug, slug);
+    setRestoringKey(key);
     setNotice(null);
 
     try {
-      const restoredDocument = await restoreDocument(workspaceSlug, slug);
+      await restoreDocument(documentWorkspaceSlug, slug);
       setArchivedDocuments((current) =>
-        current.filter((document) => document.slug !== slug),
+        current.filter(
+          (document) =>
+            documentKey(document.workspaceSlug, document.slug) !== key,
+        ),
       );
-      setDocuments((current) => [restoredDocument, ...current]);
       setNotice({
         kind: "success",
-        message: `${formatSlug(slug)} restored to Documents.`,
+        message: `${formatSlug(slug)} restored to ${workspaceName(documentWorkspaceSlug)}.`,
       });
     } catch (restoreError) {
       setNotice({
@@ -76,12 +85,12 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
             : "Could not restore the document.",
       });
     } finally {
-      setRestoringSlug(null);
+      setRestoringKey(null);
     }
   }
 
-  function beginDelete(slug: string): void {
-    setDeleteCandidate(slug);
+  function beginDelete(workspace: string, slug: string): void {
+    setDeleteCandidate(documentKey(workspace, slug));
     setDeleteConfirmation("");
     setNotice(null);
   }
@@ -91,18 +100,26 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
     setDeleteConfirmation("");
   }
 
-  async function handleDelete(slug: string): Promise<void> {
-    if (deleteConfirmation !== slug) {
+  async function handleDelete(
+    documentWorkspaceSlug: string,
+    slug: string,
+  ): Promise<void> {
+    const key = documentKey(documentWorkspaceSlug, slug);
+
+    if (deleteConfirmation !== key) {
       return;
     }
 
-    setDeletingSlug(slug);
+    setDeletingKey(key);
     setNotice(null);
 
     try {
-      await deleteDocument(workspaceSlug, slug);
+      await deleteDocument(documentWorkspaceSlug, slug);
       setArchivedDocuments((current) =>
-        current.filter((document) => document.slug !== slug),
+        current.filter(
+          (document) =>
+            documentKey(document.workspaceSlug, document.slug) !== key,
+        ),
       );
       cancelDelete();
       setNotice({
@@ -118,28 +135,38 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
             : "Could not delete the document.",
       });
     } finally {
-      setDeletingSlug(null);
+      setDeletingKey(null);
     }
+  }
+
+  function workspaceName(slug: string): string {
+    return (
+      workspaces.find((workspace) => workspace.slug === slug)?.name ??
+      formatSlug(slug)
+    );
   }
 
   return (
     <PenaLayout
       activeSlug={null}
-      documents={documents}
+      documents={[]}
       documentListError={error}
       isArchiveActive
       isLoadingDocuments={isLoading}
       isRefreshing={isLoading}
       onRefresh={() => void loadDocuments()}
+      workspaces={workspaces}
       workspaceSlug={workspaceSlug}
     >
       <section className="archive-pane" aria-labelledby="archive-title">
         <header className="archive-heading">
           <div>
-            <p className="section-label">Saved records</p>
+            <p className="section-label">
+              {workspaceSlug ? workspaceName(workspaceSlug) : "All workspaces"}
+            </p>
             <h1 id="archive-title">Archive</h1>
             <p>
-              Restore documents to active review or permanently remove them.
+              Documents stay connected to their original workspace when restored.
             </p>
           </div>
           {!isLoading && !error ? (
@@ -171,18 +198,25 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
           <div className="archive-empty-state">
             <span aria-hidden="true">□</span>
             <h2>The archive is empty</h2>
-            <p>Documents you archive will remain available here.</p>
-            <a href={`/workspaces/${workspaceSlug}`}>Return to documents</a>
+            <p>
+              {workspaceSlug
+                ? `No documents from ${workspaceName(workspaceSlug)} are archived.`
+                : "Documents you archive from any workspace will appear here."}
+            </p>
+            <a href={workspaceSlug ? `/workspaces/${workspaceSlug}` : "/workspaces/default"}>
+              Return to documents
+            </a>
           </div>
         ) : (
           <div className="archive-list">
             {archivedDocuments.map((document) => {
-              const isConfirmingDelete = deleteCandidate === document.slug;
-              const isRestoring = restoringSlug === document.slug;
-              const isDeleting = deletingSlug === document.slug;
+              const key = documentKey(document.workspaceSlug, document.slug);
+              const isConfirmingDelete = deleteCandidate === key;
+              const isRestoring = restoringKey === key;
+              const isDeleting = deletingKey === key;
 
               return (
-                <article className="archive-row" key={document.slug}>
+                <article className="archive-row" key={key}>
                   <div className="archive-record">
                     <div className="archive-date">
                       <span>Archived</span>
@@ -197,7 +231,13 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
 
                     <div className="archive-document-name">
                       <h2>{formatSlug(document.slug)}</h2>
-                      <code>/{document.slug}</code>
+                      <a
+                        className="archive-workspace-link"
+                        href={`/workspaces/${document.workspaceSlug}`}
+                      >
+                        {workspaceName(document.workspaceSlug)}
+                      </a>
+                      <code>{document.workspaceSlug}/{document.slug}</code>
                     </div>
 
                     <div className="archive-record-meta">
@@ -211,7 +251,12 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                       <button
                         className="restore-button"
                         type="button"
-                        onClick={() => void handleRestore(document.slug)}
+                        onClick={() =>
+                          void handleRestore(
+                            document.workspaceSlug,
+                            document.slug,
+                          )
+                        }
                         disabled={isRestoring || isDeleting}
                       >
                         {isRestoring ? "Restoring" : "Restore"}
@@ -219,7 +264,9 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                       <button
                         className="permanent-delete-button"
                         type="button"
-                        onClick={() => beginDelete(document.slug)}
+                        onClick={() =>
+                          beginDelete(document.workspaceSlug, document.slug)
+                        }
                         disabled={isRestoring || isDeleting}
                       >
                         Delete permanently
@@ -238,11 +285,11 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                           This cannot be undone.
                         </p>
                       </div>
-                      <label htmlFor={`delete-${document.slug}`}>
-                        Type <code>{document.slug}</code> to confirm
+                      <label htmlFor={`delete-${document.workspaceSlug}-${document.slug}`}>
+                        Type <code>{key}</code> to confirm
                       </label>
                       <input
-                        id={`delete-${document.slug}`}
+                        id={`delete-${document.workspaceSlug}-${document.slug}`}
                         type="text"
                         value={deleteConfirmation}
                         onChange={(event) =>
@@ -263,9 +310,14 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                         <button
                           className="confirm-delete-button"
                           type="button"
-                          onClick={() => void handleDelete(document.slug)}
+                          onClick={() =>
+                            void handleDelete(
+                              document.workspaceSlug,
+                              document.slug,
+                            )
+                          }
                           disabled={
-                            deleteConfirmation !== document.slug || isDeleting
+                            deleteConfirmation !== key || isDeleting
                           }
                         >
                           {isDeleting ? "Deleting" : "Delete permanently"}
@@ -281,6 +333,10 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
       </section>
     </PenaLayout>
   );
+}
+
+function documentKey(workspaceSlug: string, documentSlug: string): string {
+  return `${workspaceSlug}/${documentSlug}`;
 }
 
 function formatSlug(slug: string): string {

@@ -356,11 +356,11 @@ export function DocumentReviewPage({
       <section className="document-pane" aria-label="Document">
         <div className="document-meta">
           <div>
-            <p className="section-label">Current document</p>
+            <p className="section-label">Review mode</p>
             <p className="document-hint">
               {documentSlug
-                ? "Select any passage to attach a comment."
-                : "Open Pena with a document slug."}
+                ? "Highlight a passage to comment. Your drafts stay private until sent."
+                : "Choose a document from the sidebar to begin."}
             </p>
           </div>
           <div className="document-identity">

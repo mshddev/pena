@@ -56,11 +56,11 @@ export function PenaLayout({
           aria-label="Pena documents"
         >
           <div className="brand-mark" aria-hidden="true">
-            P
+            <span>P</span>
           </div>
           <div>
-            <p className="eyebrow">Local document review</p>
             <p className="brand-name">Pena</p>
+            <p className="eyebrow">Document review</p>
           </div>
         </a>
 
@@ -103,15 +103,17 @@ export function PenaLayout({
               )}
             </select>
           </label>
-          <a className="manage-workspaces-link" href="/archive">
-            Archive
-          </a>
-          <a className="manage-workspaces-link" href="/workspaces">
-            Manage
-          </a>
+          <nav className="global-nav" aria-label="Global navigation">
+            <a className="manage-workspaces-link" href="/archive">
+              Archive
+            </a>
+            <a className="manage-workspaces-link" href="/workspaces">
+              Workspaces
+            </a>
+          </nav>
           <span className="local-status">
             <span className="status-dot" aria-hidden="true" />
-            Local
+            Local only
           </span>
           <button
             className="quiet-button"

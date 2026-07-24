@@ -148,27 +148,35 @@ export function WorkspacesPage() {
     <div className="workspace-admin-shell">
       <header className="workspace-admin-topbar">
         <a className="brand-lockup" href="/workspaces/default">
-          <div className="brand-mark" aria-hidden="true">P</div>
+          <div className="brand-mark" aria-hidden="true"><span>P</span></div>
           <div>
-            <p className="eyebrow">Local document review</p>
             <p className="brand-name">Pena</p>
+            <p className="eyebrow">Document review</p>
           </div>
         </a>
         <a className="quiet-link" href="/workspaces/default">
-          Back to documents
+          ← Back to documents
         </a>
       </header>
 
       <main className="workspace-admin">
         <header className="workspace-admin-heading">
-          <div>
-            <p className="section-label">Document boundaries</p>
-            <h1>Workspaces</h1>
-            <p>Keep document slugs, feedback, and archives separate.</p>
+          <div className="workspace-admin-visual">
+            <img
+              src="/assets/editorial-review.webp"
+              alt=""
+              aria-hidden="true"
+            />
+            <div className="workspace-admin-copy">
+              <p className="section-label">Your review spaces</p>
+              <h1>Workspaces</h1>
+              <p>Organize documents and feedback by project.</p>
+            </div>
           </div>
 
           <form className="workspace-create-form" onSubmit={(event) => void handleCreate(event)}>
             <label htmlFor="workspace-name">New workspace</label>
+            <p>Give a new project its own document collection.</p>
             <div>
               <input
                 id="workspace-name"

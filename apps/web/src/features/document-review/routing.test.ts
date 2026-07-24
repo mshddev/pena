@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { readAppRoute } from "./routing";
 
 describe("workspace routing", () => {
-  it("reads workspace, document, archive, and management routes", () => {
+  it("reads home, workspace, document, archive, and management routes", () => {
+    expect(readAppRoute("/")).toEqual({ kind: "home" });
     expect(readAppRoute("/workspaces")).toEqual({ kind: "workspaces" });
     expect(readAppRoute("/workspaces/default")).toEqual({
       kind: "documents",
@@ -28,7 +29,6 @@ describe("workspace routing", () => {
   });
 
   it("rejects incomplete or invalid workspace routes", () => {
-    expect(readAppRoute("/")).toEqual({ kind: "not-found" });
     expect(readAppRoute("/documents/initial-spec")).toEqual({
       kind: "not-found",
     });

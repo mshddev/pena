@@ -1,15 +1,15 @@
 import { ArchivePage } from "./features/archive/ArchivePage";
 import { DocumentReviewPage } from "./features/document-review/DocumentReviewPage";
 import { readAppRoute } from "./features/document-review/routing";
+import { HomePage } from "./features/home/HomePage";
 import { WorkspacesPage } from "./features/workspaces/WorkspacesPage";
 
 export function App() {
-  if (window.location.pathname === "/") {
-    window.location.replace("/workspaces/default");
-    return null;
-  }
-
   const route = readAppRoute(window.location.pathname, window.location.search);
+
+  if (route.kind === "home") {
+    return <HomePage workspaceSlug={null} />;
+  }
 
   if (route.kind === "workspaces") {
     return <WorkspacesPage />;
@@ -20,7 +20,9 @@ export function App() {
   }
 
   if (route.kind === "documents") {
-    return (
+    return route.documentSlug === null ? (
+      <HomePage workspaceSlug={route.workspaceSlug} />
+    ) : (
       <DocumentReviewPage
         workspaceSlug={route.workspaceSlug}
         documentSlug={route.documentSlug}
@@ -32,7 +34,7 @@ export function App() {
     <main className="route-not-found">
       <span aria-hidden="true">404</span>
       <h1>Page not found</h1>
-      <a href="/workspaces/default">Return to Default</a>
+      <a href="/">Return home</a>
     </main>
   );
 }

@@ -34,7 +34,7 @@ import type {
 } from "./types";
 
 interface DocumentReviewPageProps {
-  documentSlug: string | null;
+  documentSlug: string;
   workspaceSlug: string;
 }
 
@@ -358,17 +358,14 @@ export function DocumentReviewPage({
           <div>
             <p className="section-label">Review mode</p>
             <p className="document-hint">
-              {documentSlug
-                ? "Highlight a passage to comment. Your drafts stay private until sent."
-                : "Choose a document from the sidebar to begin."}
+              Highlight a passage to comment. Your drafts stay private until
+              sent.
             </p>
           </div>
           <div className="document-identity">
-            {documentSlug ? (
-              <code className="document-slug">
-                /{workspaceSlug}/{documentSlug}
-              </code>
-            ) : null}
+            <code className="document-slug">
+              /{workspaceSlug}/{documentSlug}
+            </code>
             {currentDocument ? (
               <>
                 <span className="document-version">
@@ -449,26 +446,7 @@ export function DocumentReviewPage({
           </div>
         ) : null}
 
-        {!documentSlug ? (
-          <DocumentState
-            glyph={documents.length > 0 ? "↗" : "/"}
-            title={
-              documents.length > 0
-                ? "Select a document"
-                : "No documents published yet"
-            }
-            description={
-              documents.length > 0 ? (
-                "Choose a saved document from the index to start reviewing."
-              ) : (
-                <>
-                  Publish Markdown with the Pena skill. Saved documents will
-                  appear in this index automatically.
-                </>
-              )
-            }
-          />
-        ) : isLoading ? (
+        {isLoading ? (
           <div className="document-state" aria-live="polite">
             <span className="loading-line" />
             <span className="loading-line short" />

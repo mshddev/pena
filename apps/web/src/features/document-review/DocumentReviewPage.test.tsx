@@ -336,29 +336,6 @@ describe("saved document index", () => {
     expect(screen.getByText("v3")).toBeTruthy();
   });
 
-  it("uses the index as the landing view", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        jsonResponse({
-          documents: [
-            {
-              slug: "review",
-              version: 1,
-              updatedAt: "2026-07-18T10:00:00.000Z",
-            },
-          ],
-        }),
-      ),
-    );
-
-    render(<DocumentReviewPage workspaceSlug="default" documentSlug={null} />);
-
-    expect(
-      await screen.findByRole("heading", { name: "Select a document" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Review/ })).toBeTruthy();
-  });
 });
 
 function documentListResponse(): Response {

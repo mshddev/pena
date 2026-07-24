@@ -1,12 +1,17 @@
 import { DocumentSlugSchema, WorkspaceSlugSchema } from "@pena/contracts";
 
 export type AppRoute =
+  | { kind: "home" }
   | { kind: "workspaces" }
   | { kind: "documents"; workspaceSlug: string; documentSlug: string | null }
   | { kind: "archive"; workspaceSlug: string | null }
   | { kind: "not-found" };
 
 export function readAppRoute(pathname: string, search = ""): AppRoute {
+  if (pathname === "/") {
+    return { kind: "home" };
+  }
+
   if (/^\/workspaces\/?$/.test(pathname)) {
     return { kind: "workspaces" };
   }

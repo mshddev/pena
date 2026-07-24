@@ -236,69 +236,6 @@ button:disabled {
   color: var(--danger);
 }
 
-.archive-link {
-  position: relative;
-  display: grid;
-  grid-template-columns: 18px 1fr 14px;
-  gap: 9px;
-  align-items: center;
-  margin-top: 26px;
-  padding: 13px 8px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  color: var(--text-faint);
-  font-size: 11px;
-  font-weight: 600;
-  text-decoration: none;
-  transition:
-    color 150ms ease,
-    background 150ms ease,
-    padding 150ms ease;
-}
-
-.archive-link:hover,
-.archive-link:focus-visible,
-.archive-link.active {
-  padding-right: 11px;
-  padding-left: 11px;
-  background: var(--surface-raised);
-  color: var(--text);
-}
-
-.archive-link.active::before {
-  position: absolute;
-  top: 10px;
-  bottom: 10px;
-  left: 0;
-  width: 2px;
-  background: var(--accent);
-  content: "";
-}
-
-.archive-link svg {
-  width: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.25;
-}
-
-.archive-link > svg:last-child {
-  opacity: 0;
-  transform: translateX(-4px);
-  transition:
-    opacity 150ms ease,
-    transform 150ms ease;
-}
-
-.archive-link:hover > svg:last-child,
-.archive-link:focus-visible > svg:last-child,
-.archive-link.active > svg:last-child {
-  opacity: 1;
-  transform: translateX(0);
-}
-
 .document-pane {
   min-width: 0;
   padding: clamp(32px, 5vw, 76px) clamp(24px, 5vw, 72px) 152px;
@@ -311,7 +248,7 @@ button:disabled {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  max-width: 780px;
+  max-width: 980px;
   margin: 0 auto 40px;
   padding-bottom: 16px;
   border-bottom: 1px solid var(--line);
@@ -406,7 +343,7 @@ button:disabled {
 
 .move-document-panel {
   display: grid;
-  max-width: 780px;
+  max-width: 980px;
   grid-template-columns: minmax(220px, 1fr) 220px auto;
   gap: 24px;
   align-items: end;
@@ -998,7 +935,7 @@ button:disabled {
 
 .markdown-body {
   width: 100%;
-  max-width: 720px;
+  max-width: 860px;
   margin: 0 auto;
   color: #d8d5cc;
   font-family:
@@ -1010,7 +947,7 @@ button:disabled {
 
 .document-stage {
   position: relative;
-  max-width: 780px;
+  max-width: 980px;
   margin: 0 auto;
 }
 
@@ -1493,7 +1430,7 @@ button:disabled {
 }
 
 .document-state {
-  max-width: 780px;
+  max-width: 980px;
   margin: 0 auto;
 }
 
@@ -2136,20 +2073,6 @@ button:disabled {
   padding: 0 10px 15px;
 }
 
-.archive-link {
-  margin-top: 18px;
-  padding: 12px 10px;
-  border: 0;
-  border-radius: 8px;
-}
-
-.archive-link:hover,
-.archive-link:focus-visible,
-.archive-link.active {
-  padding-right: 12px;
-  padding-left: 12px;
-}
-
 .document-pane {
   padding: clamp(34px, 5vw, 64px) clamp(22px, 4vw, 64px) 150px;
   background:
@@ -2158,7 +2081,7 @@ button:disabled {
 }
 
 .document-meta {
-  max-width: 840px;
+  max-width: 980px;
   margin-bottom: 24px;
   padding: 0 2px 16px;
 }
@@ -2167,9 +2090,9 @@ button:disabled {
   gap: 12px;
 }
 
-/* 720px of text plus room either side for the comment markers to live in. */
+/* 860px of text plus room either side for the comment markers to live in. */
 .document-stage {
-  max-width: 840px;
+  max-width: 980px;
   padding: clamp(40px, 6vw, 64px) clamp(26px, 5vw, 60px) 72px;
   border: 1px solid rgb(255 255 255 / 6%);
   border-radius: 14px;
@@ -2180,7 +2103,7 @@ button:disabled {
 }
 
 .markdown-body {
-  max-width: 720px;
+  max-width: 860px;
   color: #d9d9d6;
   font-size: 18px;
   line-height: 1.8;
@@ -2286,7 +2209,7 @@ button:disabled {
   right: 0;
   bottom: 18px;
   left: 214px;
-  width: min(700px, calc(100vw - 48px));
+  width: min(820px, calc(100vw - 48px));
   padding: 9px 9px 9px 16px;
   border-color: rgb(111 140 255 / 22%);
   border-radius: 13px;
@@ -2402,10 +2325,6 @@ button:disabled {
   .document-outline-item.active {
     border-color: rgb(111 140 255 / 45%);
     background: rgb(111 140 255 / 12%);
-  }
-
-  .archive-link {
-    margin-top: 13px;
   }
 
   .archive-record-labels,

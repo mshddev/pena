@@ -26,7 +26,6 @@ export function PenaLayout({
         <DocumentOutline
           activeSectionId={activeSectionId}
           sections={sections}
-          workspaceSlug={workspaceSlug}
         />
         {children}
       </main>

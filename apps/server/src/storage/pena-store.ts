@@ -25,6 +25,11 @@ export interface PenaStore {
     status?: DocumentStatus,
   ): DocumentSummary[];
   listArchivedDocuments(workspaceSlug?: string): DocumentSummary[];
+  moveDocument(
+    workspaceSlug: string,
+    slug: string,
+    destinationWorkspaceSlug: string,
+  ): DocumentSummary;
   archiveDocument(workspaceSlug: string, slug: string): DocumentSummary;
   restoreDocument(workspaceSlug: string, slug: string): DocumentSummary;
   deleteArchivedDocument(workspaceSlug: string, slug: string): void;
@@ -52,6 +57,24 @@ export class DocumentNotArchivedError extends Error {
       `The document "${slug}" in workspace "${workspaceSlug}" must be archived before it can be deleted.`,
     );
     this.name = "DocumentNotArchivedError";
+  }
+}
+
+export class DocumentArchivedError extends Error {
+  constructor(workspaceSlug: string, slug: string) {
+    super(
+      `The document "${slug}" in workspace "${workspaceSlug}" must be restored before it can be moved.`,
+    );
+    this.name = "DocumentArchivedError";
+  }
+}
+
+export class DocumentSlugConflictError extends Error {
+  constructor(workspaceSlug: string, slug: string) {
+    super(
+      `A document with slug "${slug}" already exists in workspace "${workspaceSlug}".`,
+    );
+    this.name = "DocumentSlugConflictError";
   }
 }
 

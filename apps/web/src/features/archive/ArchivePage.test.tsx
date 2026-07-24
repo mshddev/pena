@@ -62,6 +62,7 @@ describe("archive", () => {
     expect(
       await screen.findByRole("heading", { name: "Old Draft" }),
     ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Move" })).toBeNull();
     expect(
       screen
         .getAllByRole("link", { name: "Default" })

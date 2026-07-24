@@ -209,6 +209,85 @@ describe("interactive decision review", () => {
 });
 
 describe("saved document index", () => {
+  it("moves an active document to another workspace", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === "/api/workspaces") {
+          return jsonResponse({
+            workspaces: [
+              {
+                slug: "default",
+                name: "Default",
+                documentCount: 1,
+                createdAt: "2026-07-18T10:00:00.000Z",
+                updatedAt: "2026-07-18T10:00:00.000Z",
+              },
+              {
+                slug: "research",
+                name: "Research",
+                documentCount: 0,
+                createdAt: "2026-07-18T10:00:00.000Z",
+                updatedAt: "2026-07-18T10:00:00.000Z",
+              },
+            ],
+          });
+        }
+
+        if (url === "/api/workspaces/default/documents") {
+          return documentListResponse();
+        }
+
+        if (url.endsWith("/feedback")) {
+          return jsonResponse({ batches: [] });
+        }
+
+        if (
+          url === "/api/workspaces/default/documents/review/move" &&
+          init?.method === "POST"
+        ) {
+          return jsonResponse(
+            {
+              error:
+                'A document with slug "review" already exists in workspace "research".',
+            },
+            409,
+          );
+        }
+
+        return jsonResponse(documentResponse);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+
+    await screen.findByRole("button", { name: "Move" });
+    await user.click(screen.getByRole("button", { name: "Move" }));
+    expect(
+      (screen.getByRole("combobox", {
+        name: "Destination workspace",
+      }) as HTMLSelectElement).value,
+    ).toBe("research");
+    await user.click(screen.getByRole("button", { name: "Move document" }));
+
+    expect(
+      await screen.findByText(
+        'A document with slug "review" already exists in workspace "research".',
+      ),
+    ).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/workspaces/default/documents/review/move",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workspaceSlug: "research" }),
+      },
+    );
+  });
+
   it("shows saved documents and marks the current document", async () => {
     vi.stubGlobal(
       "fetch",

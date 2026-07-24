@@ -93,6 +93,12 @@ export type DocumentUpdateRequest = z.infer<
   typeof DocumentUpdateRequestSchema
 >;
 
+export const DocumentMoveRequestSchema = z.object({
+  workspaceSlug: WorkspaceSlugSchema,
+});
+
+export type DocumentMoveRequest = z.infer<typeof DocumentMoveRequestSchema>;
+
 export const DocumentSummarySchema = DocumentSchema.omit({
   content: true,
 }).extend({

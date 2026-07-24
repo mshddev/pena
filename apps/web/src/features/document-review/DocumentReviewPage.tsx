@@ -2,6 +2,7 @@ import {
   parseDecisionDocument,
   type DocumentSummary,
   type PenaDocument,
+  type WorkspaceSummary,
 } from "@pena/contracts";
 import {
   useCallback,
@@ -15,6 +16,8 @@ import {
   fetchDocument,
   fetchDocuments,
   fetchFeedback,
+  fetchWorkspaces,
+  moveDocument,
   submitFeedback,
 } from "../../api";
 import { DocumentViewer } from "./components/DocumentViewer";
@@ -50,6 +53,10 @@ export function DocumentReviewPage({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
+  const [isMoving, setIsMoving] = useState(false);
+  const [isMoveOpen, setIsMoveOpen] = useState(false);
+  const [moveDestination, setMoveDestination] = useState("");
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [draftFeedback, setDraftFeedback] = useState<DraftFeedback[]>([]);
   const [submittedDecisions, setSubmittedDecisions] = useState<
     Record<string, string>
@@ -116,6 +123,12 @@ export function DocumentReviewPage({
   useEffect(() => {
     void loadDocuments();
   }, [loadDocuments]);
+
+  useEffect(() => {
+    void fetchWorkspaces()
+      .then((response) => setWorkspaces(response.workspaces ?? []))
+      .catch(() => setWorkspaces([]));
+  }, []);
 
   useEffect(() => {
     if (documentSlug) {
@@ -263,6 +276,72 @@ export function DocumentReviewPage({
     }
   }
 
+  function beginMove(): void {
+    if (draftFeedback.length > 0) {
+      setNotice({
+        kind: "error",
+        message: "Submit or remove the draft feedback before moving.",
+      });
+      return;
+    }
+
+    const firstDestination = workspaces.find(
+      (workspace) => workspace.slug !== workspaceSlug,
+    );
+
+    if (!firstDestination) {
+      return;
+    }
+
+    setMoveDestination(firstDestination.slug);
+    setIsMoveOpen(true);
+    setNotice(null);
+  }
+
+  function cancelMove(): void {
+    setIsMoveOpen(false);
+    setMoveDestination("");
+  }
+
+  async function handleMove(): Promise<void> {
+    if (!documentSlug || !currentDocument || !moveDestination) {
+      return;
+    }
+
+    if (draftFeedback.length > 0) {
+      setNotice({
+        kind: "error",
+        message: "Submit or remove the draft feedback before moving.",
+      });
+      return;
+    }
+
+    setIsMoving(true);
+    setNotice(null);
+
+    try {
+      const movedDocument = await moveDocument(
+        workspaceSlug,
+        documentSlug,
+        moveDestination,
+      );
+      window.location.assign(
+        `/workspaces/${movedDocument.workspaceSlug}/documents/${movedDocument.slug}`,
+      );
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        message:
+          error instanceof Error ? error.message : "Could not move the document.",
+      });
+      setIsMoving(false);
+    }
+  }
+
+  const moveDestinations = workspaces.filter(
+    (workspace) => workspace.slug !== workspaceSlug,
+  );
+
   return (
     <PenaLayout
       activeSlug={documentSlug}
@@ -271,106 +350,165 @@ export function DocumentReviewPage({
       isLoadingDocuments={isLoadingDocuments}
       isRefreshing={isLoading || isLoadingDocuments}
       onRefresh={handleRefresh}
+      workspaces={workspaces}
       workspaceSlug={workspaceSlug}
     >
       <section className="document-pane" aria-label="Document">
-          <div className="document-meta">
-            <div>
-              <p className="section-label">Current document</p>
-              <p className="document-hint">
-                {documentSlug
-                  ? "Select any passage to attach a comment."
-                  : "Open Pena with a document slug."}
-              </p>
-            </div>
-            <div className="document-identity">
-              {documentSlug ? (
-                <code className="document-slug">
-                  /{workspaceSlug}/{documentSlug}
-                </code>
-              ) : null}
-              {currentDocument ? (
-                <>
-                  <span className="document-version">
-                    Version {currentDocument.version}
-                  </span>
-                  <time dateTime={currentDocument.updatedAt}>
-                    Updated {formatTime(currentDocument.updatedAt)}
-                  </time>
+        <div className="document-meta">
+          <div>
+            <p className="section-label">Current document</p>
+            <p className="document-hint">
+              {documentSlug
+                ? "Select any passage to attach a comment."
+                : "Open Pena with a document slug."}
+            </p>
+          </div>
+          <div className="document-identity">
+            {documentSlug ? (
+              <code className="document-slug">
+                /{workspaceSlug}/{documentSlug}
+              </code>
+            ) : null}
+            {currentDocument ? (
+              <>
+                <span className="document-version">
+                  Version {currentDocument.version}
+                </span>
+                <time dateTime={currentDocument.updatedAt}>
+                  Updated {formatTime(currentDocument.updatedAt)}
+                </time>
+                {moveDestinations.length > 0 ? (
                   <button
-                    className="archive-document-button"
+                    className="move-document-button"
                     type="button"
-                    onClick={() => void handleArchive()}
-                    disabled={isArchiving}
+                    onClick={beginMove}
+                    disabled={isArchiving || isMoving}
                   >
-                    <ArchiveIcon />
-                    {isArchiving ? "Archiving" : "Archive"}
+                    <MoveIcon />
+                    Move
                   </button>
-                </>
-              ) : null}
+                ) : null}
+                <button
+                  className="archive-document-button"
+                  type="button"
+                  onClick={() => void handleArchive()}
+                  disabled={isArchiving || isMoving}
+                >
+                  <ArchiveIcon />
+                  {isArchiving ? "Archiving" : "Archive"}
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        {isMoveOpen && currentDocument ? (
+          <div
+            className="move-document-panel"
+            role="group"
+            aria-label="Move document"
+          >
+            <div>
+              <p className="move-document-title">Move this document</p>
+              <p>Feedback and version history move with it.</p>
+            </div>
+            <label>
+              <span>Destination workspace</span>
+              <select
+                aria-label="Destination workspace"
+                value={moveDestination}
+                onChange={(event) => setMoveDestination(event.target.value)}
+                disabled={isMoving}
+                autoFocus
+              >
+                {moveDestinations.map((workspace) => (
+                  <option value={workspace.slug} key={workspace.slug}>
+                    {workspace.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="move-document-actions">
+              <button
+                className="quiet-button"
+                type="button"
+                onClick={cancelMove}
+                disabled={isMoving}
+              >
+                Cancel
+              </button>
+              <button
+                className="confirm-move-button"
+                type="button"
+                onClick={() => void handleMove()}
+                disabled={!moveDestination || isMoving}
+              >
+                {isMoving ? "Moving" : "Move document"}
+              </button>
             </div>
           </div>
+        ) : null}
 
-          {!documentSlug ? (
-            <DocumentState
-              glyph={documents.length > 0 ? "↗" : "/"}
-              title={
-                documents.length > 0
-                  ? "Select a document"
-                  : "No documents published yet"
-              }
-              description={
-                documents.length > 0 ? (
-                  "Choose a saved document from the index to start reviewing."
-                ) : (
-                  <>
-                    Publish Markdown with the Pena skill. Saved documents will
-                    appear in this index automatically.
-                  </>
-                )
-              }
-            />
-          ) : isLoading ? (
-            <div className="document-state" aria-live="polite">
-              <span className="loading-line" />
-              <span className="loading-line short" />
-              <span className="loading-line" />
-            </div>
-          ) : currentDocument ? (
-            <DocumentViewer
-              document={currentDocument}
-              draftFeedback={draftFeedback}
-              submittedDecisions={submittedDecisions}
-              isSubmitting={isSubmitting}
-              notice={notice}
-              onDraftSaved={saveDraft}
-              onDraftDeleted={(draftId) =>
-                setDraftFeedback((drafts) =>
-                  drafts.filter((draft) => draft.id !== draftId),
-                )
-              }
-              onDecisionDraftChanged={saveDecisionDraft}
-              onNoticeClear={() => setNotice(null)}
-              onSubmitFeedback={() => void sendFeedback()}
-            />
-          ) : notice?.kind === "error" ? (
-            <DocumentState
-              glyph="!"
-              title="Could not load document"
-              description={notice.message}
-            />
-          ) : (
-            <DocumentState
-              glyph="¶"
-              title="No document published yet"
-              description={
+        {!documentSlug ? (
+          <DocumentState
+            glyph={documents.length > 0 ? "↗" : "/"}
+            title={
+              documents.length > 0
+                ? "Select a document"
+                : "No documents published yet"
+            }
+            description={
+              documents.length > 0 ? (
+                "Choose a saved document from the index to start reviewing."
+              ) : (
                 <>
-                  Ask Claude to publish Markdown using the{" "}
-                  <strong>{documentSlug}</strong> slug, then refresh this page.
+                  Publish Markdown with the Pena skill. Saved documents will
+                  appear in this index automatically.
                 </>
-              }
-            />
-          )}
+              )
+            }
+          />
+        ) : isLoading ? (
+          <div className="document-state" aria-live="polite">
+            <span className="loading-line" />
+            <span className="loading-line short" />
+            <span className="loading-line" />
+          </div>
+        ) : currentDocument ? (
+          <DocumentViewer
+            document={currentDocument}
+            draftFeedback={draftFeedback}
+            submittedDecisions={submittedDecisions}
+            isSubmitting={isSubmitting}
+            notice={notice}
+            onDraftSaved={saveDraft}
+            onDraftDeleted={(draftId) =>
+              setDraftFeedback((drafts) =>
+                drafts.filter((draft) => draft.id !== draftId),
+              )
+            }
+            onDecisionDraftChanged={saveDecisionDraft}
+            onNoticeClear={() => setNotice(null)}
+            onSubmitFeedback={() => void sendFeedback()}
+          />
+        ) : notice?.kind === "error" ? (
+          <DocumentState
+            glyph="!"
+            title="Could not load document"
+            description={notice.message}
+          />
+        ) : (
+          <DocumentState
+            glyph="¶"
+            title="No document published yet"
+            description={
+              <>
+                Ask Claude to publish Markdown using the{" "}
+                <strong>{documentSlug}</strong> slug, then refresh this page.
+              </>
+            }
+          />
+        )}
       </section>
     </PenaLayout>
   );
@@ -411,6 +549,17 @@ function ArchiveIcon() {
       <path d="M2.5 5h11v8h-11z" />
       <path d="M2 2.5h12V5H2z" />
       <path d="M6 8h4" />
+    </svg>
+  );
+}
+
+function MoveIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 5.5h7" />
+      <path d="m7 2.5 3 3-3 3" />
+      <path d="M13.5 10.5h-7" />
+      <path d="m9 7.5-3 3 3 3" />
     </svg>
   );
 }

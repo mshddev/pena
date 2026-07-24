@@ -23,8 +23,10 @@ import Database from "better-sqlite3";
 
 import {
   DefaultWorkspaceProtectedError,
+  DocumentArchivedError,
   DocumentNotArchivedError,
   DocumentNotFoundError,
+  DocumentSlugConflictError,
   PersistedDataError,
   UnsupportedSchemaVersionError,
   WorkspaceNameConflictError,
@@ -402,6 +404,44 @@ export class SqlitePenaStore implements PenaStore {
           .all();
 
     return rows.map(toDocumentSummary);
+  }
+
+  moveDocument(
+    workspaceSlug: string,
+    slug: string,
+    destinationWorkspaceSlug: string,
+  ): DocumentSummary {
+    const document = this.requireDocumentRow(workspaceSlug, slug);
+
+    if (document.archived_at !== null) {
+      throw new DocumentArchivedError(workspaceSlug, slug);
+    }
+
+    const destinationWorkspace = this.requireWorkspaceRow(
+      destinationWorkspaceSlug,
+    );
+
+    if (workspaceSlug === destinationWorkspaceSlug) {
+      return toDocumentSummary(document);
+    }
+
+    if (this.getDocumentRow(destinationWorkspace.id, slug)) {
+      throw new DocumentSlugConflictError(destinationWorkspaceSlug, slug);
+    }
+
+    this.database
+      .prepare<[number, number]>(
+        "UPDATE documents SET workspace_id = ? WHERE id = ?",
+      )
+      .run(destinationWorkspace.id, document.id);
+
+    return DocumentSummarySchema.parse({
+      workspaceSlug: destinationWorkspaceSlug,
+      slug: document.slug,
+      version: document.version,
+      updatedAt: document.updated_at,
+      archivedAt: null,
+    });
   }
 
   archiveDocument(workspaceSlug: string, slug: string): DocumentSummary {

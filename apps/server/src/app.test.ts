@@ -153,6 +153,81 @@ describe("Pena API", () => {
     ).toHaveLength(1);
   });
 
+  it("moves an active document to another workspace", async () => {
+    const app = createApp();
+    await app.inject({
+      method: "POST",
+      url: "/api/workspaces",
+      payload: { name: "Research" },
+    });
+    await publishDocument(app);
+    await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      payload: feedbackPayload,
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `${DOCUMENT_URL}/move`,
+      payload: { workspaceSlug: "research" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers.location).toBe(
+      "/api/workspaces/research/documents/initial-spec",
+    );
+    expect(response.json()).toMatchObject({
+      workspaceSlug: "research",
+      slug: "initial-spec",
+    });
+    expect((await app.inject({ method: "GET", url: DOCUMENT_URL })).statusCode)
+      .toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/workspaces/research/documents/initial-spec/feedback",
+        })
+      ).json().batches,
+    ).toHaveLength(1);
+  });
+
+  it("blocks moving archived documents and destination slug collisions", async () => {
+    const app = createApp();
+    await app.inject({
+      method: "POST",
+      url: "/api/workspaces",
+      payload: { name: "Research" },
+    });
+    await publishDocument(app);
+    await publishDocument(
+      app,
+      "/api/workspaces/research/documents/initial-spec",
+      "Research copy",
+    );
+
+    const collision = await app.inject({
+      method: "POST",
+      url: `${DOCUMENT_URL}/move`,
+      payload: { workspaceSlug: "research" },
+    });
+    expect(collision.statusCode).toBe(409);
+
+    await app.inject({
+      method: "PATCH",
+      url: DOCUMENT_URL,
+      payload: { status: "archived" },
+    });
+    const archived = await app.inject({
+      method: "POST",
+      url: `${DOCUMENT_URL}/move`,
+      payload: { workspaceSlug: "research" },
+    });
+    expect(archived.statusCode).toBe(409);
+    expect(archived.json().error).toContain("restored");
+  });
+
   it("lists published documents by most recent update", async () => {
     const app = createApp();
     await publishDocument(
@@ -506,6 +581,9 @@ describe("Pena API", () => {
         throw new Error("Not used in this test.");
       },
       listArchivedDocuments() {
+        throw new Error("Not used in this test.");
+      },
+      moveDocument() {
         throw new Error("Not used in this test.");
       },
       archiveDocument() {

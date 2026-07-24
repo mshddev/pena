@@ -1,6 +1,6 @@
 ---
 name: pena
-description: Use Pena to publish Markdown documents for review; retrieve, apply, and republish user feedback; and inspect archived documents. Use when the user asks to send or publish a document to Pena, add Pena decision blocks, read Pena feedback, revise a document reviewed in Pena, or browse its archive.
+description: Use Pena to publish and move Markdown documents for review; retrieve, apply, and republish user feedback; and inspect archived documents. Use when the user asks to send, publish, or move a document in Pena, add Pena decision blocks, read Pena feedback, revise a document reviewed in Pena, or browse its archive.
 ---
 
 # Pena
@@ -66,6 +66,20 @@ Retrieve feedback only when the user explicitly asks.
 6. If the document changes, republish it under the same workspace and document slug.
 
 If Pena cannot be reached, report the error instead of guessing.
+
+## Move a document
+
+Move a document only when the user explicitly asks. Resolve the destination workspace, then move the active document:
+
+```bash
+curl --fail --silent --show-error \
+  --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"workspaceSlug":"<destination-workspace-slug>"}' \
+  http://127.0.0.1:8788/api/workspaces/<source-workspace-slug>/documents/<document-slug>/move
+```
+
+The document's feedback, version, and timestamps move with it. Never overwrite a destination document with the same slug. Restore an archived document before moving it.
 
 ## Browse archived documents
 

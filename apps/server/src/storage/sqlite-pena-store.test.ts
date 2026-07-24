@@ -6,8 +6,10 @@ import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  DocumentArchivedError,
   DocumentNotArchivedError,
   DocumentNotFoundError,
+  DocumentSlugConflictError,
   PersistedDataError,
   UnsupportedSchemaVersionError,
 } from "./pena-store.js";
@@ -123,6 +125,48 @@ describe("SqlitePenaStore", () => {
     expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG)).toEqual([restored]);
     expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG, "archived")).toEqual([]);
     expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches).toHaveLength(1);
+  });
+
+  it("moves an active document and its feedback to another workspace", () => {
+    const store = createStore();
+    store.createWorkspace("Research");
+    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Current draft");
+    store.addFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec", feedbackSubmission);
+
+    const moved = store.moveDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "research",
+    );
+
+    expect(moved).toMatchObject({
+      workspaceSlug: "research",
+      slug: "initial-spec",
+      version: 1,
+      archivedAt: null,
+    });
+    expect(store.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toBeNull();
+    expect(store.getDocument("research", "initial-spec")).toMatchObject({
+      content: "Current draft",
+      workspaceSlug: "research",
+    });
+    expect(store.getFeedback("research", "initial-spec").batches).toHaveLength(1);
+  });
+
+  it("blocks moving archived documents and destination slug collisions", () => {
+    const store = createStore();
+    store.createWorkspace("Research");
+    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Default");
+    store.publishDocument("research", "initial-spec", "Research");
+
+    expect(() =>
+      store.moveDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "research"),
+    ).toThrow(DocumentSlugConflictError);
+
+    store.archiveDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec");
+    expect(() =>
+      store.moveDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "research"),
+    ).toThrow(DocumentArchivedError);
   });
 
   it("lists archived documents across workspaces and supports filtering", () => {

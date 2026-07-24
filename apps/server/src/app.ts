@@ -1,5 +1,6 @@
 import {
   DecisionBlockSyntaxError,
+  DocumentMoveRequestSchema,
   DocumentSlugSchema,
   DocumentStatusSchema,
   DocumentUpdateRequestSchema,
@@ -17,8 +18,10 @@ import Fastify, {
 
 import {
   DefaultWorkspaceProtectedError,
+  DocumentArchivedError,
   DocumentNotArchivedError,
   DocumentNotFoundError,
+  DocumentSlugConflictError,
   PersistedDataError,
   WorkspaceNameConflictError,
   WorkspaceNameInvalidError,
@@ -281,6 +284,40 @@ export function buildApp(store: PenaStore): FastifyInstance {
     },
   );
 
+  app.post<{ Params: DocumentParams }>(
+    "/api/workspaces/:workspaceSlug/documents/:documentSlug/move",
+    async (request, reply) => {
+      const params = parseDocumentParams(request.params, reply);
+      const parsedRequest = DocumentMoveRequestSchema.safeParse(request.body);
+
+      if (!params) {
+        return;
+      }
+
+      if (!parsedRequest.success) {
+        return reply.code(400).send({
+          error: "The destination workspace slug is invalid.",
+        });
+      }
+
+      try {
+        const movedDocument = store.moveDocument(
+          params.workspaceSlug,
+          params.documentSlug,
+          parsedRequest.data.workspaceSlug,
+        );
+        return reply
+          .header(
+            "location",
+            `/api/workspaces/${movedDocument.workspaceSlug}/documents/${movedDocument.slug}`,
+          )
+          .send(movedDocument);
+      } catch (error) {
+        return sendDocumentError(reply, error);
+      }
+    },
+  );
+
   app.delete<{ Params: DocumentParams }>(
     "/api/workspaces/:workspaceSlug/documents/:documentSlug",
     async (request, reply) => {
@@ -432,7 +469,11 @@ function sendDocumentError(reply: FastifyReply, error: unknown) {
     return reply.code(404).send({ error: error.message });
   }
 
-  if (error instanceof DocumentNotArchivedError) {
+  if (
+    error instanceof DocumentNotArchivedError ||
+    error instanceof DocumentArchivedError ||
+    error instanceof DocumentSlugConflictError
+  ) {
     return reply.code(409).send({ error: error.message });
   }
 

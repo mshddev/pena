@@ -544,7 +544,8 @@ button:disabled {
   margin-left: 24px;
 }
 
-.archive-document-button {
+.archive-document-button,
+.move-document-button {
   display: inline-flex;
   min-height: 28px;
   align-items: center;
@@ -558,17 +559,85 @@ button:disabled {
   transition: color 150ms ease;
 }
 
-.archive-document-button:hover:not(:disabled) {
+.archive-document-button:hover:not(:disabled),
+.move-document-button:hover:not(:disabled) {
   color: var(--text);
 }
 
-.archive-document-button svg {
+.archive-document-button svg,
+.move-document-button svg {
   width: 13px;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.25;
+}
+
+.move-document-panel {
+  display: grid;
+  max-width: 780px;
+  grid-template-columns: minmax(220px, 1fr) 220px auto;
+  gap: 24px;
+  align-items: end;
+  margin: -28px auto 46px;
+  padding: 18px 0 18px 18px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  background: rgb(217 164 65 / 3%);
+  animation: delete-confirmation-enter 180ms ease-out both;
+}
+
+.move-document-title {
+  margin: 0 0 5px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.move-document-panel p:not(.move-document-title) {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.move-document-panel label > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.move-document-panel select {
+  width: 100%;
+  height: 36px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  padding: 0 32px 0 10px;
+  background: var(--bg);
+  color: var(--text);
+  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.move-document-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.confirm-move-button {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  transition: background 150ms ease;
+}
+
+.confirm-move-button:hover:not(:disabled) {
+  background: var(--accent-bright);
 }
 
 .archive-pane {
@@ -1800,6 +1869,14 @@ button:disabled {
     display: none;
   }
 
+  .move-document-panel {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .move-document-panel > div:first-child {
+    grid-column: 1 / -1;
+  }
+
   .delete-confirmation {
     grid-template-columns: 1fr 1fr;
   }
@@ -1873,6 +1950,22 @@ button:disabled {
   .document-identity {
     flex-wrap: wrap;
     margin: 12px 0 0;
+  }
+
+  .move-document-panel {
+    display: block;
+    margin-top: -16px;
+    padding: 18px 0 18px 14px;
+  }
+
+  .move-document-panel label {
+    display: block;
+    margin-top: 18px;
+  }
+
+  .move-document-actions {
+    justify-content: flex-end;
+    margin-top: 12px;
   }
 
   .archive-pane {

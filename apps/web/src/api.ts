@@ -131,6 +131,22 @@ export async function restoreDocument(
   return updateDocumentStatus(workspaceSlug, documentSlug, "active");
 }
 
+export async function moveDocument(
+  workspaceSlug: string,
+  documentSlug: string,
+  destinationWorkspaceSlug: string,
+): Promise<DocumentSummary> {
+  const response = await fetch(
+    `${documentUrl(workspaceSlug, documentSlug)}/move`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workspaceSlug: destinationWorkspaceSlug }),
+    },
+  );
+  return parseResponse<DocumentSummary>(response);
+}
+
 export async function deleteDocument(
   workspaceSlug: string,
   documentSlug: string,

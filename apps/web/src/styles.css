@@ -996,13 +996,6 @@ button:disabled {
   background: rgb(111 140 255 / 12%);
 }
 
-.document-slug {
-  padding: 4px 7px;
-  border: 1px solid var(--line);
-  color: var(--accent-bright);
-  font-size: 11px;
-}
-
 .markdown-body {
   width: 100%;
   max-width: 720px;
@@ -2172,14 +2165,6 @@ button:disabled {
 
 .document-identity {
   gap: 12px;
-}
-
-.document-slug {
-  border: 0;
-  border-radius: 6px;
-  padding: 5px 8px;
-  background: rgb(111 140 255 / 10%);
-  color: var(--accent-bright);
 }
 
 /* 720px of text plus room either side for the comment markers to live in. */

@@ -371,9 +371,6 @@ export function DocumentReviewPage({
             <span className="document-breadcrumb-current">{documentSlug}</span>
           </nav>
           <div className="document-identity">
-            <code className="document-slug">
-              /{workspaceSlug}/{documentSlug}
-            </code>
             {currentDocument ? (
               <>
                 <span

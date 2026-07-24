@@ -84,7 +84,7 @@ describe("archive", () => {
     );
   });
 
-  it("requires the exact slug before permanent deletion", async () => {
+  it("takes a second explicit confirmation before permanent deletion", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -116,17 +116,19 @@ describe("archive", () => {
       screen.getByRole("button", { name: "Delete permanently" }),
     );
 
-    const confirmation = screen.getByLabelText(
-      /Type default\/old-draft to confirm/,
+    // The row expands to spell out what is lost; nothing is sent until the
+    // second, differently-worded button is pressed.
+    expect(
+      screen.getByText("Permanently delete Old Draft?"),
+    ).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/workspaces/default/documents/old-draft",
+      { method: "DELETE" },
     );
-    const confirmButton = screen.getAllByRole("button", {
-      name: "Delete permanently",
-    })[1] as HTMLButtonElement;
 
-    expect(confirmButton.disabled).toBe(true);
-    await user.type(confirmation, "default/old-draft");
-    expect(confirmButton.disabled).toBe(false);
-    await user.click(confirmButton);
+    await user.click(
+      screen.getByRole("button", { name: "Yes, delete permanently" }),
+    );
 
     expect(
       await screen.findByText("Old Draft permanently deleted."),

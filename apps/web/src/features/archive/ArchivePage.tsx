@@ -1,5 +1,5 @@
 import type { DocumentSummary, WorkspaceSummary } from "@pena/contracts";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   deleteDocument,
@@ -7,7 +7,9 @@ import {
   fetchWorkspaces,
   restoreDocument,
 } from "../../api";
-import { PenaLayout } from "../document-review/components/PenaLayout";
+import { UtilityBar } from "../../components/UtilityBar";
+import { formatRelativeTime } from "../../format";
+import { isSearchShortcut, searchShortcutLabel } from "../../shortcuts";
 import type { Notice } from "../document-review/types";
 
 interface ArchivePageProps {
@@ -22,10 +24,13 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
+  const [query, setQuery] = useState("");
+  const [isScopeOpen, setIsScopeOpen] = useState(false);
   const [restoringKey, setRestoringKey] = useState<string | null>(null);
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<string | null>(null);
-  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const scopeRef = useRef<HTMLDivElement>(null);
 
   const loadDocuments = useCallback(async () => {
     setIsLoading(true);
@@ -55,6 +60,74 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
       : "Archive · Pena";
     void loadDocuments();
   }, [loadDocuments]);
+
+  useEffect(() => {
+    function handleShortcut(event: KeyboardEvent): void {
+      if (!isSearchShortcut(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      searchRef.current?.focus();
+    }
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
+
+  useEffect(() => {
+    if (!isScopeOpen) {
+      return;
+    }
+
+    function handleDismiss(event: MouseEvent | KeyboardEvent): void {
+      if (event instanceof KeyboardEvent) {
+        if (event.key === "Escape") {
+          setIsScopeOpen(false);
+        }
+        return;
+      }
+
+      if (!scopeRef.current?.contains(event.target as Node)) {
+        setIsScopeOpen(false);
+      }
+    }
+
+    window.addEventListener("pointerdown", handleDismiss);
+    window.addEventListener("keydown", handleDismiss);
+    return () => {
+      window.removeEventListener("pointerdown", handleDismiss);
+      window.removeEventListener("keydown", handleDismiss);
+    };
+  }, [isScopeOpen]);
+
+  function workspaceName(slug: string): string {
+    return (
+      workspaces.find((workspace) => workspace.slug === slug)?.name ??
+      formatSlug(slug)
+    );
+  }
+
+  const matches = useMemo(() => {
+    const search = query.trim().toLowerCase();
+
+    if (search.length === 0) {
+      return archivedDocuments;
+    }
+
+    return archivedDocuments.filter((document) => {
+      const workspace =
+        workspaces.find((entry) => entry.slug === document.workspaceSlug)
+          ?.name ?? document.workspaceSlug;
+
+      return (
+        document.slug.toLowerCase().includes(search) ||
+        formatSlug(document.slug).toLowerCase().includes(search) ||
+        document.workspaceSlug.toLowerCase().includes(search) ||
+        workspace.toLowerCase().includes(search)
+      );
+    });
+  }, [archivedDocuments, query, workspaces]);
 
   async function handleRestore(
     documentWorkspaceSlug: string,
@@ -91,13 +164,11 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
 
   function beginDelete(workspace: string, slug: string): void {
     setDeleteCandidate(documentKey(workspace, slug));
-    setDeleteConfirmation("");
     setNotice(null);
   }
 
   function cancelDelete(): void {
     setDeleteCandidate(null);
-    setDeleteConfirmation("");
   }
 
   async function handleDelete(
@@ -105,11 +176,6 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
     slug: string,
   ): Promise<void> {
     const key = documentKey(documentWorkspaceSlug, slug);
-
-    if (deleteConfirmation !== key) {
-      return;
-    }
-
     setDeletingKey(key);
     setNotice(null);
 
@@ -139,40 +205,80 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
     }
   }
 
-  function workspaceName(slug: string): string {
-    return (
-      workspaces.find((workspace) => workspace.slug === slug)?.name ??
-      formatSlug(slug)
-    );
-  }
+  const scopeName = workspaceSlug
+    ? workspaceName(workspaceSlug)
+    : "All workspaces";
+  const hasDocuments = archivedDocuments.length > 0;
 
   return (
-    <PenaLayout
-      activeSlug={null}
-      documents={[]}
-      documentListError={error}
-      isArchiveActive
-      isLoadingDocuments={isLoading}
-      workspaces={workspaces}
-      workspaceSlug={workspaceSlug}
-    >
-      <section className="archive-pane" aria-labelledby="archive-title">
+    <div className="archive-shell">
+      <UtilityBar current="archive" workspaceSlug={workspaceSlug} />
+
+      <main className="archive-main" aria-labelledby="archive-title">
         <header className="archive-heading">
-          <div>
-            <p className="section-label">
-              {workspaceSlug ? workspaceName(workspaceSlug) : "All workspaces"}
-            </p>
-            <h1 id="archive-title">Archive</h1>
-            <p>
-              Documents stay connected to their original workspace when restored.
-            </p>
+          <div className="archive-scope" ref={scopeRef}>
+            <p className="section-label">{scopeName}</p>
+            <h1 className="archive-title" id="archive-title">
+              <button
+                className="archive-scope-trigger"
+                type="button"
+                aria-expanded={isScopeOpen}
+                aria-haspopup="true"
+                onClick={() => setIsScopeOpen((current) => !current)}
+              >
+                Archive · {scopeName}
+                <CaretIcon />
+              </button>
+            </h1>
+
+            {isScopeOpen ? (
+              <nav
+                className="archive-scope-menu"
+                aria-label="Filter the archive by workspace"
+              >
+                <ScopeOption
+                  href="/archive"
+                  isActive={workspaceSlug === null}
+                  label="All workspaces"
+                />
+                {workspaces.map((workspace) => (
+                  <ScopeOption
+                    href={`/archive?workspace=${encodeURIComponent(workspace.slug)}`}
+                    isActive={workspaceSlug === workspace.slug}
+                    key={workspace.slug}
+                    label={workspace.name}
+                  />
+                ))}
+              </nav>
+            ) : null}
           </div>
+
           {!isLoading && !error ? (
             <span className="archive-count">
               {archivedDocuments.length} archived
             </span>
           ) : null}
         </header>
+
+        {!isLoading && !error && hasDocuments ? (
+          <div className="archive-search">
+            <SearchIcon />
+            <input
+              ref={searchRef}
+              type="search"
+              aria-label="Search the archive"
+              placeholder="Search the archive"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              autoComplete="off"
+            />
+            {query.length === 0 ? (
+              <kbd className="archive-search-hint" aria-hidden="true">
+                {searchShortcutLabel()}
+              </kbd>
+            ) : null}
+          </div>
+        ) : null}
 
         {notice ? (
           <p className={`archive-notice ${notice.kind}`} role="status">
@@ -188,26 +294,45 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
           </div>
         ) : error ? (
           <div className="archive-empty-state">
-            <span aria-hidden="true">!</span>
+            <span className="archive-empty-glyph" aria-hidden="true">
+              <AlertIcon />
+            </span>
             <h2>Could not load archive</h2>
             <p>{error}</p>
           </div>
-        ) : archivedDocuments.length === 0 ? (
+        ) : !hasDocuments ? (
           <div className="archive-empty-state">
-            <span aria-hidden="true">□</span>
-            <h2>The archive is empty</h2>
+            <span className="archive-empty-glyph" aria-hidden="true">
+              <ArchiveGlyph />
+            </span>
+            <h2>Nothing archived yet</h2>
             <p>
               {workspaceSlug
-                ? `No documents from ${workspaceName(workspaceSlug)} are archived.`
-                : "Documents you archive from any workspace will appear here."}
+                ? `Documents you archive from ${workspaceName(workspaceSlug)} land here.`
+                : "Documents you archive from any workspace land here."}{" "}
+              They keep their feedback, and go back to their original workspace
+              when you restore them.
             </p>
             <a href={workspaceSlug ? `/workspaces/${workspaceSlug}` : "/"}>
-              Return to documents
+              {workspaceSlug
+                ? `Back to ${workspaceName(workspaceSlug)}`
+                : "Back to the dashboard"}
             </a>
           </div>
+        ) : matches.length === 0 ? (
+          <p className="archive-no-matches">
+            No archived documents match “{query.trim()}”.
+          </p>
         ) : (
           <div className="archive-list">
-            {archivedDocuments.map((document) => {
+            <div className="archive-record-labels" aria-hidden="true">
+              <span>Archived</span>
+              <span>Document</span>
+              <span>Details</span>
+              <span>Actions</span>
+            </div>
+
+            {matches.map((document) => {
               const key = documentKey(document.workspaceSlug, document.slug);
               const isConfirmingDelete = deleteCandidate === key;
               const isRestoring = restoringKey === key;
@@ -220,7 +345,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                       <span>Archived</span>
                       {document.archivedAt ? (
                         <time dateTime={document.archivedAt}>
-                          {formatDate(document.archivedAt)}
+                          {formatRelativeTime(document.archivedAt)}
                         </time>
                       ) : (
                         <span>Unknown</span>
@@ -229,19 +354,21 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
 
                     <div className="archive-document-name">
                       <h2>{formatSlug(document.slug)}</h2>
-                      <a
-                        className="archive-workspace-link"
-                        href={`/workspaces/${document.workspaceSlug}`}
-                      >
-                        {workspaceName(document.workspaceSlug)}
-                      </a>
-                      <code>{document.workspaceSlug}/{document.slug}</code>
+                      <div className="archive-document-meta">
+                        <a
+                          className="archive-workspace-link"
+                          href={`/workspaces/${document.workspaceSlug}`}
+                        >
+                          {workspaceName(document.workspaceSlug)}
+                        </a>
+                        <code>{document.workspaceSlug}/{document.slug}</code>
+                      </div>
                     </div>
 
                     <div className="archive-record-meta">
                       <span>Version {document.version}</span>
                       <time dateTime={document.updatedAt}>
-                        Updated {formatDate(document.updatedAt)}
+                        Updated {formatRelativeTime(document.updatedAt)}
                       </time>
                     </div>
 
@@ -257,6 +384,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                         }
                         disabled={isRestoring || isDeleting}
                       >
+                        <RestoreIcon />
                         {isRestoring ? "Restoring" : "Restore"}
                       </button>
                       <button
@@ -279,23 +407,12 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                           Permanently delete {formatSlug(document.slug)}?
                         </p>
                         <p>
-                          The document and all of its feedback will be removed.
-                          This cannot be undone.
+                          The document, its {document.version} published{" "}
+                          {document.version === 1 ? "version" : "versions"} and
+                          all of its feedback will be removed. This cannot be
+                          undone.
                         </p>
                       </div>
-                      <label htmlFor={`delete-${document.workspaceSlug}-${document.slug}`}>
-                        Type <code>{key}</code> to confirm
-                      </label>
-                      <input
-                        id={`delete-${document.workspaceSlug}-${document.slug}`}
-                        type="text"
-                        value={deleteConfirmation}
-                        onChange={(event) =>
-                          setDeleteConfirmation(event.target.value)
-                        }
-                        autoComplete="off"
-                        autoFocus
-                      />
                       <div className="delete-confirmation-actions">
                         <button
                           className="quiet-button"
@@ -314,11 +431,9 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                               document.slug,
                             )
                           }
-                          disabled={
-                            deleteConfirmation !== key || isDeleting
-                          }
+                          disabled={isDeleting}
                         >
-                          {isDeleting ? "Deleting" : "Delete permanently"}
+                          {isDeleting ? "Deleting" : "Yes, delete permanently"}
                         </button>
                       </div>
                     </div>
@@ -328,8 +443,26 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
             })}
           </div>
         )}
-      </section>
-    </PenaLayout>
+      </main>
+    </div>
+  );
+}
+
+interface ScopeOptionProps {
+  href: string;
+  isActive: boolean;
+  label: string;
+}
+
+function ScopeOption({ href, isActive, label }: ScopeOptionProps) {
+  return (
+    <a
+      className={`archive-scope-option${isActive ? " active" : ""}`}
+      href={href}
+      aria-current={isActive ? "page" : undefined}
+    >
+      {label}
+    </a>
   );
 }
 
@@ -344,10 +477,48 @@ function formatSlug(slug: string): string {
     .join(" ");
 }
 
-function formatDate(date: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(new Date(date));
+function CaretIcon() {
+  return (
+    <svg className="archive-caret" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="m4 6.5 4 4 4-4" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg className="archive-search-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.5" />
+      <path d="m10.5 10.5 3 3" />
+    </svg>
+  );
+}
+
+function RestoreIcon() {
+  return (
+    <svg className="restore-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3 8a5 5 0 1 0 1.6-3.7" />
+      <path d="M2.6 2.6v3h3" />
+    </svg>
+  );
+}
+
+function ArchiveGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 5.5h11v8h-11z" />
+      <path d="M2 2.5h12v3H2z" />
+      <path d="M6.5 9h3" />
+    </svg>
+  );
+}
+
+function AlertIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 4.8v4" />
+      <path d="M8 10.9v.1" />
+    </svg>
+  );
 }

@@ -351,7 +351,6 @@ export function DocumentReviewPage({
       documents={documents}
       documentListError={documentListError}
       isLoadingDocuments={isLoadingDocuments}
-      workspaces={workspaces}
       workspaceSlug={workspaceSlug}
     >
       <section className="document-pane" aria-label="Document">

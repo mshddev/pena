@@ -1,6 +1,7 @@
 import type { FormEvent, RefObject } from "react";
 
 import type { SelectedPassage } from "../../../selection";
+import { isSaveShortcut, saveShortcutLabel } from "../../../shortcuts";
 
 interface CommentComposerProps {
   passage: SelectedPassage;
@@ -39,11 +40,9 @@ export function CommentComposer({
           value={commentText}
           onChange={(event) => onCommentChange(event.target.value)}
           onKeyDown={(event) => {
-            if (
-              event.key === "Enter" &&
-              !event.shiftKey &&
-              !event.nativeEvent.isComposing
-            ) {
+            // Enter writes a new line; saving is the deliberate chord, which is
+            // also what the hint under the field promises.
+            if (isSaveShortcut(event) && !event.nativeEvent.isComposing) {
               event.preventDefault();
               event.currentTarget.form?.requestSubmit();
             }
@@ -51,6 +50,10 @@ export function CommentComposer({
           placeholder="What should change?"
           rows={3}
         />
+        <p className="composer-hint">
+          <kbd>{saveShortcutLabel()}</kbd> save
+          <kbd>Esc</kbd> cancel
+        </p>
         <div className="composer-actions">
           {isEditing && onDelete ? (
             <button

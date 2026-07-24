@@ -1,6 +1,5 @@
 import {
   parseDecisionDocument,
-  type DocumentSummary,
   type PenaDocument,
   type WorkspaceSummary,
 } from "@pena/contracts";
@@ -14,18 +13,20 @@ import {
 import {
   archiveDocument,
   fetchDocument,
-  fetchDocuments,
   fetchFeedback,
   fetchWorkspaces,
   moveDocument,
   submitFeedback,
 } from "../../api";
+import { formatRelativeTime } from "../../format";
+import { isSubmitAllShortcut } from "../../shortcuts";
 import { DocumentViewer } from "./components/DocumentViewer";
 import { PenaLayout } from "./components/PenaLayout";
 import {
   formatFeedbackCount,
   readSubmittedDecisions,
 } from "./decision-feedback";
+import type { OutlineSection } from "./outline";
 import type {
   DraftComment,
   DraftDecision,
@@ -45,12 +46,9 @@ export function DocumentReviewPage({
   const [currentDocument, setCurrentDocument] = useState<PenaDocument | null>(
     null,
   );
-  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
+  const [sections, setSections] = useState<OutlineSection[]>([]);
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(documentSlug !== null);
-  const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
-  const [documentListError, setDocumentListError] = useState<string | null>(
-    null,
-  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
@@ -104,25 +102,15 @@ export function DocumentReviewPage({
     }
   }, [documentSlug, workspaceSlug]);
 
-  const loadDocuments = useCallback(async () => {
-    setIsLoadingDocuments(true);
-    setDocumentListError(null);
+  // The rail lists this document's own headings, so the outline is reported
+  // back by the viewer that renders them rather than fetched.
+  const handleOutlineChange = useCallback((nextSections: OutlineSection[]) => {
+    setSections(nextSections);
+  }, []);
 
-    try {
-      const response = await fetchDocuments(workspaceSlug);
-      setDocuments(response.documents);
-    } catch (error) {
-      setDocumentListError(
-        error instanceof Error ? error.message : "Could not load documents.",
-      );
-    } finally {
-      setIsLoadingDocuments(false);
-    }
-  }, [workspaceSlug]);
-
-  useEffect(() => {
-    void loadDocuments();
-  }, [loadDocuments]);
+  const handleActiveSectionChange = useCallback((sectionId: string | null) => {
+    setActiveSectionId((current) => (current === sectionId ? current : sectionId));
+  }, []);
 
   useEffect(() => {
     void fetchWorkspaces()
@@ -147,13 +135,32 @@ export function DocumentReviewPage({
         return;
       }
 
-      void loadDocuments();
       void loadDocument();
     }
 
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, [draftFeedback.length, loadDocument, loadDocuments]);
+  }, [draftFeedback.length, loadDocument]);
+
+  // Sending everything is the one action worth reaching without the mouse, and
+  // it stays available while a comment is still focused.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (
+        !isSubmitAllShortcut(event) ||
+        draftFeedback.length === 0 ||
+        isSubmitting
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      void sendFeedback();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
 
   function saveDraft(nextDraft: DraftComment): void {
     setDraftFeedback((drafts) => {
@@ -347,32 +354,36 @@ export function DocumentReviewPage({
 
   return (
     <PenaLayout
-      activeSlug={documentSlug}
-      documents={documents}
-      documentListError={documentListError}
-      isLoadingDocuments={isLoadingDocuments}
+      activeSectionId={activeSectionId}
+      sections={sections}
       workspaceSlug={workspaceSlug}
     >
       <section className="document-pane" aria-label="Document">
-        <div className="document-meta">
-          <div>
-            <p className="section-label">Review mode</p>
-            <p className="document-hint">
-              Highlight a passage to comment. Your drafts stay private until
-              sent.
-            </p>
-          </div>
+        <header className="document-meta">
+          <nav className="document-breadcrumb" aria-label="Breadcrumb">
+            <a
+              className="document-breadcrumb-workspace"
+              href={`/workspaces/${workspaceSlug}`}
+            >
+              {workspaceSlug}
+            </a>
+            <span aria-hidden="true">/</span>
+            <span className="document-breadcrumb-current">{documentSlug}</span>
+          </nav>
           <div className="document-identity">
             <code className="document-slug">
               /{workspaceSlug}/{documentSlug}
             </code>
             {currentDocument ? (
               <>
-                <span className="document-version">
-                  Version {currentDocument.version}
+                <span
+                  className="document-version"
+                  aria-label={`Version ${currentDocument.version}`}
+                >
+                  v{currentDocument.version}
                 </span>
                 <time dateTime={currentDocument.updatedAt}>
-                  Updated {formatTime(currentDocument.updatedAt)}
+                  Updated {formatRelativeTime(currentDocument.updatedAt)}
                 </time>
                 {moveDestinations.length > 0 ? (
                   <button
@@ -397,7 +408,7 @@ export function DocumentReviewPage({
               </>
             ) : null}
           </div>
-        </div>
+        </header>
 
         {isMoveOpen && currentDocument ? (
           <div
@@ -468,6 +479,8 @@ export function DocumentReviewPage({
             onDecisionDraftChanged={saveDecisionDraft}
             onNoticeClear={() => setNotice(null)}
             onSubmitFeedback={() => void sendFeedback()}
+            onOutlineChange={handleOutlineChange}
+            onActiveSectionChange={handleActiveSectionChange}
           />
         ) : notice?.kind === "error" ? (
           <DocumentState
@@ -512,13 +525,6 @@ function DocumentState({
       <p>{description}</p>
     </div>
   );
-}
-
-function formatTime(date: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(date));
 }
 
 function ArchiveIcon() {

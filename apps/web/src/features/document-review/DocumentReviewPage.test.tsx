@@ -88,18 +88,23 @@ describe("interactive decision review", () => {
     const apply = await screen.findByRole("button", { name: "Apply" });
     const skip = screen.getByRole("button", { name: "Skip" });
 
-    expect(screen.getByText("Version 1")).toBeTruthy();
+    expect(screen.getByText("v1")).toBeTruthy();
     expect(apply.getAttribute("aria-pressed")).toBe("false");
     expect(skip.getAttribute("aria-pressed")).toBe("false");
+    // Nothing drafted, so the bar has not taken over the bottom of the page.
+    expect(
+      screen.queryByRole("button", { name: "Submit feedback" }),
+    ).toBeNull();
 
     await user.click(apply);
-    expect(screen.getByText("1 feedback ready to submit")).toBeTruthy();
+    expect(screen.getByText("1 item ready to submit")).toBeTruthy();
+    expect(screen.getByText("1 decision")).toBeTruthy();
     expect(apply.getAttribute("aria-pressed")).toBe("true");
 
     await user.click(apply);
     expect(
-      screen.getByText("Choose a decision or select text to start."),
-    ).toBeTruthy();
+      screen.queryByRole("button", { name: "Submit feedback" }),
+    ).toBeNull();
 
     await user.click(skip);
     expect(skip.getAttribute("aria-pressed")).toBe("true");
@@ -202,9 +207,10 @@ describe("interactive decision review", () => {
     ).toBeTruthy();
     expect(screen.queryByText("Decision required")).toBeNull();
     expect(
-      screen.getByText("Select text in the document to start."),
-    ).toBeTruthy();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+      screen.queryByRole("button", { name: "Submit feedback" }),
+    ).toBeNull();
+    // The document and the move destinations — the rail no longer needs a list.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 });
 
@@ -288,54 +294,42 @@ describe("saved document index", () => {
     );
   });
 
-  it("shows saved documents and marks the current document", async () => {
+  it("outlines the document and links back to the workspace", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-
-        if (url === "/api/workspaces/default/documents") {
-          return jsonResponse({
-            documents: [
-              {
-                slug: "review",
-                version: 1,
-                updatedAt: "2026-07-18T10:00:00.000Z",
-              },
-              {
-                slug: "architecture-notes",
-                version: 3,
-                updatedAt: "2026-07-17T10:00:00.000Z",
-              },
-            ],
-          });
-        }
-
-        if (url.endsWith("/feedback")) {
-          return jsonResponse({ batches: [] });
-        }
-
-        return jsonResponse(documentResponse);
-      }),
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/feedback")
+          ? jsonResponse({ batches: [] })
+          : jsonResponse(documentResponse),
+      ),
     );
 
     render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
 
-    const currentDocument = await screen.findByRole("link", {
-      name: /Review/,
+    const outline = await screen.findByRole("complementary", {
+      name: "Document outline",
     });
-    const otherDocument = screen.getByRole("link", {
-      name: /Architecture Notes/,
-    });
-
-    expect(currentDocument.getAttribute("aria-current")).toBe("page");
-    expect(currentDocument.getAttribute("href")).toBe("/workspaces/default/documents/review");
-    expect(otherDocument.getAttribute("href")).toBe(
-      "/workspaces/default/documents/architecture-notes",
+    await waitFor(() =>
+      expect(
+        outline.querySelectorAll(".document-outline-item"),
+      ).toHaveLength(2),
     );
-    expect(screen.getByText("v3")).toBeTruthy();
-  });
+    const sections = [...outline.querySelectorAll(".document-outline-item")];
 
+    expect(sections.map((section) => section.textContent)).toEqual([
+      "Review",
+      "Add request caching",
+    ]);
+    expect(sections[0]?.getAttribute("href")).toBe("#pena-section-0");
+    // The decision's heading nests under the section that introduces it.
+    expect(sections[1]?.className).toContain("nested");
+
+    expect(
+      screen
+        .getByRole("link", { name: "default" })
+        .getAttribute("href"),
+    ).toBe("/workspaces/default");
+  });
 });
 
 function documentListResponse(): Response {

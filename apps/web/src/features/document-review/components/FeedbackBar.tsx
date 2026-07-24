@@ -1,10 +1,9 @@
-import { formatFeedbackCount } from "../decision-feedback";
+import { submitAllShortcutLabel } from "../../../shortcuts";
 import type { Notice } from "../types";
 
 interface FeedbackBarProps {
   commentCount: number;
   decisionCount: number;
-  hasDecisions: boolean;
   isSubmitting: boolean;
   notice: Notice;
   onSubmit: () => void;
@@ -13,32 +12,41 @@ interface FeedbackBarProps {
 export function FeedbackBar({
   commentCount,
   decisionCount,
-  hasDecisions,
   isSubmitting,
   notice,
   onSubmit,
 }: FeedbackBarProps) {
   const draftCount = commentCount + decisionCount;
 
+  // With nothing drafted the reader gets the whole page. The bar earns its
+  // place on screen only once it has something to report.
+  if (draftCount === 0 && !notice) {
+    return null;
+  }
+
   return (
     <footer className="feedback-bar" aria-label="Draft feedback">
       <div className="feedback-summary">
-        <span className="comment-count" aria-label="Draft comment count">
-          {draftCount.toString().padStart(2, "0")}
-        </span>
+        {draftCount > 0 ? (
+          <span className="comment-count" aria-hidden="true">
+            {draftCount.toString().padStart(2, "0")}
+          </span>
+        ) : null}
         <div>
-          <p className="section-label">Draft feedback</p>
+          {draftCount > 0 ? (
+            <p className="feedback-title">
+              {draftCount === 1
+                ? "1 item ready to submit"
+                : `${draftCount} items ready to submit`}
+            </p>
+          ) : null}
           {notice ? (
             <p className={`notice ${notice.kind}`} role="status">
               {notice.message}
             </p>
           ) : (
             <p className="feedback-hint">
-              {draftCount === 0
-                ? hasDecisions
-                  ? "Choose a decision or select text to start."
-                  : "Select text in the document to start."
-                : `${formatFeedbackCount(draftCount)} ready to submit`}
+              {formatDraftBreakdown(commentCount, decisionCount)}
             </p>
           )}
         </div>
@@ -50,16 +58,26 @@ export function FeedbackBar({
         onClick={onSubmit}
       >
         <span>{isSubmitting ? "Submitting" : "Submit feedback"}</span>
-        <ArrowIcon />
+        {/* A reminder for the mouse, not part of the button's name. */}
+        <kbd aria-hidden="true">{submitAllShortcutLabel()}</kbd>
       </button>
     </footer>
   );
 }
 
-function ArrowIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true">
-      <path d="M4 10h11M11 5l5 5-5 5" />
-    </svg>
-  );
+function formatDraftBreakdown(
+  commentCount: number,
+  decisionCount: number,
+): string {
+  const parts: string[] = [];
+
+  if (commentCount > 0) {
+    parts.push(commentCount === 1 ? "1 comment" : `${commentCount} comments`);
+  }
+
+  if (decisionCount > 0) {
+    parts.push(decisionCount === 1 ? "1 decision" : `${decisionCount} decisions`);
+  }
+
+  return parts.join(" · ");
 }

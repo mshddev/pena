@@ -11,6 +11,8 @@ interface DecisionBlockProps {
   draftChoice: string | null;
   submittedChoice: string | null;
   isSubmitting: boolean;
+  position: number;
+  total: number;
   onChoice: (
     decision: DecisionBlockDefinition,
     choice: string,
@@ -24,6 +26,8 @@ export function DecisionBlock({
   draftChoice,
   submittedChoice,
   isSubmitting,
+  position,
+  total,
   onChoice,
 }: DecisionBlockProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -47,6 +51,12 @@ export function DecisionBlock({
       data-decision-id={decision.id}
     >
       <p className="decision-label" data-pena-annotation>
+        {/* A lone decision needs no place in a sequence. */}
+        {total > 1 ? (
+          <span className="decision-position">
+            {position}/{total}
+          </span>
+        ) : null}
         {isSubmitted ? "Decision submitted" : "Decision required"}
       </p>
       <div className="decision-body" ref={bodyRef}>

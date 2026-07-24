@@ -47,6 +47,8 @@ describe("DocumentViewer", () => {
       onDecisionDraftChanged: vi.fn(),
       onNoticeClear: vi.fn(),
       onSubmitFeedback: vi.fn(),
+      onOutlineChange: vi.fn(),
+      onActiveSectionChange: vi.fn(),
     };
     const { rerender } = render(<DocumentViewer {...props} />);
     const passageBeforeRerender = screen.getByText("Selected passage.");
@@ -61,5 +63,46 @@ describe("DocumentViewer", () => {
     expect(screen.getByText("Selected passage.")).toBe(
       passageBeforeRerender,
     );
+  });
+
+  it("reports the rendered headings as the outline", () => {
+    const onOutlineChange = vi.fn();
+
+    render(
+      <DocumentViewer
+        document={{
+          ...document,
+          content: [
+            "# Title",
+            "",
+            "## First section",
+            "",
+            ':::pena-decision{#pick choice-a="Apply" choice-b="Skip"}',
+            "## Nested question",
+            "",
+            "Body copy.",
+            ":::",
+          ].join("\n"),
+        }}
+        draftFeedback={[]}
+        submittedDecisions={{}}
+        isSubmitting={false}
+        notice={null}
+        onDraftSaved={vi.fn()}
+        onDraftDeleted={vi.fn()}
+        onDecisionDraftChanged={vi.fn()}
+        onNoticeClear={vi.fn()}
+        onSubmitFeedback={vi.fn()}
+        onOutlineChange={onOutlineChange}
+        onActiveSectionChange={vi.fn()}
+      />,
+    );
+
+    expect(onOutlineChange).toHaveBeenCalledWith([
+      { id: "pena-section-0", text: "Title", nested: false },
+      { id: "pena-section-1", text: "First section", nested: false },
+      // The decision's own heading belongs under the section that introduces it.
+      { id: "pena-section-2", text: "Nested question", nested: true },
+    ]);
   });
 });

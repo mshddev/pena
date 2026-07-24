@@ -1,25 +1,21 @@
-import type { DocumentSummary } from "@pena/contracts";
 import { type ReactNode } from "react";
 
 import { UtilityBar } from "../../../components/UtilityBar";
 
-import { DocumentIndex } from "./DocumentIndex";
+import type { OutlineSection } from "../outline";
+import { DocumentOutline } from "./DocumentOutline";
 
 interface PenaLayoutProps {
-  activeSlug: string | null;
+  activeSectionId: string | null;
   children: ReactNode;
-  documents: DocumentSummary[];
-  documentListError: string | null;
-  isLoadingDocuments: boolean;
+  sections: OutlineSection[];
   workspaceSlug: string | null;
 }
 
 export function PenaLayout({
-  activeSlug,
+  activeSectionId,
   children,
-  documents,
-  documentListError,
-  isLoadingDocuments,
+  sections,
   workspaceSlug,
 }: PenaLayoutProps) {
   return (
@@ -27,11 +23,9 @@ export function PenaLayout({
       <UtilityBar current={null} workspaceSlug={workspaceSlug} />
 
       <main className="workspace">
-        <DocumentIndex
-          activeSlug={activeSlug}
-          documents={documents}
-          error={documentListError}
-          isLoading={isLoadingDocuments}
+        <DocumentOutline
+          activeSectionId={activeSectionId}
+          sections={sections}
           workspaceSlug={workspaceSlug}
         />
         {children}

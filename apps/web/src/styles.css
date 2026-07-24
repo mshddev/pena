@@ -160,7 +160,7 @@ button:disabled {
 
 .workspace {
   display: grid;
-  grid-template-columns: 268px minmax(0, 1fr);
+  grid-template-columns: 214px minmax(0, 1fr);
   min-height: calc(100vh - var(--bar-height));
 }
 
@@ -188,99 +188,41 @@ button:disabled {
   font-size: 10px;
 }
 
-.document-list {
+.document-outline {
   display: flex;
   flex-direction: column;
+  gap: 1px;
+  padding-top: 10px;
 }
 
-.document-list-item {
+.document-outline-item {
   position: relative;
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 7px 12px;
-  padding: 17px 28px 16px 8px;
-  border-bottom: 1px solid var(--line);
-  color: var(--text-soft);
+  display: block;
+  padding: 7px 8px 7px 12px;
+  border-left: 2px solid transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.45;
   text-decoration: none;
-  animation: index-item-enter 260ms ease-out both;
   transition:
     color 150ms ease,
-    padding-left 150ms ease,
-    background 150ms ease;
+    border-color 150ms ease;
 }
 
-.document-list-item:nth-child(2) {
-  animation-delay: 35ms;
+/* A decision's own heading reads as a step inside its section. */
+.document-outline-item.nested {
+  padding-left: 26px;
+  font-size: 11.5px;
 }
 
-.document-list-item:nth-child(3) {
-  animation-delay: 70ms;
+.document-outline-item:hover,
+.document-outline-item:focus-visible {
+  color: var(--text-soft);
 }
 
-.document-list-item:nth-child(4) {
-  animation-delay: 105ms;
-}
-
-.document-list-item:hover,
-.document-list-item:focus-visible,
-.document-list-item.active {
-  padding-left: 12px;
-  background: var(--surface-raised);
+.document-outline-item.active {
+  border-left-color: var(--accent);
   color: var(--text);
-}
-
-.document-list-item.active::before {
-  position: absolute;
-  top: 14px;
-  bottom: 14px;
-  left: 0;
-  width: 2px;
-  background: var(--accent);
-  content: "";
-}
-
-.document-list-title {
-  overflow: hidden;
-  font-family: Charter, Georgia, serif;
-  font-size: 15px;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.document-list-meta {
-  display: flex;
-  grid-column: 1;
-  gap: 8px;
-  color: var(--text-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
-  letter-spacing: 0.02em;
-}
-
-.document-list-item svg {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  width: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.25;
-  opacity: 0;
-  transform: translate(-4px, -50%);
-  transition:
-    opacity 150ms ease,
-    transform 150ms ease;
-}
-
-.document-list-item:hover svg,
-.document-list-item:focus-visible svg,
-.document-list-item.active svg {
-  opacity: 1;
-  transform: translate(0, -50%);
 }
 
 .index-message {
@@ -292,24 +234,6 @@ button:disabled {
 
 .index-message.error {
   color: var(--danger);
-}
-
-.index-loading {
-  display: grid;
-  gap: 12px;
-  padding: 20px 8px;
-}
-
-.index-loading span {
-  height: 34px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--surface-raised) 50%,
-    transparent 100%
-  );
-  background-size: 200% 100%;
-  animation: loading 1.4s infinite linear;
 }
 
 .archive-link {
@@ -380,20 +304,56 @@ button:disabled {
   padding: clamp(32px, 5vw, 76px) clamp(24px, 5vw, 72px) 152px;
 }
 
+/* One row: where you are on the left, what this is and what you can do to it
+   on the right. */
 .document-meta {
   display: flex;
-  align-items: flex-end;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
   max-width: 780px;
-  margin: 0 auto 46px;
-  padding-bottom: 18px;
+  margin: 0 auto 40px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--line);
+  gap: 12px 24px;
 }
 
-.document-hint,
+.document-breadcrumb {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.document-breadcrumb-workspace {
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-soft);
+  text-decoration: none;
+  transition:
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.document-breadcrumb-workspace:hover,
+.document-breadcrumb-workspace:focus-visible {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.document-breadcrumb-current {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .document-version,
 .document-meta time {
-  margin: 5px 0 0;
+  margin: 0;
   color: var(--text-faint);
   font-size: 12px;
 }
@@ -405,28 +365,32 @@ button:disabled {
 
 .document-identity {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 14px;
-  margin-left: 24px;
 }
 
 .archive-document-button,
 .move-document-button {
   display: inline-flex;
-  min-height: 28px;
+  min-height: 30px;
   align-items: center;
   gap: 6px;
-  padding: 0 2px;
-  border: 0;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   background: transparent;
-  color: var(--text-faint);
+  color: var(--text-soft);
   cursor: pointer;
-  font-size: 10px;
-  transition: color 150ms ease;
+  font-size: 12px;
+  transition:
+    border-color 150ms ease,
+    color 150ms ease;
 }
 
 .archive-document-button:hover:not(:disabled),
 .move-document-button:hover:not(:disabled) {
+  border-color: var(--line-strong);
   color: var(--text);
 }
 
@@ -1041,12 +1005,13 @@ button:disabled {
 
 .markdown-body {
   width: 100%;
-  max-width: 780px;
+  max-width: 720px;
   margin: 0 auto;
   color: #d8d5cc;
-  font-family: Charter, Georgia, "Times New Roman", serif;
-  font-size: clamp(17px, 1.25vw, 19px);
-  line-height: 1.78;
+  font-family:
+    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 18px;
+  line-height: 1.8;
   animation: document-enter 320ms ease-out both;
 }
 
@@ -1074,15 +1039,21 @@ button:disabled {
 }
 
 .markdown-body h2 {
-  margin: 2.2em 0 0.7em;
-  padding-top: 0.45em;
+  margin: 2.6em 0 0.8em;
+  padding-top: 0.7em;
   border-top: 1px solid var(--line);
   font-size: clamp(26px, 3vw, 36px);
   font-weight: 560;
+  /* Jumping here from the outline must clear the sticky utility bar. */
+  scroll-margin-top: calc(var(--bar-height) + 24px);
+}
+
+.markdown-body h1 {
+  scroll-margin-top: calc(var(--bar-height) + 24px);
 }
 
 .markdown-body h3 {
-  margin: 1.8em 0 0.5em;
+  margin: 1.9em 0 0.5em;
   font-size: 22px;
   font-weight: 590;
 }
@@ -1090,7 +1061,7 @@ button:disabled {
 .markdown-body p,
 .markdown-body ul,
 .markdown-body ol {
-  margin: 0 0 1.3em;
+  margin: 0 0 1.45em;
 }
 
 .markdown-body li + li {
@@ -1183,15 +1154,33 @@ button:disabled {
 }
 
 .decision-label {
+  display: flex;
+  align-items: center;
   margin: 0 0 12px;
   color: var(--text-faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 9px;
   font-weight: 650;
+  gap: 9px;
   letter-spacing: 0.13em;
   line-height: 1.4;
   text-transform: uppercase;
   user-select: none;
+}
+
+/* Where this question sits in the run of them, without needing a tracker. */
+.decision-position {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgb(111 140 255 / 16%);
+  color: var(--accent-bright);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.decision-block.submitted .decision-position {
+  background: rgb(123 214 164 / 16%);
+  color: var(--success);
 }
 
 .decision-block.submitted .decision-label {
@@ -1367,6 +1356,27 @@ button:disabled {
   color: var(--text-faint);
 }
 
+.composer-hint {
+  display: flex;
+  align-items: center;
+  margin: 9px 0 0;
+  color: var(--text-faint);
+  font-size: 10px;
+  gap: 5px;
+}
+
+.composer-hint kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+}
+
+.composer-hint kbd:not(:first-child) {
+  margin-left: 7px;
+}
+
 .composer-actions {
   justify-content: flex-end;
   gap: 8px;
@@ -1409,7 +1419,7 @@ button:disabled {
   z-index: 12;
   right: 0;
   bottom: 20px;
-  left: 268px;
+  left: 214px;
   display: flex;
   width: min(780px, calc(100vw - 48px));
   align-items: center;
@@ -1434,6 +1444,12 @@ button:disabled {
 .feedback-summary .comment-count {
   padding-right: 14px;
   border-right: 1px solid var(--line);
+}
+
+.feedback-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .feedback-hint {
@@ -1478,15 +1494,6 @@ button:disabled {
   transform: translateY(-1px);
 }
 
-.submit-button svg {
-  width: 19px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.5;
-  transition: transform 160ms ease;
-}
 
 .submit-button:hover:not(:disabled) svg {
   transform: translateX(3px);
@@ -2124,55 +2131,16 @@ button:disabled {
 }
 
 .workspace {
-  grid-template-columns: 252px minmax(0, 1fr);
+  grid-template-columns: 214px minmax(0, 1fr);
 }
 
 .document-index {
-  padding: 32px 16px 24px;
+  padding: 32px 14px 24px;
   background: #10131a;
 }
 
 .document-index-heading {
   padding: 0 10px 15px;
-}
-
-.document-list {
-  gap: 4px;
-  padding-top: 8px;
-}
-
-.document-list-item {
-  gap: 6px 12px;
-  padding: 13px 32px 13px 11px;
-  border: 0;
-  border-radius: 8px;
-}
-
-.document-list-item:hover,
-.document-list-item:focus-visible,
-.document-list-item.active {
-  padding-left: 14px;
-  background: #1a1f2b;
-}
-
-.document-list-item.active {
-  color: #ffffff;
-  box-shadow: inset 0 0 0 1px rgb(111 140 255 / 14%);
-}
-
-.document-list-item.active::before {
-  top: 12px;
-  bottom: 12px;
-  left: 0;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-}
-
-.document-list-title {
-  font-family:
-    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 12px;
-  font-weight: 620;
 }
 
 .archive-link {
@@ -2190,23 +2158,16 @@ button:disabled {
 }
 
 .document-pane {
-  padding: clamp(28px, 4vw, 54px) clamp(22px, 4vw, 64px) 160px;
+  padding: clamp(34px, 5vw, 64px) clamp(22px, 4vw, 64px) 150px;
   background:
     radial-gradient(circle at 70% 10%, rgb(111 140 255 / 5%), transparent 30%),
     var(--bg);
 }
 
 .document-meta {
-  max-width: 900px;
-  margin-bottom: 20px;
+  max-width: 840px;
+  margin-bottom: 24px;
   padding: 0 2px 16px;
-}
-
-.document-hint {
-  max-width: 560px;
-  margin-top: 7px;
-  color: var(--text-soft);
-  font-size: 11px;
 }
 
 .document-identity {
@@ -2221,9 +2182,10 @@ button:disabled {
   color: var(--accent-bright);
 }
 
+/* 720px of text plus room either side for the comment markers to live in. */
 .document-stage {
-  max-width: 900px;
-  padding: clamp(38px, 6vw, 72px) clamp(28px, 7vw, 76px) 80px;
+  max-width: 840px;
+  padding: clamp(40px, 6vw, 64px) clamp(26px, 5vw, 60px) 72px;
   border: 1px solid rgb(255 255 255 / 6%);
   border-radius: 14px;
   background: #14171e;
@@ -2233,21 +2195,22 @@ button:disabled {
 }
 
 .markdown-body {
-  max-width: 700px;
+  max-width: 720px;
   color: #d9d9d6;
-  font-size: clamp(17px, 1.2vw, 19px);
-  line-height: 1.82;
+  font-size: 18px;
+  line-height: 1.8;
 }
 
 .markdown-body h1 {
-  margin-bottom: 30px;
-  font-size: clamp(38px, 4.6vw, 58px);
+  margin-bottom: 34px;
+  font-size: clamp(34px, 3.6vw, 46px);
   font-weight: 660;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.04em;
 }
 
 .markdown-body h2 {
   border-color: var(--line);
+  font-size: clamp(22px, 2.1vw, 26px);
   font-weight: 650;
 }
 
@@ -2270,13 +2233,34 @@ button:disabled {
   background: #0b0d12;
 }
 
+/* A decision is the one thing on the page that needs an answer, so it reads as
+   a card the prose flows around rather than as another paragraph. */
 .decision-block {
-  border-radius: 0 10px 10px 0;
-  background: rgb(255 255 255 / 2%);
+  margin: 2.6em 0;
+  padding: 22px 24px;
+  border: 1px solid rgb(111 140 255 / 30%);
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    rgb(111 140 255 / 10%),
+    rgb(111 140 255 / 3%)
+  );
+  box-shadow: 0 14px 34px rgb(0 0 0 / 26%);
+  scroll-margin-top: calc(var(--bar-height) + 24px);
 }
 
 .decision-block:has(.decision-choice.selected) {
-  background: rgb(111 140 255 / 7%);
+  background: linear-gradient(
+    180deg,
+    rgb(111 140 255 / 16%),
+    rgb(111 140 255 / 5%)
+  );
+}
+
+/* Answered blocks keep the same frame — only the label reports the change. */
+.decision-block.submitted {
+  border-left-color: var(--accent);
 }
 
 .decision-choice {
@@ -2316,7 +2300,7 @@ button:disabled {
 .feedback-bar {
   right: 0;
   bottom: 18px;
-  left: 252px;
+  left: 214px;
   width: min(700px, calc(100vw - 48px));
   padding: 9px 9px 9px 16px;
   border-color: rgb(111 140 255 / 22%);
@@ -2333,6 +2317,15 @@ button:disabled {
 .submit-button {
   min-width: 176px;
   min-height: 44px;
+}
+
+.submit-button kbd {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgb(10 16 34 / 20%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 650;
 }
 
 .empty-state {
@@ -2363,13 +2356,6 @@ button:disabled {
 @keyframes loading {
   to {
     background-position: -200% 0;
-  }
-}
-
-@keyframes index-item-enter {
-  from {
-    opacity: 0;
-    transform: translateX(-5px);
   }
 }
 
@@ -2406,30 +2392,31 @@ button:disabled {
     padding: 0 0 13px;
   }
 
-  .document-list {
+  /* The rail becomes a strip above the document, so the outline scrolls
+     sideways instead of stacking into a wall of links. */
+  .document-outline {
     overflow-x: auto;
     flex-direction: row;
+    gap: 6px;
     margin: 0 -24px;
-    padding: 0 24px;
+    padding: 4px 24px;
     scrollbar-width: thin;
   }
 
-  .document-list-item {
-    min-width: 210px;
-    border-bottom: 0;
-    border-left: 1px solid var(--line);
-    padding: 15px 34px 8px 13px;
+  .document-outline-item {
+    padding: 6px 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    white-space: nowrap;
   }
 
-  .document-list-item:hover,
-  .document-list-item:focus-visible,
-  .document-list-item.active {
-    padding-left: 17px;
+  .document-outline-item.nested {
+    padding-left: 12px;
   }
 
-  .document-list-item.active::before {
-    top: 12px;
-    bottom: 5px;
+  .document-outline-item.active {
+    border-color: rgb(111 140 255 / 45%);
+    background: rgb(111 140 255 / 12%);
   }
 
   .archive-link {

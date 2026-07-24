@@ -19,6 +19,12 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { readElementPassage } from "../../../selection";
+import { isCommentShortcut } from "../../../shortcuts";
+import {
+  readActiveSection,
+  readOutlineSections,
+  type OutlineSection,
+} from "../outline";
 import {
   findDraftCommentAtPoint,
   findDraftRange,
@@ -60,6 +66,8 @@ interface DocumentViewerProps {
   ) => void;
   onNoticeClear: () => void;
   onSubmitFeedback: () => void;
+  onOutlineChange: (sections: OutlineSection[]) => void;
+  onActiveSectionChange: (sectionId: string | null) => void;
 }
 
 export function DocumentViewer({
@@ -73,6 +81,8 @@ export function DocumentViewer({
   onDecisionDraftChanged,
   onNoticeClear,
   onSubmitFeedback,
+  onOutlineChange,
+  onActiveSectionChange,
 }: DocumentViewerProps) {
   const documentSurfaceRef = useRef<HTMLElement>(null);
   const documentStageRef = useRef<HTMLDivElement>(null);
@@ -118,6 +128,61 @@ export function DocumentViewer({
       commentInputRef.current?.focus();
     }
   }, [editor.editingCommentId]);
+
+  // Read the outline back off the rendered headings, so it lists exactly what
+  // is on the page — including the headings inside decision blocks.
+  useEffect(() => {
+    const surface = documentSurfaceRef.current;
+    onOutlineChange(surface ? readOutlineSections(surface) : []);
+  }, [onOutlineChange, parsedDocument]);
+
+  useEffect(() => {
+    function trackActiveSection(): void {
+      const surface = documentSurfaceRef.current;
+
+      if (surface) {
+        onActiveSectionChange(readActiveSection(surface));
+      }
+    }
+
+    trackActiveSection();
+    window.addEventListener("scroll", trackActiveSection, { passive: true });
+    window.addEventListener("resize", trackActiveSection);
+
+    return () => {
+      window.removeEventListener("scroll", trackActiveSection);
+      window.removeEventListener("resize", trackActiveSection);
+    };
+  }, [onActiveSectionChange, parsedDocument]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape" && editor.passage) {
+        event.preventDefault();
+        dispatch({ type: "closed" });
+        return;
+      }
+
+      if (!isCommentShortcut(event)) {
+        return;
+      }
+
+      const surface = documentSurfaceRef.current;
+      const stage = documentStageRef.current;
+      const selection =
+        surface && stage ? readAnchoredSelection(surface, stage) : null;
+
+      if (selection) {
+        event.preventDefault();
+        dispatch({ type: "selection-opened", selection });
+        onNoticeClear();
+      }
+    }
+
+    window.document.addEventListener("keydown", handleKeyDown);
+    return () =>
+      window.document.removeEventListener("keydown", handleKeyDown);
+  }, [editor.passage, onNoticeClear]);
 
   useEffect(() => {
     if (!editor.passage) {
@@ -402,6 +467,12 @@ export function DocumentViewer({
                     submittedDecisions[segment.decision.id] ?? null
                   }
                   isSubmitting={isSubmitting}
+                  position={
+                    parsedDocument.decisions.findIndex(
+                      (decision) => decision.id === segment.decision.id,
+                    ) + 1
+                  }
+                  total={parsedDocument.decisions.length}
                   onChoice={chooseDecision}
                 />
               </Fragment>
@@ -471,7 +542,6 @@ export function DocumentViewer({
         <FeedbackBar
           commentCount={draftComments.length}
           decisionCount={draftDecisions.length}
-          hasDecisions={parsedDocument.decisions.length > 0}
           isSubmitting={isSubmitting}
           notice={notice}
           onSubmit={onSubmitFeedback}

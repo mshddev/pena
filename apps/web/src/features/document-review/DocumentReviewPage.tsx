@@ -139,18 +139,21 @@ export function DocumentReviewPage({
     }
   }, [documentSlug, loadDocument]);
 
-  function handleRefresh(): void {
-    if (draftFeedback.length > 0) {
-      setNotice({
-        kind: "error",
-        message: "Submit or remove the draft feedback before refreshing.",
-      });
-      return;
+  // Claude republishes while the window sits in the background. Refetching on
+  // focus replaces the manual refresh button, but never discards a draft.
+  useEffect(() => {
+    function handleFocus(): void {
+      if (draftFeedback.length > 0) {
+        return;
+      }
+
+      void loadDocuments();
+      void loadDocument();
     }
 
-    void loadDocuments();
-    void loadDocument();
-  }
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [draftFeedback.length, loadDocument, loadDocuments]);
 
   function saveDraft(nextDraft: DraftComment): void {
     setDraftFeedback((drafts) => {
@@ -348,8 +351,6 @@ export function DocumentReviewPage({
       documents={documents}
       documentListError={documentListError}
       isLoadingDocuments={isLoadingDocuments}
-      isRefreshing={isLoading || isLoadingDocuments}
-      onRefresh={handleRefresh}
       workspaces={workspaces}
       workspaceSlug={workspaceSlug}
     >

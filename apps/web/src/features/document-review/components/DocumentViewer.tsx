@@ -155,12 +155,12 @@ export function DocumentViewer({
     }
 
     const popoverRect = popover.getBoundingClientRect();
-    const topbarBottom =
+    const utilityBarBottom =
       window.document
-        .querySelector<HTMLElement>(".topbar")
+        .querySelector<HTMLElement>(".utility-bar")
         ?.getBoundingClientRect().bottom ?? 0;
     const viewportPadding = 12;
-    const minimumTop = topbarBottom + viewportPadding;
+    const minimumTop = utilityBarBottom + viewportPadding;
     const maximumTop = Math.max(
       minimumTop,
       window.innerHeight - popoverRect.height - viewportPadding,

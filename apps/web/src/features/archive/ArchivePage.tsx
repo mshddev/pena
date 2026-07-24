@@ -153,8 +153,6 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
       documentListError={error}
       isArchiveActive
       isLoadingDocuments={isLoading}
-      isRefreshing={isLoading}
-      onRefresh={() => void loadDocuments()}
       workspaces={workspaces}
       workspaceSlug={workspaceSlug}
     >
@@ -203,7 +201,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                 ? `No documents from ${workspaceName(workspaceSlug)} are archived.`
                 : "Documents you archive from any workspace will appear here."}
             </p>
-            <a href={workspaceSlug ? `/workspaces/${workspaceSlug}` : "/workspaces/default"}>
+            <a href={workspaceSlug ? `/workspaces/${workspaceSlug}` : "/"}>
               Return to documents
             </a>
           </div>

@@ -1,6 +1,8 @@
 import type { DocumentSummary, WorkspaceSummary } from "@pena/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { UtilityBar } from "../../components/UtilityBar";
+
 export interface FeedbackStat {
   total: number;
   hasRecent: boolean;
@@ -154,27 +156,10 @@ export function WorkspaceHome({
 
   return (
     <div className="home-shell">
-      <div className="home-utility">
-        <div className="home-utility-links">
-          <a
-            className={isEveryWorkspace ? "active" : undefined}
-            href="/"
-            aria-current={isEveryWorkspace ? "page" : undefined}
-          >
-            Dashboard
-          </a>
-          <a href="/workspaces">Workspaces</a>
-          <a
-            href={
-              isEveryWorkspace
-                ? "/archive"
-                : `/archive?workspace=${encodeURIComponent(workspaceSlug)}`
-            }
-          >
-            Archive
-          </a>
-        </div>
-      </div>
+      <UtilityBar
+        current={isEveryWorkspace ? "dashboard" : null}
+        workspaceSlug={workspaceSlug}
+      />
 
       <main className="home-main">
         <header className="home-hero">

@@ -17,6 +17,7 @@
   --accent-ink: #0a1022;
   --danger: #ff8a80;
   --success: #7bd6a4;
+  --bar-height: 56px;
 }
 
 * {
@@ -66,43 +67,44 @@ button:disabled {
   min-height: 100vh;
 }
 
-.topbar {
+.utility-bar {
   position: sticky;
   z-index: 10;
   top: 0;
   display: flex;
-  min-height: 80px;
+  height: var(--bar-height);
   align-items: center;
-  justify-content: space-between;
-  padding: 14px clamp(20px, 3vw, 48px);
-  border-bottom: 1px solid var(--line);
-  background: rgb(17 17 15 / 92%);
-  backdrop-filter: blur(18px);
+  justify-content: flex-end;
+  padding: 0 clamp(20px, 3vw, 48px);
+  background: rgb(13 15 20 / 88%);
+  backdrop-filter: blur(22px) saturate(130%);
 }
 
-.brand-lockup,
-.topbar-actions,
+.utility-links {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.utility-links a {
+  color: var(--text-faint);
+  font-size: 12px;
+  text-decoration: none;
+  transition: color 160ms ease;
+}
+
+.utility-links a:hover,
+.utility-links a:focus-visible {
+  color: var(--text);
+}
+
+.utility-links a.active {
+  color: var(--text-soft);
+}
+
 .composer-actions {
   display: flex;
   align-items: center;
-}
-
-.brand-lockup {
-  gap: 14px;
-  color: var(--text);
-  text-decoration: none;
-}
-
-.brand-mark {
-  display: grid;
-  width: 44px;
-  height: 44px;
-  place-items: center;
-  border: 1px solid var(--line-strong);
-  color: var(--accent-bright);
-  font-family: Charter, Georgia, serif;
-  font-size: 25px;
-  font-style: italic;
 }
 
 .eyebrow,
@@ -115,74 +117,6 @@ button:disabled {
   letter-spacing: 0.14em;
   line-height: 1.4;
   text-transform: uppercase;
-}
-
-.brand-name {
-  margin: 1px 0 0;
-  font-family: Charter, Georgia, serif;
-  font-size: 23px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-}
-
-.topbar-actions {
-  gap: 18px;
-}
-
-.workspace-switcher {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.workspace-switcher > span {
-  color: var(--text-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
-}
-
-.workspace-switcher select {
-  min-width: 128px;
-  height: 36px;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  padding: 0 34px 0 11px;
-  background: var(--surface);
-  color: var(--text);
-  font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
-  cursor: pointer;
-}
-
-.manage-workspaces-link,
-.quiet-link {
-  color: var(--text-soft);
-  font-size: 12px;
-  text-decoration: none;
-  transition: color 160ms ease;
-}
-
-.manage-workspaces-link:hover,
-.quiet-link:hover {
-  color: var(--text);
-}
-
-.local-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-soft);
-  font-size: 12px;
-}
-
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--success);
-  box-shadow: 0 0 0 4px rgb(169 201 137 / 8%);
 }
 
 .quiet-button,
@@ -227,14 +161,14 @@ button:disabled {
 .workspace {
   display: grid;
   grid-template-columns: 268px minmax(0, 1fr);
-  min-height: calc(100vh - 80px);
+  min-height: calc(100vh - var(--bar-height));
 }
 
 .document-index {
   position: sticky;
-  top: 80px;
+  top: var(--bar-height);
   overflow-y: auto;
-  height: calc(100vh - 80px);
+  height: calc(100vh - var(--bar-height));
   padding: 42px 24px;
   border-right: 1px solid var(--line);
   background: var(--surface);
@@ -1458,15 +1392,6 @@ button:disabled {
     var(--bg);
 }
 
-.workspace-admin-topbar {
-  display: flex;
-  min-height: 80px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px clamp(20px, 3vw, 48px);
-  border-bottom: 1px solid var(--line);
-}
-
 .workspace-admin {
   width: min(1120px, calc(100% - 48px));
   margin: 0 auto;
@@ -1723,7 +1648,7 @@ button:disabled {
 
 .route-not-found {
   display: grid;
-  min-height: 100vh;
+  min-height: calc(100vh - var(--bar-height));
   place-content: center;
   text-align: center;
 }
@@ -1747,114 +1672,6 @@ button:disabled {
   background: var(--bg);
 }
 
-.topbar,
-.workspace-admin-topbar {
-  min-height: 68px;
-  padding: 10px clamp(18px, 2.5vw, 36px);
-  border-color: var(--line);
-  background: rgb(13 15 20 / 88%);
-  box-shadow: 0 1px 0 rgb(255 255 255 / 2%);
-  backdrop-filter: blur(22px) saturate(130%);
-}
-
-.brand-lockup {
-  gap: 11px;
-}
-
-.brand-mark {
-  width: 36px;
-  height: 36px;
-  overflow: hidden;
-  border: 0;
-  border-radius: 11px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: 20px;
-  font-style: italic;
-  transform: rotate(-3deg);
-  transition: transform 180ms ease;
-}
-
-.brand-lockup:hover .brand-mark {
-  transform: rotate(0deg) scale(1.03);
-}
-
-.brand-mark span {
-  transform: translateY(-1px);
-}
-
-.brand-name {
-  margin: 0;
-  font-family:
-    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 16px;
-  font-weight: 720;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-}
-
-.brand-lockup .eyebrow {
-  margin-top: 3px;
-  font-size: 8px;
-  letter-spacing: 0.12em;
-}
-
-.topbar-actions {
-  gap: 12px;
-}
-
-.global-nav {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: rgb(255 255 255 / 2%);
-}
-
-.global-nav .manage-workspaces-link {
-  padding: 7px 10px;
-  border-radius: 6px;
-  color: var(--text-faint);
-  font-size: 11px;
-}
-
-.global-nav .manage-workspaces-link:hover,
-.global-nav .manage-workspaces-link:focus-visible {
-  background: var(--surface-raised);
-  color: var(--text);
-}
-
-.workspace-switcher {
-  gap: 8px;
-}
-
-.workspace-switcher > span {
-  font-size: 8px;
-}
-
-.workspace-switcher select {
-  height: 34px;
-  border-radius: 8px;
-  background: var(--surface);
-  font-family:
-    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.local-status {
-  gap: 7px;
-  padding: 0 2px;
-  font-size: 10px;
-}
-
-.status-dot {
-  width: 5px;
-  height: 5px;
-}
-
 .quiet-button {
   min-height: 34px;
   border-radius: 8px;
@@ -1863,12 +1680,9 @@ button:disabled {
 
 .workspace {
   grid-template-columns: 252px minmax(0, 1fr);
-  min-height: calc(100vh - 68px);
 }
 
 .document-index {
-  top: 68px;
-  height: calc(100vh - 68px);
   padding: 32px 16px 24px;
   background: #10131a;
 }
@@ -2392,33 +2206,12 @@ button:disabled {
 }
 
 @media (max-width: 600px) {
-  .topbar {
-    align-items: flex-start;
-    padding: 14px 18px;
+  .utility-bar {
+    padding: 0 18px;
   }
 
-  .brand-mark,
-  .local-status {
-    display: none;
-  }
-
-  .topbar-actions {
-    gap: 8px;
-  }
-
-  .workspace-switcher > span,
-  .manage-workspaces-link {
-    display: none;
-  }
-
-  .global-nav,
-  .local-status {
-    display: none;
-  }
-
-  .workspace-switcher select {
-    min-width: 112px;
-    max-width: 38vw;
+  .utility-links {
+    gap: 14px;
   }
 
   .quiet-button {
@@ -2507,10 +2300,6 @@ button:disabled {
     margin-top: 12px;
   }
 
-  .workspace-admin-topbar {
-    padding: 14px 18px;
-  }
-
   .workspace-admin {
     width: min(100% - 36px, 1120px);
     padding: 46px 0 80px;
@@ -2591,17 +2380,10 @@ button:disabled {
   flex-direction: column;
 }
 
-.home-utility,
 .home-main,
 .home-footer {
   width: min(1080px, calc(100% - 48px));
   margin: 0 auto;
-}
-
-.home-utility {
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 22px;
 }
 
 .home-footer {
@@ -2629,28 +2411,6 @@ button:disabled {
 .home-footer > span {
   color: var(--text-faint);
   font-size: 11px;
-}
-
-.home-utility-links {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.home-utility-links a {
-  color: var(--text-faint);
-  font-size: 12px;
-  text-decoration: none;
-  transition: color 160ms ease;
-}
-
-.home-utility-links a:hover,
-.home-utility-links a:focus-visible {
-  color: var(--text);
-}
-
-.home-utility-links a.active {
-  color: var(--text-soft);
 }
 
 .home-main {
@@ -3204,14 +2964,9 @@ button:disabled {
 }
 
 @media (max-width: 600px) {
-  .home-utility,
   .home-main,
   .home-footer {
     width: calc(100% - 32px);
-  }
-
-  .home-utility-links {
-    gap: 14px;
   }
 
   .home-main {

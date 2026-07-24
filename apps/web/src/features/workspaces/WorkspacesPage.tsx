@@ -7,6 +7,7 @@ import {
   fetchWorkspaces,
   renameWorkspace,
 } from "../../api";
+import { UtilityBar } from "../../components/UtilityBar";
 import type { Notice } from "../document-review/types";
 
 export function WorkspacesPage() {
@@ -146,18 +147,7 @@ export function WorkspacesPage() {
 
   return (
     <div className="workspace-admin-shell">
-      <header className="workspace-admin-topbar">
-        <a className="brand-lockup" href="/workspaces/default">
-          <div className="brand-mark" aria-hidden="true"><span>P</span></div>
-          <div>
-            <p className="brand-name">Pena</p>
-            <p className="eyebrow">Document review</p>
-          </div>
-        </a>
-        <a className="quiet-link" href="/workspaces/default">
-          ← Back to documents
-        </a>
-      </header>
+      <UtilityBar current="workspaces" />
 
       <main className="workspace-admin">
         <header className="workspace-admin-heading">

@@ -161,16 +161,18 @@ export function WorkspacesPage() {
 
       <main className="workspace-admin">
         <header className="workspace-admin-heading">
-          <div className="workspace-admin-visual">
-            <img
-              src="/assets/editorial-review.webp"
-              alt=""
-              aria-hidden="true"
-            />
+          <div className="workspace-admin-intro">
             <div className="workspace-admin-copy">
               <p className="section-label">Your review spaces</p>
               <h1>Workspaces</h1>
               <p>Organize documents and feedback by project.</p>
+              <p className="workspace-admin-count">
+                {isLoading
+                  ? "Loading workspace index"
+                  : `${workspaces.length} ${
+                      workspaces.length === 1 ? "workspace" : "workspaces"
+                    }`}
+              </p>
             </div>
           </div>
 

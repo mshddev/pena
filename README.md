@@ -1,5 +1,9 @@
 # Pena
 
+[![CI](https://github.com/mshddev/pena/actions/workflows/ci.yml/badge.svg)](https://github.com/mshddev/pena/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D24-brightgreen)](.nvmrc)
+
 Pena is a local Markdown document review interface for Claude Code sessions. Claude publishes a draft — a plan, spec, or report — to Pena; you read it in the browser, select text, leave inline comments, and submit; Claude pulls the feedback back into the session and revises.
 
 <!-- TODO: screenshot / demo GIF of the review flow -->
@@ -73,6 +77,20 @@ A pnpm monorepo with three packages:
 - `packages/contracts` — shared Zod schemas between the two
 
 The design documents in `docs/` cover the initial spec, storage architecture, and the feedback model — they are historical snapshots; the implementation wins where they disagree.
+
+# Roadmap
+
+Rough order, subject to change:
+
+- Keep submitted comments visible when reopening a document
+- Sidebar navigation pointing to document sections
+- Accept/reject flow for individual feedback items
+- Document versioning — each version keeps its attached feedback
+- Separate commands for client and server so they can be deployed independently
+
+# Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). If you find Pena helpful, please consider giving it a star — feel free to contribute.
 
 # License
 

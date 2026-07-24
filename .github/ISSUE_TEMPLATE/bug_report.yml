@@ -1,0 +1,30 @@
+name: Bug report
+description: Something in Pena does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Publish a document with ...
+        2. Select ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Pena version or commit
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, browser

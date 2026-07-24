@@ -14,6 +14,7 @@ Initial release.
 - Markdown document review in the browser — select text, leave inline comments, submit feedback
 - Decision blocks: single-choice questions answered inline (the first custom component)
 - Workspaces, document moves between them, and a global archive
+- Document library home with a dashboard, a unified top bar across pages, and a document view rebuilt around reading
 - SQLite persistence, configurable via `PENA_DB_PATH`
 - Fastify API server and React web interface in a pnpm monorepo with shared Zod contracts
 - Claude Code skill (`resources/skills/pena`) to publish documents and pull feedback back into the session

@@ -1,6 +1,20 @@
 {
   "name": "pena",
-  "version": "0.1.0",
+  "version": "0.0.1",
+  "description": "Local Markdown document review interface for Claude Code sessions — publish drafts, collect inline feedback in the browser, and pull it back into the session.",
+  "license": "MIT",
+  "author": "mshddev <mshddev@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mshddev/pena.git"
+  },
+  "keywords": [
+    "claude-code",
+    "markdown",
+    "document-review",
+    "feedback",
+    "local-first"
+  ],
   "private": true,
   "packageManager": "pnpm@10.34.4",
   "engines": {

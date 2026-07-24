@@ -2,6 +2,8 @@ import type { DocumentSummary, WorkspaceSummary } from "@pena/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { UtilityBar } from "../../components/UtilityBar";
+import { formatRelativeTime } from "../../format";
+import { isSearchShortcut, searchShortcutLabel } from "../../shortcuts";
 
 export interface FeedbackStat {
   total: number;
@@ -56,17 +58,7 @@ export function WorkspaceHome({
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent): void {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) {
-        return;
-      }
-
-      const target = event.target as HTMLElement | null;
-
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target?.isContentEditable
-      ) {
+      if (!isSearchShortcut(event)) {
         return;
       }
 
@@ -246,7 +238,7 @@ export function WorkspaceHome({
             />
             {query.length === 0 ? (
               <kbd className="home-search-hint" aria-hidden="true">
-                /
+                {searchShortcutLabel()}
               </kbd>
             ) : null}
           </div>
@@ -456,31 +448,6 @@ function formatSlug(slug: string): string {
     .split("-")
     .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
     .join(" ");
-}
-
-function formatRelativeTime(date: string): string {
-  const value = new Date(date);
-  const minutes = Math.round((Date.now() - value.getTime()) / 60_000);
-
-  if (minutes < 1) {
-    return "Just now";
-  }
-
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-
-  if (minutes < 60 * 24) {
-    return `${Math.round(minutes / 60)}h ago`;
-  }
-
-  const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-
-  if (value.getFullYear() !== new Date().getFullYear()) {
-    options.year = "numeric";
-  }
-
-  return new Intl.DateTimeFormat(undefined, options).format(value);
 }
 
 function CaretIcon() {

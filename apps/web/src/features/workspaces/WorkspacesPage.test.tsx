@@ -54,16 +54,24 @@ describe("workspace management", () => {
 
     expect(await screen.findByRole("heading", { name: "Default" })).toBeTruthy();
     expect(screen.getByText("Protected")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "Rename" })).toHaveLength(1);
+    // The protected workspace offers no actions menu at all.
+    expect(
+      screen.queryByRole("button", { name: "Actions for Default" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Actions for Research" }),
+    ).toBeTruthy();
 
+    await user.click(screen.getByRole("button", { name: "New workspace" }));
     await user.type(screen.getByLabelText("New workspace"), "Writing Room");
     await user.click(screen.getByRole("button", { name: "Create" }));
     expect(
       await screen.findByRole("heading", { name: "Writing Room" }),
     ).toBeTruthy();
 
+    await user.click(screen.getByRole("button", { name: "Actions for Research" }));
     const researchRow = screen.getByRole("heading", { name: "Research" }).closest("article");
-    if (!researchRow) throw new Error("Research workspace row not found.");
+    if (!researchRow) throw new Error("Research workspace card not found.");
     await user.click(withinButton(researchRow, "Rename"));
     const renameInput = screen.getByLabelText("Workspace name");
     await user.clear(renameInput);
@@ -103,6 +111,7 @@ describe("workspace management", () => {
 
     render(<WorkspacesPage />);
     await screen.findByRole("heading", { name: "Research" });
+    await user.click(screen.getByRole("button", { name: "Actions for Research" }));
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
     const confirmButton = screen.getByRole("button", {
@@ -119,6 +128,32 @@ describe("workspace management", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/workspaces/research", {
       method: "DELETE",
     });
+  });
+
+  it("filters the workspace cards by name or slug", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({
+          workspaces: [
+            workspace("default", "Default", 1),
+            workspace("roadmap-2026", "Roadmap 2026", 4),
+          ],
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+
+    render(<WorkspacesPage />);
+    await screen.findByRole("heading", { name: "Default" });
+
+    await user.type(screen.getByLabelText("Filter workspaces"), "roadmap");
+    expect(screen.queryByRole("heading", { name: "Default" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Roadmap 2026" })).toBeTruthy();
+
+    await user.clear(screen.getByLabelText("Filter workspaces"));
+    await user.type(screen.getByLabelText("Filter workspaces"), "nothing");
+    expect(screen.getByText("No workspaces match “nothing”.")).toBeTruthy();
   });
 });
 

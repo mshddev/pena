@@ -1385,49 +1385,104 @@ button:disabled {
   line-height: 1.6;
 }
 
+/* Workspaces index — card library matching the dashboard */
 .workspace-admin-shell {
+  display: flex;
   min-height: 100vh;
+  flex-direction: column;
   background:
-    linear-gradient(90deg, transparent 0, transparent 23%, rgb(255 255 255 / 2%) 23%, transparent 23.1%),
+    radial-gradient(circle at 10% -12%, rgb(111 140 255 / 7%), transparent 44%),
     var(--bg);
 }
 
-.workspace-admin {
-  width: min(1120px, calc(100% - 48px));
+.workspace-admin,
+.workspace-admin-footer {
+  width: min(1080px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 72px 0 120px;
+}
+
+.workspace-admin {
+  flex: 1;
+  padding: 38px 0 90px;
 }
 
 .workspace-admin-heading {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(290px, 380px);
-  gap: 72px;
-  align-items: end;
-  padding-bottom: 42px;
-  border-bottom: 1px solid var(--line-strong);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: 26px;
 }
 
 .workspace-admin-heading h1 {
-  margin: 7px 0 8px;
-  font-family: Charter, Georgia, serif;
-  font-size: clamp(46px, 7vw, 76px);
-  font-weight: 400;
-  letter-spacing: -0.045em;
-  line-height: 0.95;
+  margin: 0;
+  font-size: clamp(28px, 4vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
 }
 
-.workspace-admin-heading > div > p:last-child {
-  max-width: 460px;
-  margin: 0;
+.workspace-admin-copy > p {
+  margin: 11px 0 0;
   color: var(--text-soft);
   font-size: 14px;
-  line-height: 1.6;
+}
+
+.workspace-admin-copy > .workspace-admin-count {
+  margin-top: 5px;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+.workspace-create {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.workspace-create-trigger {
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  transition: background 160ms ease;
+}
+
+.workspace-create-trigger:hover {
+  background: var(--accent-bright);
+}
+
+.workspace-create-trigger span {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Anchored under the button that opens it, rather than spanning the page. */
+.workspace-create-form {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 300px;
+  padding: 16px 17px 17px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgb(18 21 28 / 96%);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 45%);
+  backdrop-filter: blur(20px) saturate(130%);
+  animation: home-menu-enter 140ms ease-out both;
 }
 
 .workspace-create-form label,
 .workspace-inline-editor label {
   display: block;
-  margin-bottom: 9px;
   color: var(--text-faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 9px;
@@ -1436,214 +1491,445 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.workspace-create-form > p {
+  margin: 6px 0 14px;
+  color: var(--text-soft);
+  font-size: 12.5px;
+}
+
 .workspace-create-form > div {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  gap: 7px;
+  justify-content: flex-end;
+  margin-top: 11px;
 }
 
 .workspace-create-form input,
 .workspace-inline-editor input,
 .workspace-delete-confirmation input {
   min-width: 0;
-  height: 44px;
-  border: 1px solid var(--line-strong);
-  border-radius: 0;
-  padding: 0 13px;
-  background: var(--surface);
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--bg);
   color: var(--text);
+  font-size: 13px;
+  transition: border-color 160ms ease;
 }
 
-.workspace-create-form button,
+.workspace-create-form input:focus,
+.workspace-inline-editor input:focus,
+.workspace-delete-confirmation input:focus {
+  border-color: rgb(111 140 255 / 45%);
+}
+
+.workspace-create-form input {
+  width: 100%;
+}
+
+.workspace-create-form button[type="submit"],
 .workspace-inline-editor button[type="submit"] {
-  min-height: 44px;
+  height: 38px;
   border: 0;
-  padding: 0 18px;
+  border-radius: 8px;
+  padding: 0 16px;
   background: var(--accent);
   color: var(--accent-ink);
-  font-size: 12px;
-  font-weight: 750;
   cursor: pointer;
-}
-
-.workspace-admin > .archive-notice {
-  margin: 24px 0 0;
-}
-
-.workspace-admin-loading {
-  display: grid;
-  gap: 1px;
-  margin-top: 38px;
-}
-
-.workspace-admin-loading span {
-  height: 76px;
-  background: var(--surface);
-  animation: loading 1.4s infinite linear;
-}
-
-.workspace-records {
-  margin-top: 38px;
-}
-
-.workspace-record-labels,
-.workspace-record-main {
-  display: grid;
-  grid-template-columns: minmax(280px, 1fr) 140px 250px;
-  gap: 26px;
-  align-items: center;
-}
-
-.workspace-record-labels {
-  padding: 0 18px 12px;
-  color: var(--text-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.workspace-record {
-  border-top: 1px solid var(--line);
-  animation: archive-row-enter 260ms ease-out both;
-}
-
-.workspace-record:last-child {
-  border-bottom: 1px solid var(--line);
-}
-
-.workspace-record-main {
-  min-height: 92px;
-  padding: 16px 18px;
+  font-size: 12.5px;
+  font-weight: 700;
   transition: background 160ms ease;
 }
 
-.workspace-record-main:hover {
-  background: var(--surface);
+.workspace-create-form button[type="submit"]:hover:not(:disabled),
+.workspace-inline-editor button[type="submit"]:hover:not(:disabled) {
+  background: var(--accent-bright);
 }
 
-.workspace-record-name {
+.workspace-filter {
+  position: relative;
   display: flex;
-  min-width: 0;
+  width: min(420px, 100%);
   align-items: center;
-  gap: 14px;
+  margin-bottom: 26px;
+}
+
+.workspace-filter-icon {
+  position: absolute;
+  left: 14px;
+  width: 15px;
+  color: var(--text-faint);
+  fill: none;
+  pointer-events: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.4;
+}
+
+.workspace-filter input {
+  width: 100%;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 62px 0 39px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  transition: border-color 160ms ease;
+}
+
+.workspace-filter input::placeholder {
+  color: var(--text-faint);
+}
+
+.workspace-filter input:focus {
+  border-color: rgb(111 140 255 / 45%);
+}
+
+.workspace-filter input::-webkit-search-cancel-button {
+  filter: grayscale(1);
+}
+
+.workspace-filter-hint {
+  position: absolute;
+  right: 12px;
+  display: grid;
+  min-width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.workspace-admin > .archive-notice {
+  margin: 0 0 20px;
+}
+
+.workspace-no-matches {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+.workspace-card-grid,
+.workspace-admin-loading {
+  display: grid;
+  gap: 15px;
+  grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr));
+  /* A card that opens its rename or delete form grows alone, rather than
+     stretching every sibling in the row to match. */
+  align-items: start;
+}
+
+.workspace-admin-loading span {
+  height: 178px;
+  border-radius: 12px;
+  background: linear-gradient(
+    90deg,
+    var(--surface) 0%,
+    var(--surface-raised) 50%,
+    var(--surface) 100%
+  );
+  background-size: 200% 100%;
+  animation: loading 1.4s infinite linear;
+}
+
+.workspace-card {
+  display: flex;
+  min-height: 178px;
+  flex-direction: column;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  animation: home-card-enter 300ms ease-out both;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.workspace-card:hover,
+.workspace-card:focus-within {
+  border-color: rgb(111 140 255 / 34%);
+  background: var(--surface-raised);
+  box-shadow: 0 16px 38px rgb(0 0 0 / 30%);
+  transform: translateY(-2px);
+}
+
+.workspace-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 15px;
 }
 
 .workspace-monogram {
   display: grid;
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid var(--line-strong);
-  color: var(--accent-bright);
-  font-family: Charter, Georgia, serif;
-  font-size: 20px;
+  border-radius: 10px;
+  font-size: 17px;
+  font-weight: 650;
 }
 
-.workspace-record-name h2 {
+.workspace-card-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.workspace-menu-trigger {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.workspace-menu-trigger:hover,
+.workspace-menu-trigger[aria-expanded="true"] {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.workspace-menu-trigger svg {
+  width: 15px;
+  fill: currentColor;
+}
+
+.workspace-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  width: max-content;
+  min-width: 150px;
+  max-width: 214px;
+  flex-direction: column;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgb(18 21 28 / 96%);
+  box-shadow: 0 20px 46px rgb(0 0 0 / 45%);
+  backdrop-filter: blur(20px) saturate(130%);
+  animation: home-menu-enter 140ms ease-out both;
+}
+
+.workspace-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 0;
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 12.5px;
+  text-align: left;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.workspace-menu button:hover:not(:disabled) {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.workspace-menu .workspace-delete-trigger:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+/* Disabled Delete states *why* inline — a title tooltip hides the reason
+   behind a hover and gets clipped by the card. */
+.workspace-menu button:disabled {
+  opacity: 0.62;
+}
+
+.workspace-menu-info {
+  width: 13px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.4;
+}
+
+.workspace-menu-note {
+  margin: 1px 6px 3px;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.workspace-card-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-card-name h2 {
   overflow: hidden;
-  margin: 0 0 4px;
-  font-family: Charter, Georgia, serif;
-  font-size: 20px;
-  font-weight: 500;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.workspace-record-name code,
+.default-badge {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workspace-card-slug,
 .workspace-delete-confirmation code {
   color: var(--text-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
 }
 
-.default-badge {
-  margin-left: 6px;
-  padding: 4px 6px;
-  border: 1px solid var(--line);
+.workspace-card-slug {
+  display: block;
+  overflow: hidden;
+  margin-top: 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-card-time {
+  margin: 5px 0 0;
   color: var(--text-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.workspace-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 16px;
 }
 
 .workspace-document-count {
   display: flex;
   align-items: baseline;
-  gap: 7px;
+  gap: 6px;
 }
 
 .workspace-document-count strong {
-  font-family: Charter, Georgia, serif;
-  font-size: 26px;
-  font-weight: 400;
+  font-size: 16px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
 
 .workspace-document-count span {
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: 12px;
 }
 
-.workspace-record-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+.workspace-document-count.empty strong {
+  color: var(--text-faint);
 }
 
-.workspace-record-actions a,
-.workspace-record-actions button {
-  border: 0;
-  padding: 8px 10px;
-  background: transparent;
-  color: var(--text-soft);
-  font-size: 11px;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.workspace-record-actions a:hover,
-.workspace-record-actions button:hover:not(:disabled) {
-  background: var(--surface-raised);
+.workspace-open-link {
+  display: inline-flex;
+  height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
   color: var(--text);
+  font-size: 12.5px;
+  font-weight: 550;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
 }
 
-.workspace-record-actions .workspace-delete-trigger {
-  color: var(--danger);
+.workspace-open-link:hover,
+.workspace-open-link:focus-visible {
+  border-color: rgb(111 140 255 / 45%);
+  background: rgb(111 140 255 / 12%);
 }
 
 .workspace-inline-editor,
 .workspace-delete-confirmation {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
-  gap: 22px;
-  align-items: end;
-  padding: 22px 18px 26px 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-top: 15px;
   border-top: 1px solid var(--line);
-  background: var(--surface);
+  margin-top: 16px;
   animation: delete-confirmation-enter 180ms ease-out both;
 }
 
 .workspace-inline-editor > div,
 .workspace-delete-confirmation > div:last-child {
   display: flex;
-  gap: 8px;
+  gap: 7px;
   justify-content: flex-end;
 }
 
-.workspace-delete-confirmation {
-  align-items: center;
-}
-
-.workspace-delete-confirmation strong,
-.workspace-delete-confirmation p {
-  margin: 0;
+.workspace-delete-confirmation strong {
+  font-size: 13px;
 }
 
 .workspace-delete-confirmation p {
-  margin-top: 5px;
+  margin: 5px 0 0;
   color: var(--text-soft);
   font-size: 12px;
+}
+
+.workspace-delete-confirmation .confirm-delete-button {
+  min-height: 34px;
+  border-radius: 8px;
+}
+
+.workspace-admin-footer {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 22px 0 34px;
+  border-top: 1px solid var(--line);
+}
+
+.workspace-admin-footer > span {
+  color: var(--text-faint);
+  font-size: 11px;
 }
 
 .route-not-found {
@@ -1914,126 +2200,6 @@ button:disabled {
   border-radius: 8px;
 }
 
-.workspace-admin-shell {
-  background: var(--bg);
-}
-
-.workspace-admin {
-  width: min(1180px, calc(100% - 48px));
-  padding-top: 44px;
-}
-
-.workspace-admin-heading {
-  min-height: 310px;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
-  gap: clamp(48px, 8vw, 112px);
-  align-items: end;
-  padding-bottom: 42px;
-}
-
-.workspace-admin-intro {
-  display: flex;
-  min-height: 220px;
-  align-items: flex-end;
-  padding-left: clamp(0px, 2vw, 24px);
-}
-
-.workspace-admin-copy {
-  width: min(560px, 100%);
-}
-
-.workspace-admin-heading .workspace-admin-copy h1 {
-  margin: 13px 0 17px;
-  color: var(--text);
-  font-size: clamp(58px, 8vw, 100px);
-  letter-spacing: -0.06em;
-}
-
-.workspace-admin-heading .workspace-admin-copy > p:last-child {
-  max-width: none;
-}
-
-.workspace-admin-heading .workspace-admin-copy > p:not(.section-label, .workspace-admin-count) {
-  max-width: 390px;
-  color: var(--text-soft);
-}
-
-.workspace-admin-count {
-  margin: 30px 0 0;
-  color: var(--accent-bright);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.workspace-create-form {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  min-height: 220px;
-  padding: 28px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--surface);
-}
-
-.workspace-create-form > p {
-  margin: 0 0 22px;
-  color: var(--text-faint);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.workspace-create-form input {
-  border-radius: 8px 0 0 8px;
-}
-
-.workspace-create-form button {
-  border-radius: 0 8px 8px 0;
-}
-
-.workspace-records {
-  margin-top: 30px;
-}
-
-.workspace-record {
-  border-color: var(--line);
-}
-
-.workspace-record-main {
-  min-height: 84px;
-  border-radius: 10px;
-}
-
-.workspace-record-main:hover {
-  background: rgb(255 255 255 / 2%);
-}
-
-.workspace-monogram {
-  border: 0;
-  border-radius: 10px;
-  background: rgb(111 140 255 / 10%);
-  color: var(--accent-bright);
-}
-
-.workspace-record-actions a {
-  border-radius: 7px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 700;
-}
-
-.workspace-record-actions a:hover {
-  background: var(--accent-bright);
-  color: var(--accent-ink);
-}
-
-.workspace-record-actions button {
-  border-radius: 7px;
-}
-
 @keyframes document-enter {
   from {
     opacity: 0;
@@ -2182,26 +2348,13 @@ button:disabled {
   }
 
   .workspace-admin-heading {
-    grid-template-columns: 1fr;
-    gap: 34px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
   }
 
-  .workspace-create-form {
-    min-height: 190px;
-  }
-
-  .workspace-record-labels {
-    display: none;
-  }
-
-  .workspace-record-main {
-    grid-template-columns: minmax(220px, 1fr) 110px auto;
-  }
-
-  .workspace-inline-editor,
-  .workspace-delete-confirmation {
-    grid-template-columns: 1fr;
-    padding-left: 18px;
+  .workspace-create-trigger {
+    justify-content: center;
   }
 }
 
@@ -2571,7 +2724,7 @@ button:disabled {
   height: 44px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 0 44px 0 39px;
+  padding: 0 62px 0 39px;
   background: var(--surface);
   color: var(--text);
   font-size: 13px;
@@ -2594,15 +2747,17 @@ button:disabled {
   position: absolute;
   right: 12px;
   display: grid;
-  width: 22px;
+  min-width: 22px;
   height: 22px;
   place-items: center;
+  padding: 0 7px;
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--text-faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
+  font-size: 10px;
   pointer-events: none;
+  white-space: nowrap;
 }
 
 .home-group {
@@ -2965,15 +3120,19 @@ button:disabled {
 
 @media (max-width: 600px) {
   .home-main,
-  .home-footer {
+  .home-footer,
+  .workspace-admin,
+  .workspace-admin-footer {
     width: calc(100% - 32px);
   }
 
-  .home-main {
+  .home-main,
+  .workspace-admin {
     padding: 26px 0 60px;
   }
 
-  .home-footer {
+  .home-footer,
+  .workspace-admin-footer {
     align-items: flex-start;
     flex-direction: column;
     gap: 6px;

@@ -2649,6 +2649,10 @@ button:disabled {
   color: var(--text);
 }
 
+.home-utility-links a.active {
+  color: var(--text-soft);
+}
+
 .home-main {
   flex: 1;
   padding: 38px 0 90px;

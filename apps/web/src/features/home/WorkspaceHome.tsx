@@ -157,6 +157,14 @@ export function WorkspaceHome({
       <div className="home-utility">
         <div className="home-utility-links">
           <a
+            className={isEveryWorkspace ? "active" : undefined}
+            href="/"
+            aria-current={isEveryWorkspace ? "page" : undefined}
+          >
+            Dashboard
+          </a>
+          <a href="/workspaces">Workspaces</a>
+          <a
             href={
               isEveryWorkspace
                 ? "/archive"
@@ -165,7 +173,6 @@ export function WorkspaceHome({
           >
             Archive
           </a>
-          <a href="/workspaces">Workspaces</a>
         </div>
       </div>
 

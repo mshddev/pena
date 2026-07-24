@@ -166,10 +166,6 @@ export function WorkspaceHome({
             Archive
           </a>
           <a href="/workspaces">Workspaces</a>
-          <span className="local-status">
-            <span className="status-dot" aria-hidden="true" />
-            Local only
-          </span>
         </div>
       </div>
 

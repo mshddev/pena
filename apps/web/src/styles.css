@@ -2649,11 +2649,6 @@ button:disabled {
   color: var(--text);
 }
 
-.home-utility-links .local-status {
-  color: var(--text-faint);
-  font-size: 11px;
-}
-
 .home-main {
   flex: 1;
   padding: 38px 0 90px;

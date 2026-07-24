@@ -83,6 +83,8 @@ describe("SqlitePenaStore", () => {
         version: 2,
         updatedAt: "2026-07-19T10:02:00.000Z",
         archivedAt: null,
+        heading: null,
+        excerpt: "First, revised",
       },
       {
         workspaceSlug: "default",
@@ -90,8 +92,63 @@ describe("SqlitePenaStore", () => {
         version: 1,
         updatedAt: "2026-07-19T10:01:00.000Z",
         archivedAt: null,
+        heading: null,
+        excerpt: "Second",
       },
     ]);
+  });
+
+  it("previews a document by its own heading and opening prose", () => {
+    const store = createStore();
+    store.publishDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      [
+        "---",
+        "author: claude",
+        "---",
+        "",
+        "# Pena, in **one** document",
+        "",
+        "Pena is a [Markdown](https://commonmark.org) review surface.",
+        "",
+        "```ts",
+        "const ignored = \"code is not prose\";",
+        "```",
+        "",
+        "## The problem it solves",
+        "",
+        "| Version | State |",
+        "|---|---|",
+        "| V1 | Live |",
+        "",
+        ":::pena-decision{#pick choice-a=\"Apply\" choice-b=\"Skip\"}",
+        "An agent writes a document and publishes it here.",
+        ":::",
+      ].join("\n"),
+    );
+
+    const [summary] = store.listDocuments(DEFAULT_WORKSPACE_SLUG);
+
+    expect(summary?.heading).toBe("Pena, in one document");
+    expect(summary?.excerpt).toBe(
+      "Pena is a Markdown review surface. An agent writes a document and publishes it here.",
+    );
+  });
+
+  it("caps a long excerpt on a word boundary", () => {
+    const store = createStore();
+    store.publishDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      `# Long\n\n${"alpha ".repeat(120).trim()}`,
+    );
+
+    const [summary] = store.listDocuments(DEFAULT_WORKSPACE_SLUG);
+    const excerpt = summary?.excerpt ?? "";
+
+    expect(excerpt.length).toBeLessThanOrEqual(320);
+    expect(excerpt.endsWith("alpha")).toBe(true);
   });
 
   it("archives and restores a document without losing feedback", () => {

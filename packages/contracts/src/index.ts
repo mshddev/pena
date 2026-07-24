@@ -103,6 +103,13 @@ export const DocumentSummarySchema = DocumentSchema.omit({
   content: true,
 }).extend({
   archivedAt: z.iso.datetime().nullable(),
+  /** The document's own first heading, or null when it has none. */
+  heading: z.string().nullable(),
+  /**
+   * The opening prose with Markdown stripped, so a listing can preview what a
+   * document says without being sent the whole body.
+   */
+  excerpt: z.string(),
 });
 
 export type DocumentSummary = z.infer<typeof DocumentSummarySchema>;

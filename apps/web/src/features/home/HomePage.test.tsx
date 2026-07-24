@@ -31,6 +31,8 @@ const DOCUMENTS: Record<string, unknown[]> = {
       version: 1,
       updatedAt: "2026-07-18T10:00:00.000Z",
       archivedAt: null,
+      heading: "Reviewing the release",
+      excerpt: "What has to be true before we ship on Friday.",
     },
   ],
   research: [
@@ -40,6 +42,8 @@ const DOCUMENTS: Record<string, unknown[]> = {
       version: 3,
       updatedAt: "2026-07-17T10:00:00.000Z",
       archivedAt: null,
+      heading: null,
+      excerpt: "The storage layer owns migrations; nothing above it does.",
     },
   ],
 };
@@ -102,6 +106,53 @@ describe("workspace home", () => {
 
     expect(screen.getByRole("link", { name: /Architecture Notes/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /^Review/ })).toBeNull();
+  });
+
+  it("titles an entry with the document's own heading", async () => {
+    stubLibrary();
+
+    render(<HomePage workspaceSlug={null} />);
+
+    expect(await screen.findByText("Reviewing the release")).toBeTruthy();
+    expect(
+      screen.getByText("What has to be true before we ship on Friday."),
+    ).toBeTruthy();
+    // The slug is left to the URL rather than repeated above the heading.
+    expect(screen.queryByText("Review")).toBeNull();
+
+    // With no heading the slug is all there is to title the entry with.
+    expect(screen.getByText("Architecture Notes")).toBeTruthy();
+    expect(screen.queryByText("architecture-notes")).toBeNull();
+  });
+
+  it("finds a document by what it says", async () => {
+    stubLibrary();
+    const user = userEvent.setup();
+
+    render(<HomePage workspaceSlug={null} />);
+
+    await screen.findByText("Reviewing the release");
+    await user.type(
+      screen.getByRole("searchbox", { name: "Search documents" }),
+      "migrations",
+    );
+
+    expect(screen.getByText("Architecture Notes")).toBeTruthy();
+    expect(screen.queryByText("Reviewing the release")).toBeNull();
+  });
+
+  it("leaves the archive to the utility bar", async () => {
+    stubLibrary();
+
+    render(<HomePage workspaceSlug={null} />);
+
+    await screen.findByText("Reviewing the release");
+    expect(
+      screen.queryByRole("link", { name: "Archived documents" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Archive" }).getAttribute("href"),
+    ).toBe("/archive");
   });
 
   it("counts feedback per document", async () => {

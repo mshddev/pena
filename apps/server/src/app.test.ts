@@ -249,7 +249,12 @@ describe("Pena API", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       documents: [
-        expect.objectContaining({ slug: "newer-draft", version: 1 }),
+        expect.objectContaining({
+          slug: "newer-draft",
+          version: 1,
+          heading: "Newer draft",
+          excerpt: "",
+        }),
         expect.objectContaining({ slug: "older-draft", version: 1 }),
       ],
     });

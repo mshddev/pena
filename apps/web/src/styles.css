@@ -2626,7 +2626,7 @@ button:disabled {
 
 .home-main,
 .home-footer {
-  width: min(1080px, calc(100% - 48px));
+  width: min(900px, calc(100% - 48px));
   margin: 0 auto;
 }
 
@@ -2852,7 +2852,16 @@ button:disabled {
 }
 
 .home-group {
-  margin-bottom: 38px;
+  margin-bottom: 29px;
+}
+
+/* The rule runs out to the edge of the column so each group reads as its own
+   band rather than as a label floating above a list. */
+.home-group-label::after {
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+  content: "";
 }
 
 .home-group-label {
@@ -2901,82 +2910,85 @@ button:disabled {
   opacity: 0.7;
 }
 
-.document-card-grid,
-.home-loading {
+.document-list {
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
 }
 
-.document-card {
-  position: relative;
-  display: flex;
-  min-height: 152px;
-  flex-direction: column;
-  gap: 7px;
-  padding: 18px 18px 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
+/* The document's own writing is the content here, so an entry carries no box
+   of its own — only a hairline telling it apart from the next one. */
+.document-entry {
+  display: grid;
+  padding: 16px 2px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 10px;
   color: var(--text-soft);
+  gap: 7px;
   text-decoration: none;
   animation: home-card-enter 300ms ease-out both;
   transition:
-    transform 160ms ease,
-    border-color 160ms ease,
-    background 160ms ease,
-    box-shadow 160ms ease;
+    background 150ms ease,
+    border-color 150ms ease;
 }
 
-.document-card:nth-child(2) {
+.document-entry:last-child {
+  border-bottom: 0;
+}
+
+.document-entry:nth-child(2) {
   animation-delay: 40ms;
 }
 
-.document-card:nth-child(3) {
+.document-entry:nth-child(3) {
   animation-delay: 80ms;
 }
 
-.document-card:nth-child(4) {
+.document-entry:nth-child(4) {
   animation-delay: 120ms;
 }
 
-.document-card:hover,
-.document-card:focus-visible {
-  border-color: rgb(111 140 255 / 34%);
-  background: var(--surface-raised);
-  box-shadow: 0 16px 38px rgb(0 0 0 / 30%);
-  transform: translateY(-2px);
+.document-entry:hover,
+.document-entry:focus-visible {
+  background: rgb(255 255 255 / 2.5%);
 }
 
-.document-card-title {
-  padding-right: 22px;
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: -0.012em;
-  line-height: 1.32;
-}
-
-.document-card-slug {
-  overflow: hidden;
-  color: var(--text-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.document-card-time {
-  color: var(--text-faint);
-  font-size: 11px;
-}
-
-.document-card-chips {
+.document-entry-head {
   display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+/* The title wraps rather than truncating — it is the one thing on the row
+   that must always be readable in full. */
+.document-entry-title {
+  display: block;
+  min-width: 0;
+  flex: 1;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 640;
+  letter-spacing: -0.014em;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.document-entry-excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.document-entry-meta {
+  display: flex;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: auto;
-  padding-top: 10px;
+  gap: 9px;
+  color: var(--text-faint);
+  font-size: 11.5px;
 }
 
 .document-chip {
@@ -2994,6 +3006,8 @@ button:disabled {
 .document-chip.feedback {
   background: rgb(111 140 255 / 12%);
   color: var(--accent-bright);
+  font-family: inherit;
+  font-size: 11px;
 }
 
 .document-chip.feedback.recent {
@@ -3001,11 +3015,10 @@ button:disabled {
   box-shadow: inset 0 0 0 1px rgb(111 140 255 / 28%);
 }
 
-.document-card > svg {
-  position: absolute;
-  top: 18px;
-  right: 15px;
+.document-entry-head > svg {
   width: 15px;
+  flex: none;
+  margin-top: 3px;
   color: var(--accent-bright);
   fill: none;
   opacity: 0;
@@ -3019,15 +3032,21 @@ button:disabled {
     transform 150ms ease;
 }
 
-.document-card:hover > svg,
-.document-card:focus-visible > svg {
+.document-entry:hover .document-entry-head > svg,
+.document-entry:focus-visible .document-entry-head > svg {
   opacity: 1;
   transform: translateX(0);
 }
 
+/* The skeleton stands in for entries, so it stacks like them. */
+.home-loading {
+  display: grid;
+  gap: 12px;
+}
+
 .home-loading span {
-  height: 152px;
-  border-radius: 12px;
+  height: 92px;
+  border-radius: 10px;
   background: linear-gradient(
     90deg,
     var(--surface) 0%,
@@ -3139,54 +3158,6 @@ button:disabled {
 
 .home-example::after {
   content: "”";
-}
-
-.home-archive-link {
-  display: inline-grid;
-  grid-template-columns: 16px auto 13px;
-  gap: 10px;
-  align-items: center;
-  padding: 11px 15px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  color: var(--text-faint);
-  font-size: 12px;
-  text-decoration: none;
-  transition:
-    color 150ms ease,
-    border-color 150ms ease,
-    background 150ms ease;
-}
-
-.home-archive-link:hover,
-.home-archive-link:focus-visible {
-  border-color: var(--line-strong);
-  background: var(--surface);
-  color: var(--text);
-}
-
-.home-archive-link svg {
-  width: 15px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.3;
-}
-
-.home-archive-link > svg:last-child {
-  width: 13px;
-  opacity: 0;
-  transform: translateX(-3px);
-  transition:
-    opacity 150ms ease,
-    transform 150ms ease;
-}
-
-.home-archive-link:hover > svg:last-child,
-.home-archive-link:focus-visible > svg:last-child {
-  opacity: 1;
-  transform: translateX(0);
 }
 
 @keyframes home-card-enter {

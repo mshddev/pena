@@ -22,6 +22,10 @@ import {
 import Database from "better-sqlite3";
 
 import {
+  readDocumentExcerpt,
+  readDocumentHeading,
+} from "./document-preview.js";
+import {
   DefaultWorkspaceProtectedError,
   DocumentArchivedError,
   DocumentNotArchivedError,
@@ -72,6 +76,8 @@ interface DocumentRow {
 interface DocumentSummaryRow {
   workspace_slug: string;
   slug: string;
+  /** Read so the heading and excerpt can be derived; never returned as-is. */
+  content: string;
   version: number;
   updated_at: string;
   archived_at: string | null;
@@ -350,6 +356,7 @@ export class SqlitePenaStore implements PenaStore {
           SELECT
             workspaces.slug AS workspace_slug,
             documents.slug,
+            documents.content,
             documents.version,
             documents.updated_at,
             documents.archived_at
@@ -375,6 +382,7 @@ export class SqlitePenaStore implements PenaStore {
               SELECT
                 workspaces.slug AS workspace_slug,
                 documents.slug,
+                documents.content,
                 documents.version,
                 documents.updated_at,
                 documents.archived_at
@@ -392,6 +400,7 @@ export class SqlitePenaStore implements PenaStore {
               SELECT
                 workspaces.slug AS workspace_slug,
                 documents.slug,
+                documents.content,
                 documents.version,
                 documents.updated_at,
                 documents.archived_at
@@ -435,12 +444,9 @@ export class SqlitePenaStore implements PenaStore {
       )
       .run(destinationWorkspace.id, document.id);
 
-    return DocumentSummarySchema.parse({
-      workspaceSlug: destinationWorkspaceSlug,
-      slug: document.slug,
-      version: document.version,
-      updatedAt: document.updated_at,
-      archivedAt: null,
+    return toDocumentSummary({
+      ...document,
+      workspace_slug: destinationWorkspaceSlug,
     });
   }
 
@@ -458,13 +464,7 @@ export class SqlitePenaStore implements PenaStore {
       )
       .run(archivedAt, document.id);
 
-    return DocumentSummarySchema.parse({
-      workspaceSlug,
-      slug: document.slug,
-      version: document.version,
-      updatedAt: document.updated_at,
-      archivedAt,
-    });
+    return toDocumentSummary({ ...document, archived_at: archivedAt });
   }
 
   restoreDocument(workspaceSlug: string, slug: string): DocumentSummary {
@@ -480,13 +480,7 @@ export class SqlitePenaStore implements PenaStore {
       )
       .run(document.id);
 
-    return DocumentSummarySchema.parse({
-      workspaceSlug,
-      slug: document.slug,
-      version: document.version,
-      updatedAt: document.updated_at,
-      archivedAt: null,
-    });
+    return toDocumentSummary({ ...document, archived_at: null });
   }
 
   deleteArchivedDocument(workspaceSlug: string, slug: string): void {
@@ -860,6 +854,9 @@ function toDocumentSummary(row: DocumentSummaryRow): DocumentSummary {
     version: row.version,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
+    // The body stays on the server; only what a listing can show leaves it.
+    heading: readDocumentHeading(row.content),
+    excerpt: readDocumentExcerpt(row.content),
   });
 }
 

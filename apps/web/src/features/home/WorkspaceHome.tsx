@@ -103,7 +103,10 @@ export function WorkspaceHome({
         (document) =>
           search.length === 0 ||
           document.slug.toLowerCase().includes(search) ||
-          formatSlug(document.slug).toLowerCase().includes(search),
+          formatSlug(document.slug).toLowerCase().includes(search) ||
+          // What a document says is as good a way to find it as its filename.
+          (document.heading ?? "").toLowerCase().includes(search) ||
+          document.excerpt.toLowerCase().includes(search),
       )
       .slice()
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
@@ -140,7 +143,6 @@ export function WorkspaceHome({
   const recentCount = documents.filter(
     (document) => feedbackStats[documentKey(document)]?.hasRecent,
   ).length;
-  const isFiltered = query.trim().length > 0;
   const matchCount = sections.reduce(
     (total, section) => total + section.documents.length,
     0,
@@ -271,20 +273,6 @@ export function WorkspaceHome({
           ))
         )}
 
-        {!isLoading && !error && documents.length > 0 && !isFiltered ? (
-          <a
-            className="home-archive-link"
-            href={
-              isEveryWorkspace
-                ? "/archive"
-                : `/archive?workspace=${encodeURIComponent(workspaceSlug)}`
-            }
-          >
-            <ArchiveIcon />
-            <span>Archived documents</span>
-            <ArrowIcon />
-          </a>
-        ) : null}
       </main>
 
       <footer className="home-footer">
@@ -319,9 +307,9 @@ function LibrarySectionView({
       {section.documents.length === 0 ? (
         <p className="home-group-empty">No documents yet</p>
       ) : (
-        <div className="document-card-grid">
+        <div className="document-list">
           {section.documents.map((document) => (
-            <DocumentCard
+            <DocumentEntry
               document={document}
               feedback={feedbackStats[documentKey(document)]}
               key={documentKey(document)}
@@ -333,26 +321,37 @@ function LibrarySectionView({
   );
 }
 
-interface DocumentCardProps {
+interface DocumentEntryProps {
   document: LibraryDocument;
   feedback: FeedbackStat | undefined;
 }
 
-function DocumentCard({ document, feedback }: DocumentCardProps) {
+function DocumentEntry({ document, feedback }: DocumentEntryProps) {
   const feedbackTotal = feedback?.total ?? 0;
+  // The document's own heading says what it is. The slug only repeats it in a
+  // worse voice, so it is left to the URL; a document without a heading is the
+  // one case where the slug has to stand in.
+  const title = document.heading ?? formatSlug(document.slug);
 
   return (
     <a
-      className="document-card"
+      className="document-entry"
       href={`/workspaces/${document.workspaceSlug}/documents/${document.slug}`}
     >
-      <span className="document-card-title">{formatSlug(document.slug)}</span>
-      <code className="document-card-slug">{document.slug}</code>
-      <time className="document-card-time" dateTime={document.updatedAt}>
-        {formatRelativeTime(document.updatedAt)}
-      </time>
-      <span className="document-card-chips">
+      <span className="document-entry-head">
+        <span className="document-entry-title">{title}</span>
+        <ArrowIcon />
+      </span>
+
+      {document.excerpt ? (
+        <span className="document-entry-excerpt">{document.excerpt}</span>
+      ) : null}
+
+      <span className="document-entry-meta">
         <span className="document-chip">v{document.version}</span>
+        <time dateTime={document.updatedAt}>
+          {formatRelativeTime(document.updatedAt)}
+        </time>
         {feedbackTotal > 0 ? (
           <span
             className={`document-chip feedback${
@@ -363,7 +362,6 @@ function DocumentCard({ document, feedback }: DocumentCardProps) {
           </span>
         ) : null}
       </span>
-      <ArrowIcon />
     </a>
   );
 }
@@ -476,12 +474,3 @@ function ArrowIcon() {
   );
 }
 
-function ArchiveIcon() {
-  return (
-    <svg className="archive-icon" viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M2.5 5h11v8h-11z" />
-      <path d="M2 2.5h12V5H2z" />
-      <path d="M6 8h4" />
-    </svg>
-  );
-}

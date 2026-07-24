@@ -407,14 +407,63 @@ button:disabled {
   background: var(--accent-bright);
 }
 
-/* Archive — full-width list sharing the dashboard's column and chrome */
+/* Archive — the dashboard's column and chrome, dressed as its own place.
+   A near-neutral graphite carries the identity; --accent blue stays reserved
+   for things you can act on, here and everywhere else in the app. */
 .archive-shell {
+  /* Scoped to the shell so the graphite cannot leak into the rest of the app. */
+  --archive: #9ea4b3;
+  --archive-bright: #b6bdce;
+  /* --archive at 24% over --line, precomputed to match the file's convention. */
+  --archive-line: #454b57;
   display: flex;
   min-height: 100vh;
   flex-direction: column;
   background:
-    radial-gradient(circle at 10% -12%, rgb(111 140 255 / 7%), transparent 44%),
+    linear-gradient(180deg, rgb(158 164 179 / 8.5%), rgb(158 164 179 / 3.1%)),
     var(--bg);
+}
+
+/* The utility bar is shared, so the archive's marker is scoped to its shell.
+   Drawn as a pseudo-element to keep the link's box — and the bar — unshifted. */
+.archive-shell .utility-links a.active {
+  position: relative;
+  color: var(--text);
+}
+
+.archive-shell .utility-links a.active::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -6px;
+  left: 0;
+  height: 2px;
+  background: var(--archive);
+}
+
+/* Says what the archive is before the list has to explain itself. */
+.archive-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px clamp(20px, 3vw, 48px);
+  border-top: 1px solid rgb(158 164 179 / 24.2%);
+  border-bottom: 1px solid rgb(158 164 179 / 24.2%);
+  margin: 0;
+  background: rgb(158 164 179 / 7.7%);
+  color: var(--archive-bright);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.archive-banner svg {
+  width: 14px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.3;
 }
 
 .archive-main {
@@ -437,8 +486,35 @@ button:disabled {
   min-width: 0;
 }
 
+.archive-scope .section-label {
+  color: var(--archive);
+}
+
 .archive-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin: 7px 0 0;
+}
+
+.archive-title-glyph {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 7px;
+  background: rgb(158 164 179 / 17.6%);
+  color: var(--archive-bright);
+}
+
+.archive-title-glyph svg {
+  width: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.3;
 }
 
 .archive-scope-trigger {
@@ -529,8 +605,12 @@ button:disabled {
 
 .archive-count {
   flex: 0 0 auto;
-  padding-bottom: 5px;
-  color: var(--text-faint);
+  padding: 4px 9px;
+  border: 1px solid rgb(158 164 179 / 33%);
+  border-radius: 999px;
+  margin-bottom: 4px;
+  background: rgb(158 164 179 / 11%);
+  color: var(--archive-bright);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
   letter-spacing: 0.13em;
@@ -640,8 +720,10 @@ button:disabled {
   text-align: right;
 }
 
+/* Dashed, and tinted toward the archive hue: these are records at rest, not
+   live rows. The labels rule above stays solid — it is chrome, not content. */
 .archive-row {
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px dashed var(--archive-line);
   animation: archive-row-enter 280ms ease-out both;
 }
 
@@ -653,13 +735,23 @@ button:disabled {
   animation-delay: 90ms;
 }
 
+/* Archived documents should feel put away while the page chrome stays lit.
+   The dimming sits on the record rather than the whole list so the column
+   labels — and the delete confirmation that opens below — keep full contrast.
+   --text-faint is lifted here so the 9px labels still clear WCAG AA once the
+   opacity has composited them toward --bg. */
 .archive-record {
+  --text-faint: #8f939f;
   padding: 12px 4px;
-  transition: background 150ms ease;
+  filter: saturate(0.7) opacity(0.9);
+  transition:
+    background 150ms ease,
+    filter 150ms ease;
 }
 
 .archive-row:hover .archive-record {
   background: var(--surface);
+  filter: none;
 }
 
 .archive-date,
@@ -720,8 +812,8 @@ button:disabled {
   align-items: center;
   padding: 0 8px;
   border-radius: 999px;
-  background: rgb(111 140 255 / 12%);
-  color: var(--accent-bright);
+  background: rgb(158 164 179 / 12%);
+  color: var(--archive-bright);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
   text-decoration: none;
@@ -730,7 +822,7 @@ button:disabled {
 
 .archive-workspace-link:hover,
 .archive-workspace-link:focus-visible {
-  background: rgb(111 140 255 / 22%);
+  background: rgb(158 164 179 / 22%);
 }
 
 .archive-actions {
@@ -848,9 +940,11 @@ button:disabled {
   filter: brightness(1.08);
 }
 
+/* Stands in for the records, so it rests at the same level they will. */
 .archive-loading {
   display: grid;
   gap: 10px;
+  filter: saturate(0.7) opacity(0.9);
 }
 
 .archive-loading span {

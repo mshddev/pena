@@ -214,11 +214,20 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
     <div className="archive-shell">
       <UtilityBar current="archive" workspaceSlug={workspaceSlug} />
 
+      <p className="archive-banner">
+        <ArchiveGlyph />
+        Archived documents keep their feedback and go back to their workspace
+        when you restore them.
+      </p>
+
       <main className="archive-main" aria-labelledby="archive-title">
         <header className="archive-heading">
           <div className="archive-scope" ref={scopeRef}>
             <p className="section-label">{scopeName}</p>
             <h1 className="archive-title" id="archive-title">
+              <span className="archive-title-glyph" aria-hidden="true">
+                <ArchiveGlyph />
+              </span>
               <button
                 className="archive-scope-trigger"
                 type="button"

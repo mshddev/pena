@@ -56,7 +56,11 @@ verify: in a new Claude Code session, ask it to *"publish this plan to Pena"* �
 2. Open the URL it gives you, select any text, and leave comments. Documents can also carry interactive decision blocks — single-choice questions you answer inline.
 3. Submit the feedback, then tell Claude to fetch it. It applies the comments and republishes to the same slug.
 
-Documents live in workspaces, and finished ones move to a browsable archive at `http://127.0.0.1:5173/archive`.
+Documents live in workspaces, retain immutable version history and
+version-specific feedback, and can compare or restore earlier Markdown from
+the document view. Finished documents move to a browsable archive at
+`http://127.0.0.1:5173/archive`; archiving pauses publishing without removing
+history.
 
 # Configuration
 
@@ -85,7 +89,6 @@ Rough order, subject to change:
 - Keep submitted comments visible when reopening a document
 - Sidebar navigation pointing to document sections
 - Accept/reject flow for individual feedback items
-- Document versioning — each version keeps its attached feedback
 - Separate commands for client and server so they can be deployed independently
 
 # Contributing

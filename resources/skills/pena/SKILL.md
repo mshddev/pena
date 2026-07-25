@@ -1,6 +1,6 @@
 ---
 name: pena
-description: Use Pena to publish and move Markdown documents for review; retrieve, apply, and republish user feedback; and inspect archived documents. Use when the user asks to send, publish, or move a document in Pena, add Pena decision blocks, read Pena feedback, revise a document reviewed in Pena, or browse its archive.
+description: Use Pena to publish and move versioned Markdown documents for review; retrieve, apply, and republish user feedback; inspect or restore document versions; and inspect archived documents. Use when the user asks to send, publish, move, compare, or restore a document in Pena, add Pena decision blocks, read Pena feedback, revise a document reviewed in Pena, or browse its archive.
 ---
 
 # Pena
@@ -36,17 +36,35 @@ Every document belongs to one Pena workspace. Choose one stable lowercase, kebab
    ```
 
    Use a unique lowercase, kebab-case ID. Add exactly two short plain-text choices. Keep decision blocks top-level and do not nest them.
-3. Publish the file:
+3. Read the document URL before publishing and retain the exact `ETag` response
+   header. If the response is `404`, this is a new document. If the returned
+   document has a non-null `archivedAt`, report that it must be explicitly
+   unarchived; publishing never unarchives it.
+4. For a new document, publish only if it still does not exist:
 
    ```bash
    curl --fail --silent --show-error \
      --request PUT \
      --header "Content-Type: text/markdown" \
+     --header "If-None-Match: *" \
      --data-binary @<markdown-file-path> \
      http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>
    ```
 
-4. Report whether publishing succeeded and provide the browser URL: `http://127.0.0.1:5173/workspaces/<workspace-slug>/documents/<document-slug>`.
+5. For an existing document, publish only against the state that was read:
+
+   ```bash
+   curl --fail --silent --show-error \
+     --request PUT \
+     --header "Content-Type: text/markdown" \
+     --header 'If-Match: <exact-etag>' \
+     --data-binary @<markdown-file-path> \
+     http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>
+   ```
+
+6. Treat HTTP `412` as a stale write. Fetch the newer document and stop to
+   reconcile it; never retry the old content blindly.
+7. Report whether publishing succeeded and provide the browser URL: `http://127.0.0.1:5173/workspaces/<workspace-slug>/documents/<document-slug>`.
 
 ## Read feedback
 
@@ -63,23 +81,52 @@ Retrieve feedback only when the user explicitly asks.
 3. Treat a comment formatted as `[decision:<decision-id>] <choice>` as the user's answer to that decision block.
 4. Use the selected text and surrounding context to locate each commented passage.
 5. Apply the feedback when the user's request requires changes.
-6. If the document changes, republish it under the same workspace and document slug.
+6. If the document changes, fetch its current content and ETag, then republish
+   it under the same workspace and document slug with `If-Match`.
 
 If Pena cannot be reached, report the error instead of guessing.
 
 ## Move a document
 
-Move a document only when the user explicitly asks. Resolve the destination workspace, then move the active document:
+Move a document only when the user explicitly asks. Resolve the destination
+workspace, fetch the active document and retain its ETag, then move it:
 
 ```bash
 curl --fail --silent --show-error \
   --request POST \
   --header "Content-Type: application/json" \
+  --header 'If-Match: <exact-etag>' \
   --data '{"workspaceSlug":"<destination-workspace-slug>"}' \
   http://127.0.0.1:8788/api/workspaces/<source-workspace-slug>/documents/<document-slug>/move
 ```
 
-The document's feedback, version, and timestamps move with it. Never overwrite a destination document with the same slug. Restore an archived document before moving it.
+The document's feedback, complete version history, and timestamps move with it.
+Never overwrite a destination document with the same slug. Unarchive an
+archived document before moving it.
+
+## Inspect or restore versions
+
+List immutable versions:
+
+```bash
+curl --fail --silent --show-error \
+  http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>/versions
+```
+
+Read one version by appending `/versions/<version>`. Restore a historical
+version only when the user explicitly asks. First fetch the current document
+and ETag, then:
+
+```bash
+curl --fail --silent --show-error \
+  --request POST \
+  --header 'If-Match: <exact-etag>' \
+  http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>/versions/<version>/restore
+```
+
+Restoring differing content creates the next version without copying the old
+version's feedback. Restoring content already current is a no-op. Archived
+documents must be unarchived first.
 
 ## Browse archived documents
 

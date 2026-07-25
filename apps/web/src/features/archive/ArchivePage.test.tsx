@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe("archive", () => {
-  it("shows the global archive and restores to the original workspace", async () => {
+  it("shows the global archive and unarchives to the original workspace", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -42,6 +42,16 @@ describe("archive", () => {
 
         if (url === "/api/archive") {
           return jsonResponse({ documents: [archivedDocument] });
+        }
+
+        if (
+          url === "/api/workspaces/default/documents/old-draft" &&
+          !init?.method
+        ) {
+          return jsonResponse({
+            ...archivedDocument,
+            content: "Archived content",
+          });
         }
 
         if (
@@ -68,9 +78,11 @@ describe("archive", () => {
         .getAllByRole("link", { name: "Default" })
         .some((link) => link.getAttribute("href") === "/workspaces/default"),
     ).toBe(true);
-    await user.click(screen.getByRole("button", { name: "Restore" }));
+    await user.click(screen.getByRole("button", { name: "Unarchive" }));
 
-    expect(await screen.findByText("Old Draft restored to Default.")).toBeTruthy();
+    expect(
+      await screen.findByText("Old Draft unarchived in Default."),
+    ).toBeTruthy();
     expect(
       screen.queryByRole("heading", { name: "Old Draft" }),
     ).toBeNull();
@@ -78,7 +90,10 @@ describe("archive", () => {
       "/api/workspaces/default/documents/old-draft",
       {
         method: "PATCH",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "if-match": '"pena-test-2"',
+        },
         body: JSON.stringify({ status: "active" }),
       },
     );
@@ -95,6 +110,16 @@ describe("archive", () => {
 
         if (url === "/api/archive?workspace=default") {
           return jsonResponse({ documents: [archivedDocument] });
+        }
+
+        if (
+          url === "/api/workspaces/default/documents/old-draft" &&
+          !init?.method
+        ) {
+          return jsonResponse({
+            ...archivedDocument,
+            content: "Archived content",
+          });
         }
 
         if (
@@ -140,7 +165,10 @@ describe("archive", () => {
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/workspaces/default/documents/old-draft",
-      { method: "DELETE" },
+      {
+        method: "DELETE",
+        headers: { "if-match": '"pena-test-2"' },
+      },
     );
   });
 });
@@ -148,6 +176,9 @@ describe("archive", () => {
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      etag: '"pena-test-2"',
+    },
   });
 }

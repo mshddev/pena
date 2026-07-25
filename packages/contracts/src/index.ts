@@ -77,9 +77,32 @@ export const DocumentSchema = z.object({
   content: z.string(),
   version: z.number().int().positive(),
   updatedAt: z.iso.datetime(),
+  archivedAt: z.iso.datetime().nullable(),
 });
 
 export type PenaDocument = z.infer<typeof DocumentSchema>;
+
+export const DocumentVersionSchema = DocumentSchema.omit({
+  archivedAt: true,
+});
+
+export type DocumentVersion = z.infer<typeof DocumentVersionSchema>;
+
+export const DocumentVersionSummarySchema = DocumentVersionSchema.omit({
+  content: true,
+});
+
+export type DocumentVersionSummary = z.infer<
+  typeof DocumentVersionSummarySchema
+>;
+
+export const DocumentVersionListResponseSchema = z.object({
+  versions: z.array(DocumentVersionSummarySchema),
+});
+
+export type DocumentVersionListResponse = z.infer<
+  typeof DocumentVersionListResponseSchema
+>;
 
 export const DocumentStatusSchema = z.enum(["active", "archived"]);
 
@@ -102,7 +125,6 @@ export type DocumentMoveRequest = z.infer<typeof DocumentMoveRequestSchema>;
 export const DocumentSummarySchema = DocumentSchema.omit({
   content: true,
 }).extend({
-  archivedAt: z.iso.datetime().nullable(),
   /** The document's own first heading, or null when it has none. */
   heading: z.string().nullable(),
   /**

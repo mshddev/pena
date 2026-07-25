@@ -21,13 +21,16 @@ import {
   DocumentArchivedError,
   DocumentNotArchivedError,
   DocumentNotFoundError,
+  DocumentPreconditionFailedError,
   DocumentSlugConflictError,
+  DocumentVersionNotFoundError,
   PersistedDataError,
   WorkspaceNameConflictError,
   WorkspaceNameInvalidError,
   WorkspaceNotEmptyError,
   WorkspaceNotFoundError,
   WorkspaceSlugConflictError,
+  type DocumentWriteCondition,
   type PenaStore,
 } from "./storage/pena-store.js";
 
@@ -37,6 +40,10 @@ interface WorkspaceParams {
 
 interface DocumentParams extends WorkspaceParams {
   documentSlug: string;
+}
+
+interface DocumentVersionParams extends DocumentParams {
+  version: string;
 }
 
 export function buildApp(store: PenaStore): FastifyInstance {
@@ -215,13 +222,26 @@ export function buildApp(store: PenaStore): FastifyInstance {
       }
 
       try {
-        return reply.code(200).send(
-          store.publishDocument(
-            params.workspaceSlug,
-            params.documentSlug,
-            request.body,
-          ),
+        const condition = parsePublishCondition(request.headers, reply);
+
+        if (!condition) {
+          return;
+        }
+
+        const document = store.publishDocument(
+          params.workspaceSlug,
+          params.documentSlug,
+          request.body,
+          condition,
         );
+        const resource = store.getDocumentResource(
+          params.workspaceSlug,
+          params.documentSlug,
+        );
+        return reply
+          .header("etag", resource?.etag ?? "")
+          .code(condition.kind === "create" ? 201 : 200)
+          .send(document);
       } catch (error) {
         return sendDocumentError(reply, error);
       }
@@ -238,18 +258,99 @@ export function buildApp(store: PenaStore): FastifyInstance {
       }
 
       try {
-        const document = store.getDocument(
+        const resource = store.getDocumentResource(
           params.workspaceSlug,
           params.documentSlug,
         );
 
-        if (!document) {
+        if (!resource) {
           return reply.code(404).send({
             error: `No document has been published with slug "${params.documentSlug}" in workspace "${params.workspaceSlug}".`,
           });
         }
 
-        return reply.send(document);
+        return reply.header("etag", resource.etag).send(resource.value);
+      } catch (error) {
+        return sendDocumentError(reply, error);
+      }
+    },
+  );
+
+  app.get<{ Params: DocumentParams }>(
+    "/api/workspaces/:workspaceSlug/documents/:documentSlug/versions",
+    async (request, reply) => {
+      const params = parseDocumentParams(request.params, reply);
+
+      if (!params) {
+        return;
+      }
+
+      try {
+        return reply.send({
+          versions: store.listDocumentVersions(
+            params.workspaceSlug,
+            params.documentSlug,
+          ),
+        });
+      } catch (error) {
+        return sendDocumentError(reply, error);
+      }
+    },
+  );
+
+  app.get<{ Params: DocumentVersionParams }>(
+    "/api/workspaces/:workspaceSlug/documents/:documentSlug/versions/:version",
+    async (request, reply) => {
+      const params = parseDocumentVersionParams(request.params, reply);
+
+      if (!params) {
+        return;
+      }
+
+      try {
+        const version = store.getDocumentVersion(
+          params.workspaceSlug,
+          params.documentSlug,
+          params.version,
+        );
+
+        if (!version) {
+          throw new DocumentVersionNotFoundError(
+            params.workspaceSlug,
+            params.documentSlug,
+            params.version,
+          );
+        }
+
+        return reply.send(version);
+      } catch (error) {
+        return sendDocumentError(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: DocumentVersionParams }>(
+    "/api/workspaces/:workspaceSlug/documents/:documentSlug/versions/:version/restore",
+    async (request, reply) => {
+      const params = parseDocumentVersionParams(request.params, reply);
+      const expectedEtag = parseIfMatch(request.headers["if-match"], reply);
+
+      if (!params || !expectedEtag) {
+        return;
+      }
+
+      try {
+        const document = store.restoreDocumentVersion(
+          params.workspaceSlug,
+          params.documentSlug,
+          params.version,
+          expectedEtag,
+        );
+        const resource = store.getDocumentResource(
+          params.workspaceSlug,
+          params.documentSlug,
+        );
+        return reply.header("etag", resource?.etag ?? "").send(document);
       } catch (error) {
         return sendDocumentError(reply, error);
       }
@@ -273,11 +374,32 @@ export function buildApp(store: PenaStore): FastifyInstance {
       }
 
       try {
-        return reply.send(
-          parsedRequest.data.status === "archived"
-            ? store.archiveDocument(params.workspaceSlug, params.documentSlug)
-            : store.restoreDocument(params.workspaceSlug, params.documentSlug),
+        const expectedEtag = parseIfMatch(
+          request.headers["if-match"],
+          reply,
         );
+
+        if (!expectedEtag) {
+          return;
+        }
+
+        const document =
+          parsedRequest.data.status === "archived"
+            ? store.archiveDocument(
+                params.workspaceSlug,
+                params.documentSlug,
+                expectedEtag,
+              )
+            : store.unarchiveDocument(
+                params.workspaceSlug,
+                params.documentSlug,
+                expectedEtag,
+              );
+        const resource = store.getDocumentResource(
+          params.workspaceSlug,
+          params.documentSlug,
+        );
+        return reply.header("etag", resource?.etag ?? "").send(document);
       } catch (error) {
         return sendDocumentError(reply, error);
       }
@@ -301,12 +423,27 @@ export function buildApp(store: PenaStore): FastifyInstance {
       }
 
       try {
+        const expectedEtag = parseIfMatch(
+          request.headers["if-match"],
+          reply,
+        );
+
+        if (!expectedEtag) {
+          return;
+        }
+
         const movedDocument = store.moveDocument(
           params.workspaceSlug,
           params.documentSlug,
           parsedRequest.data.workspaceSlug,
+          expectedEtag,
+        );
+        const resource = store.getDocumentResource(
+          movedDocument.workspaceSlug,
+          movedDocument.slug,
         );
         return reply
+          .header("etag", resource?.etag ?? "")
           .header(
             "location",
             `/api/workspaces/${movedDocument.workspaceSlug}/documents/${movedDocument.slug}`,
@@ -328,7 +465,20 @@ export function buildApp(store: PenaStore): FastifyInstance {
       }
 
       try {
-        store.deleteArchivedDocument(params.workspaceSlug, params.documentSlug);
+        const expectedEtag = parseIfMatch(
+          request.headers["if-match"],
+          reply,
+        );
+
+        if (!expectedEtag) {
+          return;
+        }
+
+        store.deleteArchivedDocument(
+          params.workspaceSlug,
+          params.documentSlug,
+          expectedEtag,
+        );
         return reply.code(204).send();
       } catch (error) {
         return sendDocumentError(reply, error);
@@ -353,10 +503,20 @@ export function buildApp(store: PenaStore): FastifyInstance {
       }
 
       try {
+        const expectedEtag = parseIfMatch(
+          request.headers["if-match"],
+          reply,
+        );
+
+        if (!expectedEtag) {
+          return;
+        }
+
         const batch = store.addFeedback(
           params.workspaceSlug,
           params.documentSlug,
           parsedSubmission.data,
+          expectedEtag,
         );
         return reply.code(201).send(batch);
       } catch (error) {
@@ -437,6 +597,85 @@ function parseDocumentParams(
   return { workspaceSlug, documentSlug: documentSlug.data };
 }
 
+function parseDocumentVersionParams(
+  params: DocumentVersionParams,
+  reply: FastifyReply,
+): { workspaceSlug: string; documentSlug: string; version: number } | null {
+  const documentParams = parseDocumentParams(params, reply);
+  const version = Number(params.version);
+
+  if (!documentParams) {
+    return null;
+  }
+
+  if (!Number.isSafeInteger(version) || version < 1) {
+    void reply.code(400).send({
+      error: "The document version must be a positive integer.",
+    });
+    return null;
+  }
+
+  return { ...documentParams, version };
+}
+
+function parsePublishCondition(
+  headers: {
+    "if-match"?: string | string[];
+    "if-none-match"?: string | string[];
+  },
+  reply: FastifyReply,
+): DocumentWriteCondition | null {
+  const ifMatch = headers["if-match"];
+  const ifNoneMatch = headers["if-none-match"];
+
+  if (ifMatch && ifNoneMatch) {
+    void reply.code(400).send({
+      error: "Use either If-Match or If-None-Match, not both.",
+    });
+    return null;
+  }
+
+  if (ifNoneMatch) {
+    if (ifNoneMatch !== "*") {
+      void reply.code(400).send({
+        error: "A new document must use If-None-Match: *.",
+      });
+      return null;
+    }
+
+    return { kind: "create" };
+  }
+
+  const etag = parseIfMatch(ifMatch, reply);
+  return etag ? { kind: "match", etag } : null;
+}
+
+function parseIfMatch(
+  value: string | string[] | undefined,
+  reply: FastifyReply,
+): string | null {
+  if (!value) {
+    void reply.code(428).send({
+      error: "This request requires the current document ETag in If-Match.",
+    });
+    return null;
+  }
+
+  if (
+    Array.isArray(value) ||
+    value.includes(",") ||
+    value.startsWith("W/") ||
+    !/^"[^"]+"$/.test(value)
+  ) {
+    void reply.code(400).send({
+      error: "If-Match must contain one strong document ETag.",
+    });
+    return null;
+  }
+
+  return value;
+}
+
 function sendWorkspaceMutationError(reply: FastifyReply, error: unknown) {
   if (error instanceof WorkspaceNotFoundError) {
     return reply.code(404).send({ error: error.message });
@@ -462,9 +701,17 @@ function sendWorkspaceMutationError(reply: FastifyReply, error: unknown) {
 }
 
 function sendDocumentError(reply: FastifyReply, error: unknown) {
+  if (error instanceof DocumentPreconditionFailedError) {
+    return reply.code(412).send({
+      error: error.message,
+      currentVersion: error.currentVersion || undefined,
+    });
+  }
+
   if (
     error instanceof WorkspaceNotFoundError ||
-    error instanceof DocumentNotFoundError
+    error instanceof DocumentNotFoundError ||
+    error instanceof DocumentVersionNotFoundError
   ) {
     return reply.code(404).send({ error: error.message });
   }

@@ -12,6 +12,7 @@ const document = {
   content: "# Heading\n\nSelected passage.",
   version: 1,
   updatedAt: "2026-07-20T10:00:00.000Z",
+  archivedAt: null,
 };
 
 beforeEach(() => {

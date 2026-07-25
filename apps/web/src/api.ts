@@ -2,6 +2,8 @@ import type {
   DocumentListResponse,
   DocumentSummary,
   DocumentStatus,
+  DocumentVersion,
+  DocumentVersionListResponse,
   FeedbackBatch,
   FeedbackResponse,
   FeedbackSubmission,
@@ -12,6 +14,11 @@ import type {
 
 interface ApiErrorBody {
   error?: string;
+}
+
+export interface DocumentResource {
+  document: PenaDocument;
+  etag: string;
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -75,14 +82,65 @@ export async function deleteWorkspace(workspaceSlug: string): Promise<void> {
 export async function fetchDocument(
   workspaceSlug: string,
   documentSlug: string,
-): Promise<PenaDocument | null> {
+): Promise<DocumentResource | null> {
   const response = await fetch(documentUrl(workspaceSlug, documentSlug));
 
   if (response.status === 404) {
     return null;
   }
 
-  return parseResponse<PenaDocument>(response);
+  const document = await parseResponse<PenaDocument>(response);
+  const etag = response.headers.get("etag");
+
+  if (!etag) {
+    throw new Error("Pena did not return a document ETag.");
+  }
+
+  return { document, etag };
+}
+
+export async function fetchDocumentVersions(
+  workspaceSlug: string,
+  documentSlug: string,
+): Promise<DocumentVersionListResponse> {
+  const response = await fetch(
+    `${documentUrl(workspaceSlug, documentSlug)}/versions`,
+  );
+  return parseResponse<DocumentVersionListResponse>(response);
+}
+
+export async function fetchDocumentVersion(
+  workspaceSlug: string,
+  documentSlug: string,
+  version: number,
+): Promise<DocumentVersion> {
+  const response = await fetch(
+    `${documentUrl(workspaceSlug, documentSlug)}/versions/${version}`,
+  );
+  return parseResponse<DocumentVersion>(response);
+}
+
+export async function restoreDocumentVersion(
+  workspaceSlug: string,
+  documentSlug: string,
+  version: number,
+  etag: string,
+): Promise<DocumentResource> {
+  const response = await fetch(
+    `${documentUrl(workspaceSlug, documentSlug)}/versions/${version}/restore`,
+    {
+      method: "POST",
+      headers: { "if-match": etag },
+    },
+  );
+  const document = await parseResponse<PenaDocument>(response);
+  const nextEtag = response.headers.get("etag");
+
+  if (!nextEtag) {
+    throw new Error("Pena did not return a document ETag.");
+  }
+
+  return { document, etag: nextEtag };
 }
 
 export async function fetchDocuments(
@@ -108,10 +166,14 @@ async function updateDocumentStatus(
   workspaceSlug: string,
   documentSlug: string,
   status: DocumentStatus,
+  etag: string,
 ): Promise<DocumentSummary> {
   const response = await fetch(documentUrl(workspaceSlug, documentSlug), {
     method: "PATCH",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "if-match": etag,
+    },
     body: JSON.stringify({ status }),
   });
   return parseResponse<DocumentSummary>(response);
@@ -120,27 +182,33 @@ async function updateDocumentStatus(
 export async function archiveDocument(
   workspaceSlug: string,
   documentSlug: string,
+  etag: string,
 ): Promise<DocumentSummary> {
-  return updateDocumentStatus(workspaceSlug, documentSlug, "archived");
+  return updateDocumentStatus(workspaceSlug, documentSlug, "archived", etag);
 }
 
-export async function restoreDocument(
+export async function unarchiveDocument(
   workspaceSlug: string,
   documentSlug: string,
+  etag: string,
 ): Promise<DocumentSummary> {
-  return updateDocumentStatus(workspaceSlug, documentSlug, "active");
+  return updateDocumentStatus(workspaceSlug, documentSlug, "active", etag);
 }
 
 export async function moveDocument(
   workspaceSlug: string,
   documentSlug: string,
   destinationWorkspaceSlug: string,
+  etag: string,
 ): Promise<DocumentSummary> {
   const response = await fetch(
     `${documentUrl(workspaceSlug, documentSlug)}/move`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "if-match": etag,
+      },
       body: JSON.stringify({ workspaceSlug: destinationWorkspaceSlug }),
     },
   );
@@ -150,9 +218,11 @@ export async function moveDocument(
 export async function deleteDocument(
   workspaceSlug: string,
   documentSlug: string,
+  etag: string,
 ): Promise<void> {
   const response = await fetch(documentUrl(workspaceSlug, documentSlug), {
     method: "DELETE",
+    headers: { "if-match": etag },
   });
 
   if (!response.ok) {
@@ -165,12 +235,16 @@ export async function submitFeedback(
   workspaceSlug: string,
   documentSlug: string,
   submission: FeedbackSubmission,
+  etag: string,
 ): Promise<FeedbackBatch> {
   const response = await fetch(
     `${documentUrl(workspaceSlug, documentSlug)}/feedback`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "if-match": etag,
+      },
       body: JSON.stringify(submission),
     },
   );

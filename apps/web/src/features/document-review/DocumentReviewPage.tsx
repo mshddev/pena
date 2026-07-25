@@ -23,6 +23,10 @@ import { isSubmitAllShortcut } from "../../shortcuts";
 import { DocumentViewer } from "./components/DocumentViewer";
 import { PenaLayout } from "./components/PenaLayout";
 import {
+  ReadOnlyDocument,
+  VersionHistory,
+} from "./components/VersionHistory";
+import {
   formatFeedbackCount,
   readSubmittedDecisions,
 } from "./decision-feedback";
@@ -46,6 +50,8 @@ export function DocumentReviewPage({
   const [currentDocument, setCurrentDocument] = useState<PenaDocument | null>(
     null,
   );
+  const [documentEtag, setDocumentEtag] = useState<string | null>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [sections, setSections] = useState<OutlineSection[]>([]);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(documentSlug !== null);
@@ -70,14 +76,16 @@ export function DocumentReviewPage({
     setNotice(null);
 
     try {
-      const nextDocument = await fetchDocument(workspaceSlug, documentSlug);
+      const resource = await fetchDocument(workspaceSlug, documentSlug);
 
-      if (!nextDocument) {
+      if (!resource) {
         setCurrentDocument(null);
+        setDocumentEtag(null);
         setSubmittedDecisions({});
         return;
       }
 
+      const nextDocument = resource.document;
       const parsedDocument = parseDecisionDocument(nextDocument.content);
       const nextSubmittedDecisions =
         parsedDocument.decisions.length > 0
@@ -88,9 +96,11 @@ export function DocumentReviewPage({
           : {};
 
       setCurrentDocument(nextDocument);
+      setDocumentEtag(resource.etag);
       setSubmittedDecisions(nextSubmittedDecisions);
     } catch (error) {
       setCurrentDocument(null);
+      setDocumentEtag(null);
       setSubmittedDecisions({});
       setNotice({
         kind: "error",
@@ -110,6 +120,10 @@ export function DocumentReviewPage({
 
   const handleActiveSectionChange = useCallback((sectionId: string | null) => {
     setActiveSectionId((current) => (current === sectionId ? current : sectionId));
+  }, []);
+
+  const handleHistoryError = useCallback((message: string) => {
+    setNotice({ kind: "error", message });
   }, []);
 
   useEffect(() => {
@@ -209,16 +223,25 @@ export function DocumentReviewPage({
     setNotice(null);
 
     try {
-      await submitFeedback(workspaceSlug, documentSlug, {
-        comments: submittedDrafts.map(
-          ({ selectedText, comment, contextBefore, contextAfter }) => ({
-            selectedText,
-            comment,
-            contextBefore,
-            contextAfter,
-          }),
-        ),
-      });
+      if (!documentEtag) {
+        throw new Error("Reload the document before submitting feedback.");
+      }
+
+      await submitFeedback(
+        workspaceSlug,
+        documentSlug,
+        {
+          comments: submittedDrafts.map(
+            ({ selectedText, comment, contextBefore, contextAfter }) => ({
+              selectedText,
+              comment,
+              contextBefore,
+              contextAfter,
+            }),
+          ),
+        },
+        documentEtag,
+      );
       const submittedIds = new Set(
         submittedDrafts.map((draft) => draft.id),
       );
@@ -256,7 +279,7 @@ export function DocumentReviewPage({
   }
 
   async function handleArchive(): Promise<void> {
-    if (!documentSlug || !currentDocument) {
+    if (!documentSlug || !currentDocument || !documentEtag) {
       return;
     }
 
@@ -272,7 +295,7 @@ export function DocumentReviewPage({
     setNotice(null);
 
     try {
-      await archiveDocument(workspaceSlug, documentSlug);
+      await archiveDocument(workspaceSlug, documentSlug, documentEtag);
       window.location.assign(`/workspaces/${workspaceSlug}`);
     } catch (error) {
       setNotice({
@@ -314,7 +337,12 @@ export function DocumentReviewPage({
   }
 
   async function handleMove(): Promise<void> {
-    if (!documentSlug || !currentDocument || !moveDestination) {
+    if (
+      !documentSlug ||
+      !currentDocument ||
+      !documentEtag ||
+      !moveDestination
+    ) {
       return;
     }
 
@@ -334,6 +362,7 @@ export function DocumentReviewPage({
         workspaceSlug,
         documentSlug,
         moveDestination,
+        documentEtag,
       );
       window.location.assign(
         `/workspaces/${movedDocument.workspaceSlug}/documents/${movedDocument.slug}`,
@@ -373,16 +402,23 @@ export function DocumentReviewPage({
           <div className="document-identity">
             {currentDocument ? (
               <>
-                <span
+                <button
                   className="document-version"
                   aria-label={`Version ${currentDocument.version}`}
+                  type="button"
+                  aria-expanded={isHistoryOpen}
+                  onClick={() => setIsHistoryOpen((current) => !current)}
                 >
                   v{currentDocument.version}
-                </span>
+                </button>
                 <time dateTime={currentDocument.updatedAt}>
                   Updated {formatRelativeTime(currentDocument.updatedAt)}
                 </time>
-                {moveDestinations.length > 0 ? (
+                {currentDocument.archivedAt ? (
+                  <span className="archived-document-label">Archived</span>
+                ) : null}
+                {!currentDocument.archivedAt &&
+                moveDestinations.length > 0 ? (
                   <button
                     className="move-document-button"
                     type="button"
@@ -393,15 +429,17 @@ export function DocumentReviewPage({
                     Move
                   </button>
                 ) : null}
-                <button
-                  className="archive-document-button"
-                  type="button"
-                  onClick={() => void handleArchive()}
-                  disabled={isArchiving || isMoving}
-                >
-                  <ArchiveIcon />
-                  {isArchiving ? "Archiving" : "Archive"}
-                </button>
+                {!currentDocument.archivedAt ? (
+                  <button
+                    className="archive-document-button"
+                    type="button"
+                    onClick={() => void handleArchive()}
+                    disabled={isArchiving || isMoving}
+                  >
+                    <ArchiveIcon />
+                    {isArchiving ? "Archiving" : "Archive"}
+                  </button>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -459,6 +497,32 @@ export function DocumentReviewPage({
             <span className="loading-line" />
             <span className="loading-line short" />
             <span className="loading-line" />
+          </div>
+        ) : currentDocument && documentEtag && isHistoryOpen ? (
+          <VersionHistory
+            currentDocument={currentDocument}
+            currentEtag={documentEtag}
+            canRestore={draftFeedback.length === 0}
+            onClose={() => setIsHistoryOpen(false)}
+            onRestored={(resource) => {
+              setCurrentDocument(resource.document);
+              setDocumentEtag(resource.etag);
+              setSubmittedDecisions({});
+              setIsHistoryOpen(false);
+              setNotice({
+                kind: "success",
+                message: `Version ${resource.document.version} is now current.`,
+              });
+            }}
+            onError={handleHistoryError}
+          />
+        ) : currentDocument?.archivedAt ? (
+          <div className="archived-document-view">
+            <p className="archived-document-notice">
+              This document is archived. Its content and version history remain
+              available, but review and publishing are paused.
+            </p>
+            <ReadOnlyDocument content={currentDocument.content} />
           </div>
         ) : currentDocument ? (
           <DocumentViewer

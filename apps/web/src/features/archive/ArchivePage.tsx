@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteDocument,
   fetchArchive,
+  fetchDocument,
   fetchWorkspaces,
-  restoreDocument,
+  unarchiveDocument,
 } from "../../api";
 import { UtilityBar } from "../../components/UtilityBar";
 import { formatRelativeTime } from "../../format";
@@ -138,7 +139,13 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
     setNotice(null);
 
     try {
-      await restoreDocument(documentWorkspaceSlug, slug);
+      const resource = await fetchDocument(documentWorkspaceSlug, slug);
+
+      if (!resource) {
+        throw new Error("The archived document no longer exists.");
+      }
+
+      await unarchiveDocument(documentWorkspaceSlug, slug, resource.etag);
       setArchivedDocuments((current) =>
         current.filter(
           (document) =>
@@ -147,7 +154,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
       );
       setNotice({
         kind: "success",
-        message: `${formatSlug(slug)} restored to ${workspaceName(documentWorkspaceSlug)}.`,
+        message: `${formatSlug(slug)} unarchived in ${workspaceName(documentWorkspaceSlug)}.`,
       });
     } catch (restoreError) {
       setNotice({
@@ -155,7 +162,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
         message:
           restoreError instanceof Error
             ? restoreError.message
-            : "Could not restore the document.",
+            : "Could not unarchive the document.",
       });
     } finally {
       setRestoringKey(null);
@@ -180,7 +187,13 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
     setNotice(null);
 
     try {
-      await deleteDocument(documentWorkspaceSlug, slug);
+      const resource = await fetchDocument(documentWorkspaceSlug, slug);
+
+      if (!resource) {
+        throw new Error("The archived document no longer exists.");
+      }
+
+      await deleteDocument(documentWorkspaceSlug, slug, resource.etag);
       setArchivedDocuments((current) =>
         current.filter(
           (document) =>
@@ -217,7 +230,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
       <p className="archive-banner">
         <ArchiveGlyph />
         Archived documents keep their feedback and go back to their workspace
-        when you restore them.
+        when you unarchive them.
       </p>
 
       <main className="archive-main" aria-labelledby="archive-title">
@@ -320,7 +333,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                 ? `Documents you archive from ${workspaceName(workspaceSlug)} land here.`
                 : "Documents you archive from any workspace land here."}{" "}
               They keep their feedback, and go back to their original workspace
-              when you restore them.
+              when you unarchive them.
             </p>
             <a href={workspaceSlug ? `/workspaces/${workspaceSlug}` : "/"}>
               {workspaceSlug
@@ -362,7 +375,13 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                     </div>
 
                     <div className="archive-document-name">
-                      <h2>{formatSlug(document.slug)}</h2>
+                      <h2>
+                        <a
+                          href={`/workspaces/${document.workspaceSlug}/documents/${document.slug}`}
+                        >
+                          {formatSlug(document.slug)}
+                        </a>
+                      </h2>
                       <div className="archive-document-meta">
                         <a
                           className="archive-workspace-link"
@@ -394,7 +413,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                         disabled={isRestoring || isDeleting}
                       >
                         <RestoreIcon />
-                        {isRestoring ? "Restoring" : "Restore"}
+                        {isRestoring ? "Unarchiving" : "Unarchive"}
                       </button>
                       <button
                         className="permanent-delete-button"
@@ -416,10 +435,8 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                           Permanently delete {formatSlug(document.slug)}?
                         </p>
                         <p>
-                          The document, its {document.version} published{" "}
-                          {document.version === 1 ? "version" : "versions"} and
-                          all of its feedback will be removed. This cannot be
-                          undone.
+                          The document, its version history and all of its
+                          feedback will be removed. This cannot be undone.
                         </p>
                       </div>
                       <div className="delete-confirmation-actions">

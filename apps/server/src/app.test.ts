@@ -33,12 +33,35 @@ async function publishDocument(
   url = DOCUMENT_URL,
   content = "Current draft",
 ) {
+  const current = await app.inject({ method: "GET", url });
+  const condition =
+    current.statusCode === 200
+      ? { "if-match": requiredEtag(current) }
+      : { "if-none-match": "*" };
+
   return app.inject({
     method: "PUT",
     url,
-    headers: { "content-type": "text/markdown" },
+    headers: { "content-type": "text/markdown", ...condition },
     payload: content,
   });
+}
+
+async function documentEtag(
+  app: ReturnType<typeof buildApp>,
+  url = DOCUMENT_URL,
+): Promise<string> {
+  return requiredEtag(await app.inject({ method: "GET", url }));
+}
+
+function requiredEtag(response: { headers: Record<string, unknown> }): string {
+  const etag = response.headers.etag;
+
+  if (typeof etag !== "string") {
+    throw new Error("Expected the document response to include an ETag.");
+  }
+
+  return etag;
 }
 
 afterEach(async () => {
@@ -137,6 +160,7 @@ describe("Pena API", () => {
     await app.inject({
       method: "POST",
       url: `${researchUrl}/feedback`,
+      headers: { "if-match": await documentEtag(app, researchUrl) },
       payload: feedbackPayload,
     });
 
@@ -164,12 +188,14 @@ describe("Pena API", () => {
     await app.inject({
       method: "POST",
       url: FEEDBACK_URL,
+      headers: { "if-match": await documentEtag(app) },
       payload: feedbackPayload,
     });
 
     const response = await app.inject({
       method: "POST",
       url: `${DOCUMENT_URL}/move`,
+      headers: { "if-match": await documentEtag(app) },
       payload: { workspaceSlug: "research" },
     });
 
@@ -210,6 +236,7 @@ describe("Pena API", () => {
     const collision = await app.inject({
       method: "POST",
       url: `${DOCUMENT_URL}/move`,
+      headers: { "if-match": await documentEtag(app) },
       payload: { workspaceSlug: "research" },
     });
     expect(collision.statusCode).toBe(409);
@@ -217,15 +244,17 @@ describe("Pena API", () => {
     await app.inject({
       method: "PATCH",
       url: DOCUMENT_URL,
+      headers: { "if-match": await documentEtag(app) },
       payload: { status: "archived" },
     });
     const archived = await app.inject({
       method: "POST",
       url: `${DOCUMENT_URL}/move`,
+      headers: { "if-match": await documentEtag(app) },
       payload: { workspaceSlug: "research" },
     });
     expect(archived.statusCode).toBe(409);
-    expect(archived.json().error).toContain("restored");
+    expect(archived.json().error).toContain("Unarchive");
   });
 
   it("lists published documents by most recent update", async () => {
@@ -268,12 +297,14 @@ describe("Pena API", () => {
     const activeDelete = await app.inject({
       method: "DELETE",
       url: DOCUMENT_URL,
+      headers: { "if-match": await documentEtag(app) },
     });
     expect(activeDelete.statusCode).toBe(409);
 
     const archiveResponse = await app.inject({
       method: "PATCH",
       url: DOCUMENT_URL,
+      headers: { "if-match": await documentEtag(app) },
       payload: { status: "archived" },
     });
     expect(archiveResponse.statusCode).toBe(200);
@@ -293,6 +324,7 @@ describe("Pena API", () => {
     const restoreResponse = await app.inject({
       method: "PATCH",
       url: DOCUMENT_URL,
+      headers: { "if-match": await documentEtag(app) },
       payload: { status: "active" },
     });
     expect(restoreResponse.statusCode).toBe(200);
@@ -301,11 +333,13 @@ describe("Pena API", () => {
     await app.inject({
       method: "PATCH",
       url: DOCUMENT_URL,
+      headers: { "if-match": await documentEtag(app) },
       payload: { status: "archived" },
     });
     const deleteResponse = await app.inject({
       method: "DELETE",
       url: DOCUMENT_URL,
+      headers: { "if-match": await documentEtag(app) },
     });
     expect(deleteResponse.statusCode).toBe(204);
 
@@ -330,11 +364,13 @@ describe("Pena API", () => {
     await app.inject({
       method: "PATCH",
       url: defaultUrl,
+      headers: { "if-match": await documentEtag(app, defaultUrl) },
       payload: { status: "archived" },
     });
     await app.inject({
       method: "PATCH",
       url: researchUrl,
+      headers: { "if-match": await documentEtag(app, researchUrl) },
       payload: { status: "archived" },
     });
 
@@ -375,7 +411,7 @@ describe("Pena API", () => {
       "# First draft\n\nHello Pena.",
     );
 
-    expect(publishResponse.statusCode).toBe(200);
+    expect(publishResponse.statusCode).toBe(201);
 
     const documentResponse = await app.inject({
       method: "GET",
@@ -397,6 +433,7 @@ describe("Pena API", () => {
     const submitResponse = await app.inject({
       method: "POST",
       url: FEEDBACK_URL,
+      headers: { "if-match": await documentEtag(app) },
       payload: {
         comments: [
           {
@@ -434,6 +471,7 @@ describe("Pena API", () => {
     await app.inject({
       method: "POST",
       url: FEEDBACK_URL,
+      headers: { "if-match": await documentEtag(app) },
       payload: feedbackPayload,
     });
 
@@ -470,6 +508,81 @@ describe("Pena API", () => {
     expect(repeatedPublish.json().version).toBe(2);
   });
 
+  it("requires current HTTP preconditions and rejects stale publication", async () => {
+    const app = createApp();
+    const missingPrecondition = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: { "content-type": "text/markdown" },
+      payload: "First",
+    });
+    expect(missingPrecondition.statusCode).toBe(428);
+
+    const created = await publishDocument(app, DOCUMENT_URL, "First");
+    const staleEtag = requiredEtag(created);
+    await publishDocument(app, DOCUMENT_URL, "Second");
+
+    const stale = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: {
+        "content-type": "text/markdown",
+        "if-match": staleEtag,
+      },
+      payload: "Stale replacement",
+    });
+
+    expect(stale.statusCode).toBe(412);
+    expect(stale.json()).toEqual({
+      error: "The document changed after it was read.",
+      currentVersion: 2,
+    });
+    expect((await app.inject({ method: "GET", url: DOCUMENT_URL })).json())
+      .toMatchObject({ content: "Second", version: 2 });
+  });
+
+  it("lists, reads, compares externally, and restores immutable versions", async () => {
+    const app = createApp();
+    await publishDocument(app, DOCUMENT_URL, "Version one");
+    await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      headers: { "if-match": await documentEtag(app) },
+      payload: feedbackPayload,
+    });
+    await publishDocument(app, DOCUMENT_URL, "Version two");
+
+    const history = await app.inject({
+      method: "GET",
+      url: `${DOCUMENT_URL}/versions`,
+    });
+    const firstVersion = await app.inject({
+      method: "GET",
+      url: `${DOCUMENT_URL}/versions/1`,
+    });
+
+    expect(history.json().versions.map(({ version }: { version: number }) => version))
+      .toEqual([2, 1]);
+    expect(firstVersion.json()).toMatchObject({
+      version: 1,
+      content: "Version one",
+    });
+
+    const restored = await app.inject({
+      method: "POST",
+      url: `${DOCUMENT_URL}/versions/1/restore`,
+      headers: { "if-match": await documentEtag(app) },
+    });
+
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json()).toMatchObject({
+      version: 3,
+      content: "Version one",
+    });
+    expect((await app.inject({ method: "GET", url: FEEDBACK_URL })).json())
+      .toEqual({ batches: [] });
+  });
+
   it("isolates documents and feedback by slug", async () => {
     const app = createApp();
     const articleUrl = "/api/workspaces/default/documents/article-draft";
@@ -480,11 +593,13 @@ describe("Pena API", () => {
     await app.inject({
       method: "POST",
       url: FEEDBACK_URL,
+      headers: { "if-match": await documentEtag(app) },
       payload: feedbackPayload,
     });
     await app.inject({
       method: "POST",
       url: articleFeedbackUrl,
+      headers: { "if-match": await documentEtag(app, articleUrl) },
       payload: feedbackPayload,
     });
 
@@ -510,16 +625,35 @@ describe("Pena API", () => {
     await app.inject({
       method: "POST",
       url: FEEDBACK_URL,
+      headers: { "if-match": await documentEtag(app) },
       payload: feedbackPayload,
     });
     await app.inject({
       method: "POST",
       url: FEEDBACK_URL,
+      headers: { "if-match": await documentEtag(app) },
       payload: feedbackPayload,
     });
 
     const response = await app.inject({ method: "GET", url: FEEDBACK_URL });
     expect(response.json().batches).toHaveLength(2);
+  });
+
+  it("rejects feedback submitted against a stale document state", async () => {
+    const app = createApp();
+    const first = await publishDocument(app);
+    await publishDocument(app, DOCUMENT_URL, "Replacement draft");
+
+    const response = await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      headers: { "if-match": requiredEtag(first) },
+      payload: feedbackPayload,
+    });
+
+    expect(response.statusCode).toBe(412);
+    expect((await app.inject({ method: "GET", url: FEEDBACK_URL })).json())
+      .toEqual({ batches: [] });
   });
 
   it("rejects invalid slugs and invalid feedback", async () => {
@@ -540,7 +674,7 @@ describe("Pena API", () => {
     expect(invalidFeedbackResponse.statusCode).toBe(400);
   });
 
-  it("returns the existing missing-document status codes", async () => {
+  it("requires a precondition before feedback can target a missing document", async () => {
     const app = createApp();
 
     const documentResponse = await app.inject({
@@ -559,7 +693,7 @@ describe("Pena API", () => {
 
     expect(documentResponse.statusCode).toBe(404);
     expect(feedbackResponse.statusCode).toBe(404);
-    expect(submitResponse.statusCode).toBe(409);
+    expect(submitResponse.statusCode).toBe(428);
   });
 
   it("returns HTTP 500 for invalid persisted feedback", async () => {
@@ -594,7 +728,7 @@ describe("Pena API", () => {
       archiveDocument() {
         throw new Error("Not used in this test.");
       },
-      restoreDocument() {
+      unarchiveDocument() {
         throw new Error("Not used in this test.");
       },
       deleteArchivedDocument() {
@@ -644,7 +778,7 @@ describe("Pena API", () => {
       url: DOCUMENT_URL,
     });
 
-    expect(publishResponse.statusCode).toBe(200);
+    expect(publishResponse.statusCode).toBe(201);
     expect(documentResponse.json().content).toBe(content);
   });
 
@@ -663,7 +797,7 @@ describe("Pena API", () => {
 
     const response = await publishDocument(app, DOCUMENT_URL, content);
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(201);
   });
 
   it.each([
@@ -745,6 +879,6 @@ describe("Pena API", () => {
 
     const response = await publishDocument(app, DOCUMENT_URL, content);
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(201);
   });
 });

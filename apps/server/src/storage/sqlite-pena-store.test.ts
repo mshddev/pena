@@ -176,7 +176,7 @@ describe("SqlitePenaStore", () => {
     expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG, "archived")).toEqual([archived]);
     expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches).toHaveLength(1);
 
-    const restored = store.restoreDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec");
+    const restored = store.unarchiveDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec");
 
     expect(restored.archivedAt).toBeNull();
     expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG)).toEqual([restored]);
@@ -285,11 +285,10 @@ describe("SqlitePenaStore", () => {
     );
   });
 
-  it("automatically restores an archived slug when it is published again", () => {
+  it("requires an archived document to be explicitly unarchived before publishing", () => {
     const timestamps = [
       new Date("2026-07-19T10:00:00.000Z"),
       new Date("2026-07-19T10:01:00.000Z"),
-      new Date("2026-07-19T10:02:00.000Z"),
     ];
     const store = createStore(":memory:", () => {
       const timestamp = timestamps.shift();
@@ -303,17 +302,17 @@ describe("SqlitePenaStore", () => {
     store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Current draft");
     store.archiveDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec");
 
-    const republished = store.publishDocument(DEFAULT_WORKSPACE_SLUG,
-      "initial-spec",
-      "Current draft",
-    );
-
-    expect(republished.version).toBe(1);
-    expect(republished.updatedAt).toBe("2026-07-19T10:02:00.000Z");
-    expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG)).toEqual([
-      expect.objectContaining({ slug: "initial-spec", archivedAt: null }),
+    expect(() =>
+      store.publishDocument(
+        DEFAULT_WORKSPACE_SLUG,
+        "initial-spec",
+        "Current draft",
+      ),
+    ).toThrow(DocumentArchivedError);
+    expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG)).toEqual([]);
+    expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG, "archived")).toEqual([
+      expect.objectContaining({ slug: "initial-spec", archivedAt: expect.any(String) }),
     ]);
-    expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG, "archived")).toEqual([]);
   });
 
   it("stores ordered feedback batches with numeric IDs", () => {
@@ -401,6 +400,109 @@ describe("SqlitePenaStore", () => {
     expect(replacement.content).toBe("Replacement draft");
     expect(replacement.version).toBe(2);
     expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual({ batches: [] });
+  });
+
+  it("keeps immutable content history and restores an older version as the next version", () => {
+    const databasePath = createDatabasePath();
+    const store = createStore(databasePath);
+    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Version one");
+    store.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      feedbackSubmission,
+    );
+    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Version two");
+    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Version three");
+
+    expect(
+      store
+        .listDocumentVersions(DEFAULT_WORKSPACE_SLUG, "initial-spec")
+        .map(({ version }) => version),
+    ).toEqual([3, 2, 1]);
+    expect(
+      store.getDocumentVersion(DEFAULT_WORKSPACE_SLUG, "initial-spec", 1),
+    ).toMatchObject({ content: "Version one", version: 1 });
+
+    const restored = store.restoreDocumentVersion(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      1,
+    );
+
+    expect(restored).toMatchObject({ content: "Version one", version: 4 });
+    expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual({
+      batches: [],
+    });
+
+    const inspectionDatabase = new Database(databasePath);
+    const historicalFeedback = inspectionDatabase
+      .prepare(
+        `
+          SELECT COUNT(*) AS count
+          FROM feedback_batches
+          JOIN document_versions
+            ON document_versions.id = feedback_batches.document_version_id
+          WHERE document_versions.version = 1
+        `,
+      )
+      .get() as { count: number };
+    inspectionDatabase.close();
+    expect(historicalFeedback.count).toBe(1);
+  });
+
+  it("treats restoring identical content as a no-op", () => {
+    const store = createStore();
+    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Same");
+
+    const restored = store.restoreDocumentVersion(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      1,
+    );
+
+    expect(restored.version).toBe(1);
+    expect(
+      store.listDocumentVersions(DEFAULT_WORKSPACE_SLUG, "initial-spec"),
+    ).toHaveLength(1);
+  });
+
+  it("does not restore a historical version while the document is archived", () => {
+    const store = createStore();
+    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "First");
+    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Second");
+    store.archiveDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec");
+
+    expect(() =>
+      store.restoreDocumentVersion(
+        DEFAULT_WORKSPACE_SLUG,
+        "initial-spec",
+        1,
+      ),
+    ).toThrow(DocumentArchivedError);
+  });
+
+  it("rejects stale document state tokens after lifecycle changes", () => {
+    const store = createStore();
+    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Current");
+    const resource = store.getDocumentResource(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+    );
+
+    expect(resource).not.toBeNull();
+    store.archiveDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      resource?.etag,
+    );
+
+    expect(() =>
+      store.unarchiveDocument(
+        DEFAULT_WORKSPACE_SLUG,
+        "initial-spec",
+        resource?.etag,
+      ),
+    ).toThrow("The document changed after it was read.");
   });
 
   it("rolls back feedback deletion when document replacement fails", () => {
@@ -518,6 +620,7 @@ describe("SqlitePenaStore", () => {
       content: "Existing draft",
       version: 1,
       updatedAt: "2026-07-19T10:00:00.000Z",
+      archivedAt: null,
     });
     expect(store.listWorkspaces()).toEqual([
       expect.objectContaining({
@@ -536,10 +639,108 @@ describe("SqlitePenaStore", () => {
     ]);
   });
 
+  it("starts history at the current recoverable version when migrating schema 4", () => {
+    const databasePath = createDatabasePath();
+    const database = new Database(databasePath);
+    database.exec(`
+      CREATE TABLE workspaces (
+        id         INTEGER PRIMARY KEY,
+        slug       TEXT NOT NULL UNIQUE,
+        name       TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE documents (
+        id           INTEGER PRIMARY KEY,
+        workspace_id INTEGER NOT NULL REFERENCES workspaces(id),
+        slug         TEXT NOT NULL,
+        content      TEXT NOT NULL,
+        updated_at   TEXT NOT NULL,
+        version      INTEGER NOT NULL CHECK (version >= 1),
+        archived_at  TEXT,
+        UNIQUE (workspace_id, slug)
+      ) STRICT;
+
+      CREATE TABLE feedback_batches (
+        id            INTEGER PRIMARY KEY,
+        document_id   INTEGER NOT NULL REFERENCES documents(id),
+        submitted_at  TEXT NOT NULL,
+        comments_json TEXT NOT NULL
+      ) STRICT;
+
+      INSERT INTO workspaces
+        (id, slug, name, created_at, updated_at)
+      VALUES
+        (1, 'default', 'Default', '2026-07-19T09:00:00.000Z',
+         '2026-07-19T09:00:00.000Z');
+
+      INSERT INTO documents
+        (id, workspace_id, slug, content, updated_at, version, archived_at)
+      VALUES
+        (1, 1, 'initial-spec', 'Only recoverable content',
+         '2026-07-19T10:00:00.000Z', 7, NULL);
+
+      INSERT INTO feedback_batches
+        (id, document_id, submitted_at, comments_json)
+      VALUES
+        (1, 1, '2026-07-19T10:01:00.000Z',
+         '[{"selectedText":"content","comment":"Keep this.","contextBefore":"Only recoverable ","contextAfter":""}]');
+
+      PRAGMA user_version = 4;
+    `);
+    database.close();
+
+    const store = createStore(databasePath);
+
+    expect(
+      store.listDocumentVersions(DEFAULT_WORKSPACE_SLUG, "initial-spec"),
+    ).toEqual([
+      {
+        workspaceSlug: "default",
+        slug: "initial-spec",
+        version: 7,
+        updatedAt: "2026-07-19T10:00:00.000Z",
+      },
+    ]);
+    expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches)
+      .toHaveLength(1);
+  });
+
+  it("migrates numeric development state revisions to opaque ETags", () => {
+    const databasePath = createDatabasePath();
+    const firstStore = createStore(databasePath);
+    firstStore.publishDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Existing version history",
+    );
+    firstStore.close();
+    stores.delete(firstStore);
+
+    const database = new Database(databasePath);
+    database.exec(`
+      ALTER TABLE documents DROP COLUMN state_token;
+      ALTER TABLE documents
+        ADD COLUMN state_revision INTEGER NOT NULL DEFAULT 1;
+      PRAGMA user_version = 5;
+    `);
+    database.close();
+
+    const migratedStore = createStore(databasePath);
+    const resource = migratedStore.getDocumentResource(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+    );
+
+    expect(resource?.etag).toMatch(/^"pena-[0-9a-f]{32}"$/);
+    expect(resource?.value.content).toBe("Existing version history");
+  });
+
   it("rejects databases created by a newer schema version", () => {
     const databasePath = createDatabasePath();
     const database = new Database(databasePath);
-    database.pragma("user_version = 5");
+    database.pragma("user_version = 7");
     database.close();
 
     expect(() => createStore(databasePath)).toThrow(

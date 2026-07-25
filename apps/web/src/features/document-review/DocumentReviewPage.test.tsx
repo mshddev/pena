@@ -27,6 +27,7 @@ const documentResponse = {
   content: DECISION_DOCUMENT,
   version: 1,
   updatedAt: "2026-07-18T10:00:00.000Z",
+  archivedAt: null,
 };
 
 beforeEach(() => {
@@ -214,6 +215,113 @@ describe("interactive decision review", () => {
   });
 });
 
+describe("version history", () => {
+  it("views, compares, and restores a historical version", async () => {
+    const currentDocument = {
+      ...documentResponse,
+      content: "# Second draft\n\nNew line.",
+      version: 2,
+      updatedAt: "2026-07-18T11:00:00.000Z",
+    };
+    const restoredDocument = {
+      ...currentDocument,
+      content: "# First draft\n\nOriginal line.",
+      version: 3,
+      updatedAt: "2026-07-18T12:00:00.000Z",
+    };
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === "/api/workspaces") {
+          return jsonResponse({ workspaces: [] });
+        }
+
+        if (url.endsWith("/feedback")) {
+          return jsonResponse({ batches: [] });
+        }
+
+        if (url.endsWith("/versions/1/restore") && init?.method === "POST") {
+          return jsonResponse(restoredDocument, 200, '"pena-test-2"');
+        }
+
+        if (url.endsWith("/versions/1")) {
+          return jsonResponse({
+            workspaceSlug: "default",
+            slug: "review",
+            content: "# First draft\n\nOriginal line.",
+            version: 1,
+            updatedAt: "2026-07-18T10:00:00.000Z",
+          });
+        }
+
+        if (url.endsWith("/versions")) {
+          return jsonResponse({
+            versions: [
+              {
+                workspaceSlug: "default",
+                slug: "review",
+                version: 2,
+                updatedAt: "2026-07-18T11:00:00.000Z",
+              },
+              {
+                workspaceSlug: "default",
+                slug: "review",
+                version: 1,
+                updatedAt: "2026-07-18T10:00:00.000Z",
+              },
+            ],
+          });
+        }
+
+        return jsonResponse(currentDocument);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Version 2" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Version history" }),
+    ).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: /^v1/ }));
+    expect(
+      await screen.findByRole("heading", { name: "First draft" }),
+    ).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Compare versions" }));
+    expect(
+      await screen.findByLabelText("Version comparison"),
+    ).toBeTruthy();
+    expect(screen.getByText("# First draft")).toBeTruthy();
+    expect(screen.getByText("# Second draft")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: /^v1/ }));
+    await user.click(
+      screen.getByRole("button", { name: "Restore this version" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Create restored version" }),
+    );
+
+    expect(
+      await screen.findByText("Version 3 is now current."),
+    ).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/workspaces/default/documents/review/versions/1/restore",
+      {
+        method: "POST",
+        headers: { "if-match": '"pena-test-1"' },
+      },
+    );
+  });
+});
+
 describe("saved document index", () => {
   it("moves an active document to another workspace", async () => {
     const fetchMock = vi.fn(
@@ -288,7 +396,11 @@ describe("saved document index", () => {
       "/api/workspaces/default/documents/review/move",
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        // The move is conditional on the exact document state that was loaded.
+        headers: {
+          "content-type": "application/json",
+          "if-match": '"pena-test-1"',
+        },
         body: JSON.stringify({ workspaceSlug: "research" }),
       },
     );
@@ -344,9 +456,16 @@ function documentListResponse(): Response {
   });
 }
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(
+  body: unknown,
+  status = 200,
+  etag = '"pena-test-1"',
+): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      etag,
+    },
   });
 }

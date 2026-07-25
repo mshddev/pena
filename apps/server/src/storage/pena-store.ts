@@ -1,6 +1,8 @@
 import type {
   DocumentSummary,
   DocumentStatus,
+  DocumentVersion,
+  DocumentVersionSummary,
   FeedbackBatch,
   FeedbackResponse,
   FeedbackSubmission,
@@ -8,6 +10,15 @@ import type {
   Workspace,
   WorkspaceSummary,
 } from "@pena/contracts";
+
+export type DocumentWriteCondition =
+  | { kind: "create" }
+  | { kind: "match"; etag: string };
+
+export interface DocumentResource<T> {
+  etag: string;
+  value: T;
+}
 
 export interface PenaStore {
   listWorkspaces(): WorkspaceSummary[];
@@ -18,8 +29,28 @@ export interface PenaStore {
     workspaceSlug: string,
     slug: string,
     content: string,
+    condition?: DocumentWriteCondition,
   ): PenaDocument;
   getDocument(workspaceSlug: string, slug: string): PenaDocument | null;
+  getDocumentResource(
+    workspaceSlug: string,
+    slug: string,
+  ): DocumentResource<PenaDocument> | null;
+  listDocumentVersions(
+    workspaceSlug: string,
+    slug: string,
+  ): DocumentVersionSummary[];
+  getDocumentVersion(
+    workspaceSlug: string,
+    slug: string,
+    version: number,
+  ): DocumentVersion | null;
+  restoreDocumentVersion(
+    workspaceSlug: string,
+    slug: string,
+    version: number,
+    expectedEtag?: string,
+  ): PenaDocument;
   listDocuments(
     workspaceSlug: string,
     status?: DocumentStatus,
@@ -29,14 +60,28 @@ export interface PenaStore {
     workspaceSlug: string,
     slug: string,
     destinationWorkspaceSlug: string,
+    expectedEtag?: string,
   ): DocumentSummary;
-  archiveDocument(workspaceSlug: string, slug: string): DocumentSummary;
-  restoreDocument(workspaceSlug: string, slug: string): DocumentSummary;
-  deleteArchivedDocument(workspaceSlug: string, slug: string): void;
+  archiveDocument(
+    workspaceSlug: string,
+    slug: string,
+    expectedEtag?: string,
+  ): DocumentSummary;
+  unarchiveDocument(
+    workspaceSlug: string,
+    slug: string,
+    expectedEtag?: string,
+  ): DocumentSummary;
+  deleteArchivedDocument(
+    workspaceSlug: string,
+    slug: string,
+    expectedEtag?: string,
+  ): void;
   addFeedback(
     workspaceSlug: string,
     slug: string,
     submission: FeedbackSubmission,
+    expectedEtag?: string,
   ): FeedbackBatch;
   getFeedback(workspaceSlug: string, slug: string): FeedbackResponse;
   close(): void;
@@ -63,7 +108,7 @@ export class DocumentNotArchivedError extends Error {
 export class DocumentArchivedError extends Error {
   constructor(workspaceSlug: string, slug: string) {
     super(
-      `The document "${slug}" in workspace "${workspaceSlug}" must be restored before it can be moved.`,
+      `The document "${slug}" in workspace "${workspaceSlug}" is archived. Unarchive it before changing or reviewing it.`,
     );
     this.name = "DocumentArchivedError";
   }
@@ -75,6 +120,22 @@ export class DocumentSlugConflictError extends Error {
       `A document with slug "${slug}" already exists in workspace "${workspaceSlug}".`,
     );
     this.name = "DocumentSlugConflictError";
+  }
+}
+
+export class DocumentPreconditionFailedError extends Error {
+  constructor(public readonly currentVersion: number) {
+    super("The document changed after it was read.");
+    this.name = "DocumentPreconditionFailedError";
+  }
+}
+
+export class DocumentVersionNotFoundError extends Error {
+  constructor(workspaceSlug: string, slug: string, version: number) {
+    super(
+      `Version ${version} does not exist for document "${slug}" in workspace "${workspaceSlug}".`,
+    );
+    this.name = "DocumentVersionNotFoundError";
   }
 }
 

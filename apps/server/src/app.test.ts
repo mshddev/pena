@@ -47,6 +47,22 @@ async function publishDocument(
   });
 }
 
+async function createDocument(
+  app: ReturnType<typeof buildApp>,
+  url = DOCUMENT_URL,
+  content = "Current draft",
+) {
+  return app.inject({
+    method: "PUT",
+    url,
+    headers: {
+      "content-type": "text/markdown",
+      "if-none-match": "*",
+    },
+    payload: content,
+  });
+}
+
 async function documentEtag(
   app: ReturnType<typeof buildApp>,
   url = DOCUMENT_URL,
@@ -402,16 +418,24 @@ describe("Pena API", () => {
     expect(response.json().error).toContain("active");
   });
 
-  it("publishes and returns a Markdown document by slug", async () => {
+  it("creates without a preliminary read and returns document metadata", async () => {
     const app = createApp();
 
-    const publishResponse = await publishDocument(
+    const publishResponse = await createDocument(
       app,
       DOCUMENT_URL,
       "# First draft\n\nHello Pena.",
     );
 
     expect(publishResponse.statusCode).toBe(201);
+    expect(requiredEtag(publishResponse)).toMatch(/^"pena-.+"$/);
+    expect(publishResponse.json()).toEqual({
+      workspaceSlug: "default",
+      slug: "initial-spec",
+      version: 1,
+      updatedAt: expect.any(String),
+      archivedAt: null,
+    });
 
     const documentResponse = await app.inject({
       method: "GET",
@@ -518,9 +542,37 @@ describe("Pena API", () => {
     });
     expect(missingPrecondition.statusCode).toBe(428);
 
-    const created = await publishDocument(app, DOCUMENT_URL, "First");
+    const created = await createDocument(app, DOCUMENT_URL, "First");
     const staleEtag = requiredEtag(created);
-    await publishDocument(app, DOCUMENT_URL, "Second");
+    const duplicateCreate = await createDocument(
+      app,
+      DOCUMENT_URL,
+      "Unexpected replacement",
+    );
+    expect(duplicateCreate.statusCode).toBe(412);
+    expect(duplicateCreate.json()).toEqual({
+      error: "The document changed after it was read.",
+      currentVersion: 1,
+    });
+
+    const updated = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: {
+        "content-type": "text/markdown",
+        "if-match": staleEtag,
+      },
+      payload: "Second",
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json()).toEqual({
+      workspaceSlug: "default",
+      slug: "initial-spec",
+      version: 2,
+      updatedAt: expect.any(String),
+      archivedAt: null,
+    });
+    expect(requiredEtag(updated)).not.toBe(staleEtag);
 
     const stale = await app.inject({
       method: "PUT",

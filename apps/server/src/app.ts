@@ -1,5 +1,6 @@
 import {
   DecisionBlockSyntaxError,
+  DocumentMetadataSchema,
   DocumentMoveRequestSchema,
   DocumentSlugSchema,
   DocumentStatusSchema,
@@ -241,7 +242,7 @@ export function buildApp(store: PenaStore): FastifyInstance {
         return reply
           .header("etag", resource?.etag ?? "")
           .code(condition.kind === "create" ? 201 : 200)
-          .send(document);
+          .send(DocumentMetadataSchema.parse(document));
       } catch (error) {
         return sendDocumentError(reply, error);
       }

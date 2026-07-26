@@ -82,6 +82,12 @@ export const DocumentSchema = z.object({
 
 export type PenaDocument = z.infer<typeof DocumentSchema>;
 
+export const DocumentMetadataSchema = DocumentSchema.omit({
+  content: true,
+});
+
+export type DocumentMetadata = z.infer<typeof DocumentMetadataSchema>;
+
 export const DocumentVersionSchema = DocumentSchema.omit({
   archivedAt: true,
 });

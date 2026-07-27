@@ -2256,6 +2256,61 @@ button:disabled {
   border-color: var(--accent);
 }
 
+.markdown-body .markdown-alert {
+  --callout-color: 111 140 255;
+
+  margin: 1.8em 0;
+  padding: 16px 18px 17px;
+  border: 1px solid rgb(var(--callout-color) / 22%);
+  border-left: 3px solid rgb(var(--callout-color) / 78%);
+  border-radius: 8px;
+  background: rgb(var(--callout-color) / 7%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 2.5%);
+  color: var(--text-soft);
+  font-style: normal;
+}
+
+.markdown-body .markdown-alert-tip {
+  --callout-color: 72 187 120;
+}
+
+.markdown-body .markdown-alert-important {
+  --callout-color: 171 130 255;
+}
+
+.markdown-body .markdown-alert-warning {
+  --callout-color: 224 166 74;
+}
+
+.markdown-body .markdown-alert-caution {
+  --callout-color: 231 100 92;
+}
+
+.markdown-body .markdown-alert-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: rgb(var(--callout-color) / 94%);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 760;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.markdown-body .markdown-alert-title .octicon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  fill: currentColor;
+}
+
+.markdown-body .markdown-alert > :last-child {
+  margin-bottom: 0;
+}
+
 .markdown-body :not(pre) > code {
   background: #1c2029;
   color: #cbd5ff;

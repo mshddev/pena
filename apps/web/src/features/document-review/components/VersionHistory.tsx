@@ -5,8 +5,6 @@ import {
   type PenaDocument,
 } from "@pena/contracts";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 import {
   fetchDocumentVersion,
@@ -15,6 +13,8 @@ import {
   type DocumentResource,
 } from "../../../api";
 import { formatRelativeTime } from "../../../format";
+import { MarkdownContent } from "../MarkdownContent";
+import { markdownComponents } from "../markdown-components";
 import { diffMarkdown } from "../version-diff";
 
 interface VersionHistoryProps {
@@ -389,16 +389,19 @@ export function ReadOnlyDocument({ content }: { content: string }) {
     <article className="markdown-body readonly-document">
       {parsed.segments.map((segment, index) =>
         segment.type === "markdown" ? (
-          <ReactMarkdown remarkPlugins={[remarkGfm]} key={`markdown-${index}`}>
+          <MarkdownContent
+            components={markdownComponents}
+            key={`markdown-${index}`}
+          >
             {segment.content}
-          </ReactMarkdown>
+          </MarkdownContent>
         ) : (
           <Fragment key={segment.decision.id}>
             <div className="decision-block readonly-decision">
               <p className="decision-label">Decision in this version</p>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <MarkdownContent components={markdownComponents}>
                 {segment.decision.body}
-              </ReactMarkdown>
+              </MarkdownContent>
               <div className="decision-actions">
                 <span className="decision-choice">{segment.decision.choiceA}</span>
                 <span className="decision-choice">{segment.decision.choiceB}</span>

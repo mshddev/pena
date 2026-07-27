@@ -1,8 +1,7 @@
 import type { DecisionBlock as DecisionBlockDefinition } from "@pena/contracts";
 import { useMemo, useRef } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
+import { MarkdownContent } from "../MarkdownContent";
 import { createAnnotatedMarkdownComponents } from "../markdown-components";
 
 interface DecisionBlockProps {
@@ -60,9 +59,9 @@ export function DecisionBlock({
         {isSubmitted ? "Decision submitted" : "Decision required"}
       </p>
       <div className="decision-body" ref={bodyRef}>
-        <ReactMarkdown components={components} remarkPlugins={[remarkGfm]}>
+        <MarkdownContent components={components}>
           {decision.body}
-        </ReactMarkdown>
+        </MarkdownContent>
       </div>
       <div
         className="decision-actions"

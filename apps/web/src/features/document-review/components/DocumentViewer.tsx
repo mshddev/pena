@@ -15,11 +15,10 @@ import {
   type MouseEvent as ReactMouseEvent,
   type SyntheticEvent,
 } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 import { readElementPassage } from "../../../selection";
 import { isCommentShortcut } from "../../../shortcuts";
+import { MarkdownContent } from "../MarkdownContent";
 import {
   readActiveSection,
   readOutlineSections,
@@ -566,8 +565,8 @@ const MarkdownSegment = memo(function MarkdownSegment({
   );
 
   return (
-    <ReactMarkdown components={components} remarkPlugins={[remarkGfm]}>
+    <MarkdownContent components={components}>
       {content}
-    </ReactMarkdown>
+    </MarkdownContent>
   );
 });

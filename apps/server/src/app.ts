@@ -5,6 +5,7 @@ import {
   DocumentSlugSchema,
   DocumentStatusSchema,
   DocumentUpdateRequestSchema,
+  FeedbackReceiptSchema,
   FeedbackSubmissionSchema,
   WorkspaceCreateRequestSchema,
   WorkspaceSlugSchema,
@@ -25,6 +26,7 @@ import {
   DocumentPreconditionFailedError,
   DocumentSlugConflictError,
   DocumentVersionNotFoundError,
+  FeedbackPreconditionFailedError,
   PersistedDataError,
   WorkspaceNameConflictError,
   WorkspaceNameInvalidError,
@@ -229,11 +231,21 @@ export function buildApp(store: PenaStore): FastifyInstance {
           return;
         }
 
+        const expectedLatestFeedbackBatchId = parseIfFeedbackMatch(
+          request.headers["if-feedback-match"],
+          reply,
+        );
+
+        if (expectedLatestFeedbackBatchId === null) {
+          return;
+        }
+
         const document = store.publishDocument(
           params.workspaceSlug,
           params.documentSlug,
           request.body,
           condition,
+          expectedLatestFeedbackBatchId,
         );
         const resource = store.getDocumentResource(
           params.workspaceSlug,
@@ -519,7 +531,14 @@ export function buildApp(store: PenaStore): FastifyInstance {
           parsedSubmission.data,
           expectedEtag,
         );
-        return reply.code(201).send(batch);
+        const resource = store.getDocumentResource(
+          params.workspaceSlug,
+          params.documentSlug,
+        );
+        return reply
+          .header("etag", resource?.etag ?? "")
+          .code(201)
+          .send(FeedbackReceiptSchema.parse(batch));
       } catch (error) {
         if (error instanceof DocumentNotFoundError) {
           return reply.code(409).send({
@@ -542,7 +561,34 @@ export function buildApp(store: PenaStore): FastifyInstance {
       }
 
       try {
-        return store.getFeedback(params.workspaceSlug, params.documentSlug);
+        const expectedEtag = parseOptionalIfMatch(
+          request.headers["if-match"],
+          reply,
+        );
+
+        if (expectedEtag === null) {
+          return;
+        }
+
+        const resource = store.getDocumentResource(
+          params.workspaceSlug,
+          params.documentSlug,
+        );
+
+        if (!resource) {
+          throw new DocumentNotFoundError(
+            params.workspaceSlug,
+            params.documentSlug,
+          );
+        }
+
+        if (expectedEtag && expectedEtag !== resource.etag) {
+          throw new DocumentPreconditionFailedError(resource.value.version);
+        }
+
+        return reply
+          .header("etag", resource.etag)
+          .send(store.getFeedback(params.workspaceSlug, params.documentSlug));
       } catch (error) {
         if (error instanceof PersistedDataError) {
           await reply.code(500).send({
@@ -677,6 +723,44 @@ function parseIfMatch(
   return value;
 }
 
+function parseOptionalIfMatch(
+  value: string | string[] | undefined,
+  reply: FastifyReply,
+): string | null | undefined {
+  return value === undefined ? undefined : parseIfMatch(value, reply);
+}
+
+function parseIfFeedbackMatch(
+  value: string | string[] | undefined,
+  reply: FastifyReply,
+): number | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (Array.isArray(value) || value.includes(",")) {
+    void reply.code(400).send({
+      error: "If-Feedback-Match must contain one feedback batch ID.",
+    });
+    return null;
+  }
+
+  const batchId = Number(value);
+
+  if (
+    !Number.isSafeInteger(batchId) ||
+    batchId < 1 ||
+    String(batchId) !== value
+  ) {
+    void reply.code(400).send({
+      error: "If-Feedback-Match must contain one positive feedback batch ID.",
+    });
+    return null;
+  }
+
+  return batchId;
+}
+
 function sendWorkspaceMutationError(reply: FastifyReply, error: unknown) {
   if (error instanceof WorkspaceNotFoundError) {
     return reply.code(404).send({ error: error.message });
@@ -702,6 +786,14 @@ function sendWorkspaceMutationError(reply: FastifyReply, error: unknown) {
 }
 
 function sendDocumentError(reply: FastifyReply, error: unknown) {
+  if (error instanceof FeedbackPreconditionFailedError) {
+    return reply.code(412).send({
+      error: error.message,
+      currentVersion: error.currentVersion,
+      latestBatchId: error.latestBatchId,
+    });
+  }
+
   if (error instanceof DocumentPreconditionFailedError) {
     return reply.code(412).send({
       error: error.message,

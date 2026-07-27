@@ -38,6 +38,7 @@ import {
   DocumentPreconditionFailedError,
   DocumentSlugConflictError,
   DocumentVersionNotFoundError,
+  FeedbackPreconditionFailedError,
   PersistedDataError,
   UnsupportedSchemaVersionError,
   WorkspaceNameConflictError,
@@ -111,6 +112,7 @@ export class SqlitePenaStore implements PenaStore {
     slug: string,
     content: string,
     condition?: DocumentWriteCondition,
+    expectedLatestFeedbackBatchId?: number,
   ) => PenaDocument;
 
   constructor(
@@ -140,6 +142,7 @@ export class SqlitePenaStore implements PenaStore {
         slug: string,
         content: string,
         condition?: DocumentWriteCondition,
+        expectedLatestFeedbackBatchId?: number,
       ): PenaDocument => {
         const workspace = this.requireWorkspaceRow(workspaceSlug);
         const currentDocument = this.getDocumentRow(workspace.id, slug);
@@ -197,6 +200,11 @@ export class SqlitePenaStore implements PenaStore {
         if (currentDocument.archived_at !== null) {
           throw new DocumentArchivedError(workspaceSlug, slug);
         }
+
+        this.assertLatestFeedbackBatchId(
+          currentDocument,
+          expectedLatestFeedbackBatchId,
+        );
 
         if (currentDocument.content === content) {
           return toDocument(currentDocument);
@@ -371,12 +379,14 @@ export class SqlitePenaStore implements PenaStore {
     slug: string,
     content: string,
     condition?: DocumentWriteCondition,
+    expectedLatestFeedbackBatchId?: number,
   ): PenaDocument {
     return this.publishDocumentTransaction(
       workspaceSlug,
       slug,
       content,
       condition,
+      expectedLatestFeedbackBatchId,
     );
   }
 
@@ -775,7 +785,10 @@ export class SqlitePenaStore implements PenaStore {
       .all(document.version_id);
 
     const batches = rows.map((row) => parseFeedbackBatch(row));
-    return FeedbackResponseSchema.parse({ batches });
+    return FeedbackResponseSchema.parse({
+      latestBatchId: batches.at(-1)?.id ?? null,
+      batches,
+    });
   }
 
   close(): void {
@@ -892,6 +905,33 @@ export class SqlitePenaStore implements PenaStore {
   private assertEtag(document: DocumentRow, expectedEtag?: string): void {
     if (expectedEtag && expectedEtag !== documentEtag(document)) {
       throw new DocumentPreconditionFailedError(document.version);
+    }
+  }
+
+  private assertLatestFeedbackBatchId(
+    document: DocumentRow,
+    expectedLatestFeedbackBatchId?: number,
+  ): void {
+    if (expectedLatestFeedbackBatchId === undefined) {
+      return;
+    }
+
+    const row = this.database
+      .prepare<[number], { latest_batch_id: number | null }>(
+        `
+          SELECT MAX(id) AS latest_batch_id
+          FROM feedback_batches
+          WHERE document_version_id = ?
+        `,
+      )
+      .get(document.version_id);
+    const latestBatchId = row?.latest_batch_id ?? null;
+
+    if (expectedLatestFeedbackBatchId !== latestBatchId) {
+      throw new FeedbackPreconditionFailedError(
+        document.version,
+        latestBatchId,
+      );
     }
   }
 }

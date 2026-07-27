@@ -90,7 +90,11 @@ export function DocumentReviewPage({
       const nextSubmittedDecisions =
         parsedDocument.decisions.length > 0
           ? readSubmittedDecisions(
-              await fetchFeedback(workspaceSlug, documentSlug),
+              await fetchFeedback(
+                workspaceSlug,
+                documentSlug,
+                resource.etag,
+              ),
               parsedDocument.decisions,
             )
           : {};

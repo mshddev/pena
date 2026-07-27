@@ -30,6 +30,7 @@ export interface PenaStore {
     slug: string,
     content: string,
     condition?: DocumentWriteCondition,
+    expectedLatestFeedbackBatchId?: number,
   ): PenaDocument;
   getDocument(workspaceSlug: string, slug: string): PenaDocument | null;
   getDocumentResource(
@@ -127,6 +128,16 @@ export class DocumentPreconditionFailedError extends Error {
   constructor(public readonly currentVersion: number) {
     super("The document changed after it was read.");
     this.name = "DocumentPreconditionFailedError";
+  }
+}
+
+export class FeedbackPreconditionFailedError extends Error {
+  constructor(
+    public readonly currentVersion: number,
+    public readonly latestBatchId: number | null,
+  ) {
+    super("New feedback was submitted after it was read.");
+    this.name = "FeedbackPreconditionFailedError";
   }
 }
 

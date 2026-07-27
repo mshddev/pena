@@ -337,6 +337,7 @@ describe("SqlitePenaStore", () => {
     expect(firstBatch.id).toBe(1);
     expect(secondBatch.id).toBe(2);
     expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual({
+      latestBatchId: secondBatch.id,
       batches: [firstBatch, secondBatch],
     });
   });
@@ -399,7 +400,10 @@ describe("SqlitePenaStore", () => {
     expect(firstDocument.version).toBe(1);
     expect(replacement.content).toBe("Replacement draft");
     expect(replacement.version).toBe(2);
-    expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual({ batches: [] });
+    expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual({
+      latestBatchId: null,
+      batches: [],
+    });
   });
 
   it("keeps immutable content history and restores an older version as the next version", () => {
@@ -431,6 +435,7 @@ describe("SqlitePenaStore", () => {
 
     expect(restored).toMatchObject({ content: "Version one", version: 4 });
     expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual({
+      latestBatchId: null,
       batches: [],
     });
 
@@ -528,6 +533,7 @@ describe("SqlitePenaStore", () => {
     );
     expect(store.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")?.version).toBe(1);
     expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual({
+      latestBatchId: batch.id,
       batches: [batch],
     });
   });
@@ -550,6 +556,7 @@ describe("SqlitePenaStore", () => {
 
     expect(reopenedStore.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual(document);
     expect(reopenedStore.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual({
+      latestBatchId: batch.id,
       batches: [batch],
     });
   });

@@ -71,12 +71,11 @@ describe("interactive decision review", () => {
         return jsonResponse({
           id: 1,
           submittedAt: "2026-07-18T10:01:00.000Z",
-          comments: JSON.parse(String(init.body)).comments,
         }, 201);
       }
 
       if (url.endsWith("/feedback")) {
-        return jsonResponse({ batches: [] });
+        return jsonResponse({ latestBatchId: null, batches: [] });
       }
 
       return jsonResponse(documentResponse);
@@ -123,6 +122,10 @@ describe("interactive decision review", () => {
     expect((apply as HTMLButtonElement).disabled).toBe(true);
     expect((skip as HTMLButtonElement).disabled).toBe(true);
     expect(skip.getAttribute("aria-pressed")).toBe("true");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/workspaces/default/documents/review/feedback",
+      { headers: { "if-match": '"pena-test-1"' } },
+    );
   });
 
   it("restores submitted decisions as disabled choices", async () => {
@@ -133,6 +136,7 @@ describe("interactive decision review", () => {
           ? documentListResponse()
           : String(input).endsWith("/feedback")
           ? jsonResponse({
+              latestBatchId: 1,
               batches: [
                 {
                   id: 1,
@@ -238,7 +242,7 @@ describe("version history", () => {
         }
 
         if (url.endsWith("/feedback")) {
-          return jsonResponse({ batches: [] });
+          return jsonResponse({ latestBatchId: null, batches: [] });
         }
 
         if (url.endsWith("/versions/1/restore") && init?.method === "POST") {
@@ -354,7 +358,7 @@ describe("saved document index", () => {
         }
 
         if (url.endsWith("/feedback")) {
-          return jsonResponse({ batches: [] });
+          return jsonResponse({ latestBatchId: null, batches: [] });
         }
 
         if (
@@ -411,7 +415,7 @@ describe("saved document index", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) =>
         String(input).endsWith("/feedback")
-          ? jsonResponse({ batches: [] })
+          ? jsonResponse({ latestBatchId: null, batches: [] })
           : jsonResponse(documentResponse),
       ),
     );

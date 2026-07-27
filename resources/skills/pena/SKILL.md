@@ -13,7 +13,8 @@ Treat document ETags as opaque state tokens, including their surrounding quotes.
 Retain the exact ETag returned by each successful document `GET`, `PUT`,
 `PATCH`, move, or restore response. Replace the retained value when a mutation
 returns a new ETag. If no current ETag remains available, fetch the document
-before changing existing state.
+before changing existing state. Keep the retained ETag associated with the
+local content it describes; never use it to publish a different document base.
 
 ## Select a workspace
 
@@ -91,20 +92,45 @@ before changing existing state.
 
 Retrieve feedback only when the user explicitly asks.
 
-1. Retrieve the feedback:
+1. If no ETag is retained, fetch the current document and use its content as
+   the revision base.
+2. Retrieve feedback for the latest document state with the retained ETag:
 
    ```bash
-   curl --fail --silent --show-error \
+   curl --silent --show-error \
+     --header 'If-Match: <exact-etag>' \
+     --dump-header <headers-file> \
+     --output <feedback-file> \
      http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>/feedback
    ```
 
-2. Read every returned feedback batch and comment.
-3. Treat a comment formatted as `[decision:<decision-id>] <choice>` as the user's answer to that decision block.
-4. Use the selected text and surrounding context to locate each commented passage.
-5. Apply the feedback when the user's request requires changes.
-6. If the document changes, republish it with the retained current ETag. Fetch
-   the current document first only when no ETag is available. Treat `412` as a
-   stale write and reconcile before retrying.
+   On HTTP `200`, retain the response ETag and `latestBatchId`. On `412`, fetch
+   the current document and ETag, then request its feedback again. Use the
+   freshly fetched content as the revision base. On `404`, report that the
+   document no longer exists.
+3. Read every returned feedback batch and comment. If `latestBatchId` is
+   `null`, report that the current document has no feedback and stop.
+4. Treat a comment formatted as `[decision:<decision-id>] <choice>` as the user's answer to that decision block.
+5. Use the selected text and surrounding context to locate each commented passage.
+6. Apply the feedback when the user's request requires changes.
+7. If the document changes, republish it against both states:
+
+   ```bash
+   curl --silent --show-error \
+     --request PUT \
+     --header "Content-Type: text/markdown" \
+     --header 'If-Match: <exact-etag>' \
+     --header 'If-Feedback-Match: <latest-batch-id>' \
+     --dump-header <headers-file> \
+     --data-binary @<markdown-file-path> \
+     http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>
+   ```
+
+   On HTTP `200`, replace the retained ETag with the response ETag. On `412`,
+   refetch both the current document and its feedback, reconcile all feedback
+   against the new content, and retry only after reconciliation. If applying
+   the feedback does not change the document, do not republish; report that no
+   content change was needed.
 
 If Pena cannot be reached, report the error instead of guessing.
 

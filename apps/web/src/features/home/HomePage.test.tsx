@@ -157,6 +157,7 @@ describe("workspace home", () => {
 
   it("counts feedback per document", async () => {
     stubLibrary({
+      latestBatchId: 1,
       batches: [
         {
           id: 1,
@@ -230,9 +231,14 @@ describe("workspace home", () => {
 interface StubOptions {
   batches?: unknown[];
   documents?: Record<string, unknown[]>;
+  latestBatchId?: number | null;
 }
 
-function stubLibrary({ batches = [], documents = DOCUMENTS }: StubOptions = {}) {
+function stubLibrary({
+  batches = [],
+  documents = DOCUMENTS,
+  latestBatchId = null,
+}: StubOptions = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -243,7 +249,7 @@ function stubLibrary({ batches = [], documents = DOCUMENTS }: StubOptions = {}) 
       }
 
       if (url.endsWith("/feedback")) {
-        return jsonResponse({ batches });
+        return jsonResponse({ latestBatchId, batches });
       }
 
       const listMatch = /^\/api\/workspaces\/([^/]+)\/documents$/.exec(url);

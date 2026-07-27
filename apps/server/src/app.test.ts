@@ -452,12 +452,17 @@ describe("Pena API", () => {
 
   it("stores multiple comments in one feedback batch", async () => {
     const app = createApp();
-    await publishDocument(app, DOCUMENT_URL, "Alpha beta gamma delta.");
+    const published = await publishDocument(
+      app,
+      DOCUMENT_URL,
+      "Alpha beta gamma delta.",
+    );
+    const etag = requiredEtag(published);
 
     const submitResponse = await app.inject({
       method: "POST",
       url: FEEDBACK_URL,
-      headers: { "if-match": await documentEtag(app) },
+      headers: { "if-match": etag },
       payload: {
         comments: [
           {
@@ -477,16 +482,108 @@ describe("Pena API", () => {
     });
 
     expect(submitResponse.statusCode).toBe(201);
+    expect(requiredEtag(submitResponse)).toBe(etag);
+    expect(submitResponse.json()).toEqual({
+      id: 1,
+      submittedAt: expect.any(String),
+    });
 
     const feedbackResponse = await app.inject({
       method: "GET",
       url: FEEDBACK_URL,
+      headers: { "if-match": etag },
     });
 
     const feedback = feedbackResponse.json();
+    expect(requiredEtag(feedbackResponse)).toBe(etag);
+    expect(feedback.latestBatchId).toBe(1);
     expect(feedback.batches).toHaveLength(1);
     expect(feedback.batches[0].id).toBe(1);
     expect(feedback.batches[0].comments).toHaveLength(2);
+  });
+
+  it("rejects a feedback read when the retained document ETag is stale", async () => {
+    const app = createApp();
+    const first = await publishDocument(app);
+    await publishDocument(app, DOCUMENT_URL, "Replacement draft");
+
+    const response = await app.inject({
+      method: "GET",
+      url: FEEDBACK_URL,
+      headers: { "if-match": requiredEtag(first) },
+    });
+
+    expect(response.statusCode).toBe(412);
+    expect(response.json()).toEqual({
+      error: "The document changed after it was read.",
+      currentVersion: 2,
+    });
+  });
+
+  it("rejects republishing when newer feedback arrived after it was read", async () => {
+    const app = createApp();
+    const published = await publishDocument(app);
+    const etag = requiredEtag(published);
+
+    await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      headers: { "if-match": etag },
+      payload: feedbackPayload,
+    });
+    const firstRead = await app.inject({
+      method: "GET",
+      url: FEEDBACK_URL,
+      headers: { "if-match": etag },
+    });
+    const firstLatestBatchId = firstRead.json().latestBatchId;
+
+    await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      headers: { "if-match": etag },
+      payload: feedbackPayload,
+    });
+
+    const staleFeedbackPublish = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: {
+        "content-type": "text/markdown",
+        "if-match": etag,
+        "if-feedback-match": String(firstLatestBatchId),
+      },
+      payload: "Revision that missed newer feedback",
+    });
+
+    expect(staleFeedbackPublish.statusCode).toBe(412);
+    expect(staleFeedbackPublish.json()).toEqual({
+      error: "New feedback was submitted after it was read.",
+      currentVersion: 1,
+      latestBatchId: 2,
+    });
+    expect((await app.inject({ method: "GET", url: DOCUMENT_URL })).json())
+      .toMatchObject({ content: "Current draft", version: 1 });
+
+    const latestFeedback = await app.inject({
+      method: "GET",
+      url: FEEDBACK_URL,
+      headers: { "if-match": etag },
+    });
+    const revised = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: {
+        "content-type": "text/markdown",
+        "if-match": etag,
+        "if-feedback-match": String(latestFeedback.json().latestBatchId),
+      },
+      payload: "Revision including all feedback",
+    });
+
+    expect(revised.statusCode).toBe(200);
+    expect(revised.json().version).toBe(2);
+    expect(requiredEtag(revised)).not.toBe(etag);
   });
 
   it("keeps feedback when identical document content is published again", async () => {
@@ -632,7 +729,7 @@ describe("Pena API", () => {
       content: "Version one",
     });
     expect((await app.inject({ method: "GET", url: FEEDBACK_URL })).json())
-      .toEqual({ batches: [] });
+      .toEqual({ latestBatchId: null, batches: [] });
   });
 
   it("isolates documents and feedback by slug", async () => {
@@ -666,7 +763,10 @@ describe("Pena API", () => {
       url: articleFeedbackUrl,
     });
 
-    expect(replacedFeedback.json()).toEqual({ batches: [] });
+    expect(replacedFeedback.json()).toEqual({
+      latestBatchId: null,
+      batches: [],
+    });
     expect(articleFeedback.json().batches).toHaveLength(1);
   });
 
@@ -705,7 +805,7 @@ describe("Pena API", () => {
 
     expect(response.statusCode).toBe(412);
     expect((await app.inject({ method: "GET", url: FEEDBACK_URL })).json())
-      .toEqual({ batches: [] });
+      .toEqual({ latestBatchId: null, batches: [] });
   });
 
   it("rejects invalid slugs and invalid feedback", async () => {
@@ -724,6 +824,34 @@ describe("Pena API", () => {
       payload: { comments: [] },
     });
     expect(invalidFeedbackResponse.statusCode).toBe(400);
+  });
+
+  it("rejects malformed feedback preconditions", async () => {
+    const app = createApp();
+    const published = await publishDocument(app);
+    const etag = requiredEtag(published);
+
+    const invalidRead = await app.inject({
+      method: "GET",
+      url: FEEDBACK_URL,
+      headers: { "if-match": 'W/"pena-weak"' },
+    });
+    const invalidPublish = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: {
+        "content-type": "text/markdown",
+        "if-match": etag,
+        "if-feedback-match": "0",
+      },
+      payload: "Replacement draft",
+    });
+
+    expect(invalidRead.statusCode).toBe(400);
+    expect(invalidPublish.statusCode).toBe(400);
+    expect(invalidPublish.json()).toEqual({
+      error: "If-Feedback-Match must contain one positive feedback batch ID.",
+    });
   });
 
   it("requires a precondition before feedback can target a missing document", async () => {
@@ -767,6 +895,19 @@ describe("Pena API", () => {
       },
       getDocument() {
         throw new Error("Not used in this test.");
+      },
+      getDocumentResource() {
+        return {
+          etag: '"pena-test"',
+          value: {
+            workspaceSlug: "default",
+            slug: "initial-spec",
+            content: "Current draft",
+            version: 1,
+            updatedAt: "2026-07-26T00:00:00.000Z",
+            archivedAt: null,
+          },
+        };
       },
       listDocuments() {
         throw new Error("Not used in this test.");

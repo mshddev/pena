@@ -4,7 +4,7 @@ import type {
   DocumentStatus,
   DocumentVersion,
   DocumentVersionListResponse,
-  FeedbackBatch,
+  FeedbackReceipt,
   FeedbackResponse,
   FeedbackSubmission,
   PenaDocument,
@@ -236,7 +236,7 @@ export async function submitFeedback(
   documentSlug: string,
   submission: FeedbackSubmission,
   etag: string,
-): Promise<FeedbackBatch> {
+): Promise<FeedbackReceipt> {
   const response = await fetch(
     `${documentUrl(workspaceSlug, documentSlug)}/feedback`,
     {
@@ -249,15 +249,17 @@ export async function submitFeedback(
     },
   );
 
-  return parseResponse<FeedbackBatch>(response);
+  return parseResponse<FeedbackReceipt>(response);
 }
 
 export async function fetchFeedback(
   workspaceSlug: string,
   documentSlug: string,
+  etag?: string,
 ): Promise<FeedbackResponse> {
   const response = await fetch(
     `${documentUrl(workspaceSlug, documentSlug)}/feedback`,
+    etag ? { headers: { "if-match": etag } } : undefined,
   );
   return parseResponse<FeedbackResponse>(response);
 }

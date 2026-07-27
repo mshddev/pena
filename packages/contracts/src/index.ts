@@ -172,7 +172,14 @@ export const FeedbackBatchSchema = FeedbackSubmissionSchema.extend({
 
 export type FeedbackBatch = z.infer<typeof FeedbackBatchSchema>;
 
+export const FeedbackReceiptSchema = FeedbackBatchSchema.omit({
+  comments: true,
+});
+
+export type FeedbackReceipt = z.infer<typeof FeedbackReceiptSchema>;
+
 export const FeedbackResponseSchema = z.object({
+  latestBatchId: z.number().int().positive().nullable(),
   batches: z.array(FeedbackBatchSchema),
 });
 

@@ -49,6 +49,13 @@ local content it describes; never use it to publish a different document base.
    browser inspection is available, preview nontrivial diagrams after
    publishing and revise layouts that are overly tall or make labels too small.
 
+   For relational database schemas, prefer Mermaid `erDiagram` with Crow's
+   Foot cardinalities. Show only verified relationships and include primary
+   keys, foreign keys, and a few essential business columns. Do not imply a
+   foreign-key constraint for a logical lookup. Keep prose tables for table
+   responsibilities and mutation behavior, and split large schemas into
+   domain-focused diagrams.
+
 3. When an item requires one user choice, optionally add an interactive decision block:
 
    ```markdown

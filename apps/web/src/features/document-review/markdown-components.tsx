@@ -70,6 +70,12 @@ function createMarkdownComponents(namespace?: string): Components {
     blockquote: ({ node, ...props }) => (
       <blockquote {...annotationId(node)} {...props} />
     ),
+    details: ({ node, ...props }) => (
+      <details {...annotationId(node)} {...props} />
+    ),
+    summary: ({ node, ...props }) => (
+      <summary {...annotationId(node)} {...props} />
+    ),
     pre: ({ node, ...props }) => (
       <pre {...annotationId(node)} {...props} />
     ),

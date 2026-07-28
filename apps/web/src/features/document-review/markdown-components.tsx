@@ -1,6 +1,8 @@
+import { isValidElement, type ReactNode } from "react";
 import type { Components } from "react-markdown";
 
 import { readAnnotationBlockId } from "./annotation";
+import { MermaidDiagram } from "./MermaidDiagram";
 
 export function createAnnotatedMarkdownComponents(
   namespace: string,
@@ -76,9 +78,17 @@ function createMarkdownComponents(namespace?: string): Components {
     summary: ({ node, ...props }) => (
       <summary {...annotationId(node)} {...props} />
     ),
-    pre: ({ node, ...props }) => (
-      <pre {...annotationId(node)} {...props} />
-    ),
+    pre: ({ node, children, ...props }) => {
+      const mermaidSource = readMermaidSource(children);
+
+      return mermaidSource === null ? (
+        <pre {...annotationId(node)} {...props}>
+          {children}
+        </pre>
+      ) : (
+        <MermaidDiagram source={mermaidSource} {...annotationId(node)} />
+      );
+    },
     table: ({ node, ...props }) => (
       <table {...annotationId(node)} {...props} />
     ),
@@ -93,4 +103,30 @@ function createMarkdownComponents(namespace?: string): Components {
 
 function hasClass(className: string | undefined, expected: string): boolean {
   return className?.split(/\s+/).includes(expected) ?? false;
+}
+
+function readMermaidSource(children: ReactNode): string | null {
+  if (
+    !isValidElement<{
+      children?: ReactNode;
+      className?: string;
+    }>(children) ||
+    !hasClass(children.props.className, "language-mermaid")
+  ) {
+    return null;
+  }
+
+  return readText(children.props.children).replace(/\n$/, "");
+}
+
+function readText(value: ReactNode): string {
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(readText).join("");
+  }
+
+  return "";
 }

@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { MarkdownContent } from "./MarkdownContent";
 import {
@@ -9,7 +16,22 @@ import {
   markdownComponents,
 } from "./markdown-components";
 
+const mermaid = vi.hoisted(() => ({
+  initialize: vi.fn(),
+  render: vi.fn(),
+}));
+
+vi.mock("mermaid", () => ({ default: mermaid }));
+
 afterEach(cleanup);
+
+beforeEach(() => {
+  mermaid.initialize.mockClear();
+  mermaid.render.mockReset();
+  mermaid.render.mockResolvedValue({
+    svg: '<svg data-rendered-mermaid="true"></svg>',
+  });
+});
 
 describe("Markdown callouts", () => {
   it("renders Pena's legacy bare info marker as an annotated callout", () => {
@@ -120,5 +142,96 @@ describe("embedded HTML", () => {
     expect(link?.hasAttribute("href")).toBe(false);
     expect(link?.hasAttribute("onclick")).toBe(false);
     expect(container.querySelector("script")).toBeNull();
+  });
+});
+
+describe("Mermaid diagrams", () => {
+  it("renders Mermaid fences as annotated diagrams using strict mode", async () => {
+    const { container } = render(
+      <MarkdownContent
+        components={createAnnotatedMarkdownComponents("segment-0")}
+      >
+        {"```mermaid\nflowchart LR\n  A --> B\n```"}
+      </MarkdownContent>,
+    );
+
+    expect(screen.getByText("Rendering diagram…")).toBeTruthy();
+
+    const diagram = await screen.findByRole("img", {
+      name: "Mermaid diagram",
+    });
+    const figure = diagram.closest("figure");
+
+    expect(mermaid.initialize).toHaveBeenCalledWith({
+      startOnLoad: false,
+      securityLevel: "strict",
+      suppressErrorRendering: true,
+      theme: "dark",
+    });
+    expect(mermaid.render).toHaveBeenCalledWith(
+      expect.stringMatching(/^pena-mermaid-/),
+      "flowchart LR\n  A --> B",
+    );
+    expect(figure?.dataset.annotationBlock).toBe("segment-0-block-0");
+    expect(
+      diagram.querySelector('svg[data-rendered-mermaid="true"]'),
+    ).not.toBeNull();
+    expect(container.querySelector("pre")).toBeNull();
+  });
+
+  it("leaves ordinary fenced code unchanged", () => {
+    const { container } = render(
+      <MarkdownContent components={markdownComponents}>
+        {"```typescript\nconst answer = 42;\n```"}
+      </MarkdownContent>,
+    );
+
+    const code = screen.getByText("const answer = 42;");
+
+    expect(code.tagName).toBe("CODE");
+    expect(code.classList.contains("language-typescript")).toBe(true);
+    expect(code.closest("pre")).not.toBeNull();
+    expect(container.querySelector(".mermaid-diagram")).toBeNull();
+    expect(mermaid.render).not.toHaveBeenCalled();
+  });
+
+  it("renders multiple Mermaid fences with independent IDs", async () => {
+    render(
+      <MarkdownContent components={markdownComponents}>
+        {
+          "```mermaid\nflowchart LR\n  A --> B\n```\n\n```mermaid\nsequenceDiagram\n  A->>B: Hello\n```"
+        }
+      </MarkdownContent>,
+    );
+
+    expect(
+      await screen.findAllByRole("img", { name: "Mermaid diagram" }),
+    ).toHaveLength(2);
+
+    const calls = mermaid.render.mock.calls;
+    expect(calls.map((call) => call[1])).toEqual([
+      "flowchart LR\n  A --> B",
+      "sequenceDiagram\n  A->>B: Hello",
+    ]);
+    expect(new Set(calls.map((call) => call[0])).size).toBe(2);
+  });
+
+  it("shows the source and error when Mermaid syntax is invalid", async () => {
+    mermaid.render.mockRejectedValueOnce(new Error("Parse error on line 1"));
+
+    render(
+      <MarkdownContent components={markdownComponents}>
+        {"```mermaid\nthis is not a diagram\n```"}
+      </MarkdownContent>,
+    );
+
+    expect(
+      await screen.findByText("Unable to render Mermaid diagram"),
+    ).toBeTruthy();
+    expect(screen.getByText("Parse error on line 1")).toBeTruthy();
+
+    const source = screen.getByText("this is not a diagram");
+    expect(source.tagName).toBe("CODE");
+    expect(source.classList.contains("language-mermaid")).toBe(true);
   });
 });

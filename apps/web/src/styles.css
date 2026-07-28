@@ -2321,6 +2321,56 @@ button:disabled {
   background: #0b0d12;
 }
 
+.markdown-body .mermaid-diagram {
+  overflow-x: auto;
+  margin: 1.9em 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0b0d12;
+}
+
+.markdown-body .mermaid-diagram-canvas {
+  min-width: 0;
+  text-align: center;
+}
+
+.markdown-body .mermaid-diagram-canvas svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.markdown-body .mermaid-diagram-loading {
+  padding: 32px 12px;
+  color: var(--text-faint);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.markdown-body .mermaid-diagram-error {
+  border-color: rgb(255 138 128 / 36%);
+}
+
+.markdown-body .mermaid-diagram-error figcaption {
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.markdown-body .mermaid-diagram-error > p {
+  margin: 5px 0 14px;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.markdown-body .mermaid-diagram-error pre {
+  margin: 0;
+}
+
 /* A decision is the one thing on the page that needs an answer, so it reads as
    a card the prose flows around rather than as another paragraph. */
 .decision-block {

@@ -32,7 +32,24 @@ local content it describes; never use it to publish a different document base.
 ## Publish a document
 
 1. Ensure the complete Markdown content exists in a local file.
-2. When an item requires one user choice, optionally add an interactive decision block:
+2. Use a fenced `mermaid` code block when a diagram materially clarifies a
+   flow, sequence, or relationship. Pena renders Mermaid fences as diagrams:
+
+   ````markdown
+   ```mermaid
+   flowchart LR
+     Draft --> Review --> Revision
+   ```
+   ````
+
+   Design for Pena's inline document column: diagrams preserve their aspect
+   ratio and have no automatic height cap. Prefer compact square or landscape
+   layouts. Group or split long top-down flows, and keep node labels concise
+   instead of relying on the renderer to shrink an oversized diagram. When
+   browser inspection is available, preview nontrivial diagrams after
+   publishing and revise layouts that are overly tall or make labels too small.
+
+3. When an item requires one user choice, optionally add an interactive decision block:
 
    ```markdown
    :::pena-decision{#add-request-cache choice-a="Apply" choice-b="Skip"}
@@ -43,7 +60,7 @@ local content it describes; never use it to publish a different document base.
    ```
 
    Use a unique lowercase, kebab-case ID. Add exactly two short plain-text choices. Keep decision blocks top-level and do not nest them.
-3. For a new document without a retained ETag, attempt creation immediately.
+4. For a new document without a retained ETag, attempt creation immediately.
    Do not read the document first:
 
    ```bash
@@ -60,7 +77,7 @@ local content it describes; never use it to publish a different document base.
    exists; fetch its current content and ETag, then stop to reconcile it. On
    `404`, report that the workspace does not exist. Never convert a failed
    create into a blind overwrite.
-4. For an existing document, use the retained current ETag immediately. If no
+5. For an existing document, use the retained current ETag immediately. If no
    ETag is available, fetch the document and retain the exact response ETag
    before publishing:
 
@@ -86,7 +103,7 @@ local content it describes; never use it to publish a different document base.
    fetch the newer document and stop to reconcile it; never retry the old
    content blindly. If the current document has a non-null `archivedAt`, report
    that it must be explicitly unarchived; publishing never unarchives it.
-5. Report whether publishing succeeded and provide the browser URL: `http://127.0.0.1:5173/workspaces/<workspace-slug>/documents/<document-slug>`.
+6. Report whether publishing succeeded and provide the browser URL: `http://127.0.0.1:5173/workspaces/<workspace-slug>/documents/<document-slug>`.
 
 ## Read feedback
 

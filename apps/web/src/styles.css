@@ -198,7 +198,7 @@ button:disabled {
 .document-outline-item {
   position: relative;
   display: block;
-  padding: 7px 8px 7px 12px;
+  padding: 7px 8px 7px calc(12px + var(--outline-indent, 0px));
   border-left: 2px solid transparent;
   color: var(--text-faint);
   font-size: 12px;
@@ -209,9 +209,8 @@ button:disabled {
     border-color 150ms ease;
 }
 
-/* A decision's own heading reads as a step inside its section. */
+/* Subheadings read as quieter steps inside their parent section. */
 .document-outline-item.nested {
-  padding-left: 26px;
   font-size: 11.5px;
 }
 

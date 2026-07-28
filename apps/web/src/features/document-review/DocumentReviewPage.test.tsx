@@ -480,8 +480,17 @@ describe("saved document index", () => {
       "Add request caching",
     ]);
     expect(sections[0]?.getAttribute("href")).toBe("#pena-section-0");
-    // The decision's heading nests under the section that introduces it.
+    expect(sections[0]?.getAttribute("data-depth")).toBe("0");
+    expect((sections[0] as HTMLElement).style.getPropertyValue(
+      "--outline-indent",
+    )).toBe("0px");
+    // The decision's heading nests under the section that introduces it, even
+    // when it is the only subheading in the document.
     expect(sections[1]?.className).toContain("nested");
+    expect(sections[1]?.getAttribute("data-depth")).toBe("1");
+    expect((sections[1] as HTMLElement).style.getPropertyValue(
+      "--outline-indent",
+    )).toBe("12px");
 
     expect(
       screen

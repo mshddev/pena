@@ -6,17 +6,30 @@
 export interface OutlineSection {
   id: string;
   text: string;
-  /** A decision's own heading sits under the section that introduces it. */
-  nested: boolean;
+  /** Zero-based nesting derived from the document's heading hierarchy. */
+  depth: number;
 }
 
 /** Ties an outline entry to the heading element it scrolls to. */
 export const OUTLINE_SECTION_ATTRIBUTE = "data-outline-section";
 
 export function readOutlineSections(surface: HTMLElement): OutlineSection[] {
-  return [...surface.querySelectorAll<HTMLElement>("h1, h2")].map(
+  const headings = [
+    ...surface.querySelectorAll<HTMLHeadingElement>(
+      "h1, h2, h3, h4, h5, h6",
+    ),
+  ];
+  const rootLevel = Math.min(
+    ...headings.map((heading) => readHeadingLevel(heading)),
+  );
+
+  return headings.map(
     (heading, index) => {
       const id = `pena-section-${index}`;
+      const hierarchyDepth = readHeadingLevel(heading) - rootLevel;
+      // A decision remains subordinate even if its author used a root-level
+      // heading inside the block.
+      const decisionDepth = heading.closest(".decision-block") ? 1 : 0;
 
       heading.id = id;
       heading.setAttribute(OUTLINE_SECTION_ATTRIBUTE, id);
@@ -24,10 +37,14 @@ export function readOutlineSections(surface: HTMLElement): OutlineSection[] {
       return {
         id,
         text: heading.textContent ?? "",
-        nested: heading.closest(".decision-block") !== null,
+        depth: Math.max(hierarchyDepth, decisionDepth),
       };
     },
   );
+}
+
+function readHeadingLevel(heading: HTMLHeadingElement): number {
+  return Number(heading.tagName.slice(1));
 }
 
 /**

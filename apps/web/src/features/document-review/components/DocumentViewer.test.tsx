@@ -78,8 +78,10 @@ describe("DocumentViewer", () => {
             "",
             "## First section",
             "",
+            "### Deep detail",
+            "",
             ':::pena-decision{#pick choice-a="Apply" choice-b="Skip"}',
-            "## Nested question",
+            "# Nested question",
             "",
             "Body copy.",
             ":::",
@@ -100,10 +102,11 @@ describe("DocumentViewer", () => {
     );
 
     expect(onOutlineChange).toHaveBeenCalledWith([
-      { id: "pena-section-0", text: "Title", nested: false },
-      { id: "pena-section-1", text: "First section", nested: false },
+      { id: "pena-section-0", text: "Title", depth: 0 },
+      { id: "pena-section-1", text: "First section", depth: 1 },
+      { id: "pena-section-2", text: "Deep detail", depth: 2 },
       // The decision's own heading belongs under the section that introduces it.
-      { id: "pena-section-2", text: "Nested question", nested: true },
+      { id: "pena-section-3", text: "Nested question", depth: 1 },
     ]);
   });
 });

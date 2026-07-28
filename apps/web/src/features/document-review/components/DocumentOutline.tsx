@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 import type { OutlineSection } from "../outline";
 
 interface DocumentOutlineProps {
@@ -9,9 +11,7 @@ export function DocumentOutline({
   activeSectionId,
   sections,
 }: DocumentOutlineProps) {
-  // Decision headings are nested under their section, so only the top level
-  // counts as a section of the document.
-  const sectionCount = sections.filter((section) => !section.nested).length;
+  const sectionCount = sections.filter((section) => section.depth === 0).length;
 
   return (
     <aside className="document-index" aria-label="Document outline">
@@ -30,15 +30,23 @@ export function DocumentOutline({
         <nav className="document-outline">
           {sections.map((section) => {
             const isActive = section.id === activeSectionId;
+            // The rail is narrow. Preserve the hierarchy without letting a
+            // malformed heading jump squeeze a label into a vertical strip.
+            const indentDepth = Math.min(section.depth, 3);
+            const outlineStyle = {
+              "--outline-indent": `${indentDepth * 12}px`,
+            } as CSSProperties;
 
             return (
               <a
                 className={`document-outline-item${
-                  section.nested ? " nested" : ""
+                  section.depth > 0 ? " nested" : ""
                 }${isActive ? " active" : ""}`}
                 href={`#${section.id}`}
                 aria-current={isActive ? "true" : undefined}
+                data-depth={section.depth}
                 key={section.id}
+                style={outlineStyle}
               >
                 {section.text}
               </a>

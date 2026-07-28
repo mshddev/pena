@@ -58,9 +58,10 @@ verify: in a new Claude Code session, ask it to *"publish this plan to Pena"* â€
 
 Documents live in workspaces, retain immutable version history and
 version-specific feedback, and can compare or restore earlier Markdown from
-the document view. Finished documents move to a browsable archive at
+the document view. The current version can also be downloaded as a `.md` file.
+Finished documents move to a browsable archive at
 `http://127.0.0.1:5173/archive`; archiving pauses publishing without removing
-history.
+history or the download action.
 
 # Configuration
 

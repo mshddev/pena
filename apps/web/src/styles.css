@@ -329,6 +329,7 @@ button:disabled {
 }
 
 .archive-document-button,
+.download-document-button,
 .move-document-button {
   display: inline-flex;
   min-height: 30px;
@@ -347,12 +348,14 @@ button:disabled {
 }
 
 .archive-document-button:hover:not(:disabled),
+.download-document-button:hover:not(:disabled),
 .move-document-button:hover:not(:disabled) {
   border-color: var(--line-strong);
   color: var(--text);
 }
 
 .archive-document-button svg,
+.download-document-button svg,
 .move-document-button svg {
   width: 13px;
   fill: none;

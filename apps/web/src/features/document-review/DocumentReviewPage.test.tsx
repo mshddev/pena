@@ -327,6 +327,49 @@ describe("version history", () => {
 });
 
 describe("saved document index", () => {
+  it("downloads the current document as an exact Markdown file", async () => {
+    const NativeURL = URL;
+    const createObjectURL = vi.fn((_blob: Blob) => "blob:pena-markdown");
+    const revokeObjectURL = vi.fn();
+
+    class DownloadURL extends NativeURL {}
+
+    Object.defineProperties(DownloadURL, {
+      createObjectURL: { value: createObjectURL },
+      revokeObjectURL: { value: revokeObjectURL },
+    });
+    vi.stubGlobal("URL", DownloadURL);
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/feedback")
+          ? jsonResponse({ latestBatchId: null, batches: [] })
+          : jsonResponse(documentResponse),
+      ),
+    );
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Download" }),
+    );
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const markdownBlob = createObjectURL.mock.calls[0]?.[0] as Blob;
+    expect(markdownBlob.type).toBe("text/markdown;charset=utf-8");
+    expect(await markdownBlob.text()).toBe(DECISION_DOCUMENT);
+
+    const downloadLink = clickSpy.mock.instances[0] as HTMLAnchorElement;
+    expect(downloadLink.download).toBe("review.md");
+    expect(downloadLink.href).toBe("blob:pena-markdown");
+    expect(downloadLink.isConnected).toBe(false);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:pena-markdown");
+  });
+
   it("moves an active document to another workspace", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {

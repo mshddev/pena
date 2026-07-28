@@ -30,6 +30,7 @@ import {
   formatFeedbackCount,
   readSubmittedDecisions,
 } from "./decision-feedback";
+import { downloadMarkdown } from "./markdown-download";
 import type { OutlineSection } from "./outline";
 import type {
   DraftComment,
@@ -421,6 +422,16 @@ export function DocumentReviewPage({
                 {currentDocument.archivedAt ? (
                   <span className="archived-document-label">Archived</span>
                 ) : null}
+                <button
+                  className="download-document-button"
+                  type="button"
+                  onClick={() =>
+                    downloadMarkdown(currentDocument.content, documentSlug)
+                  }
+                >
+                  <DownloadIcon />
+                  Download
+                </button>
                 {!currentDocument.archivedAt &&
                 moveDestinations.length > 0 ? (
                   <button
@@ -609,6 +620,16 @@ function MoveIcon() {
       <path d="m7 2.5 3 3-3 3" />
       <path d="M13.5 10.5h-7" />
       <path d="m9 7.5-3 3 3 3" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 2.5v7" />
+      <path d="m5 7 3 3 3-3" />
+      <path d="M3 12.5h10" />
     </svg>
   );
 }

@@ -50,10 +50,12 @@ import type {
 import { CommentComposer } from "./CommentComposer";
 import { DecisionBlock } from "./DecisionBlock";
 import { FeedbackBar } from "./FeedbackBar";
+import { PendingFeedbackPanel } from "./PendingFeedbackPanel";
 
 interface DocumentViewerProps {
   document: PenaDocument;
   draftFeedback: DraftFeedback[];
+  isPendingFeedbackOpen: boolean;
   submittedDecisions: Record<string, string>;
   isSubmitting: boolean;
   notice: Notice;
@@ -64,6 +66,7 @@ interface DocumentViewerProps {
     draft: DraftDecision | null,
   ) => void;
   onNoticeClear: () => void;
+  onPendingFeedbackOpenChange: (isOpen: boolean) => void;
   onSubmitFeedback: () => void;
   onOutlineChange: (sections: OutlineSection[]) => void;
   onActiveSectionChange: (sectionId: string | null) => void;
@@ -72,6 +75,7 @@ interface DocumentViewerProps {
 export function DocumentViewer({
   document: penaDocument,
   draftFeedback,
+  isPendingFeedbackOpen,
   submittedDecisions,
   isSubmitting,
   notice,
@@ -79,6 +83,7 @@ export function DocumentViewer({
   onDraftDeleted,
   onDecisionDraftChanged,
   onNoticeClear,
+  onPendingFeedbackOpenChange,
   onSubmitFeedback,
   onOutlineChange,
   onActiveSectionChange,
@@ -87,6 +92,7 @@ export function DocumentViewer({
   const documentStageRef = useRef<HTMLDivElement>(null);
   const commentPopoverRef = useRef<HTMLDivElement>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
+  const pendingFeedbackPanelRef = useRef<HTMLElement>(null);
   const [editor, dispatch] = useReducer(
     commentEditorReducer,
     initialCommentEditorState,
@@ -356,6 +362,24 @@ export function DocumentViewer({
     onNoticeClear();
   }
 
+  function openDraftFromSidebar(draft: DraftComment): void {
+    const surface = documentSurfaceRef.current;
+    const range = surface ? findDraftRange(surface, draft) : null;
+
+    if (!range) {
+      openDraftForEditing(draft);
+      return;
+    }
+
+    scrollRangeToEditorPosition(range);
+    dispatch({
+      type: "comment-edit-opened",
+      draft,
+      position: readSelectionPosition(range, documentStageRef.current),
+    });
+    onNoticeClear();
+  }
+
   function saveComment(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
 
@@ -424,116 +448,184 @@ export function DocumentViewer({
     onNoticeClear();
   }
 
+  function focusDecision(decisionId: string): void {
+    const decision = Array.from(
+      documentSurfaceRef.current?.querySelectorAll<HTMLElement>(
+        "[data-decision-id]",
+      ) ?? [],
+    ).find((element) => element.dataset.decisionId === decisionId);
+
+    decision?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    decision
+      ?.querySelector<HTMLButtonElement>(".decision-choice.selected")
+      ?.focus({ preventScroll: true });
+    onNoticeClear();
+  }
+
+  function removePendingFeedback(draft: DraftFeedback): void {
+    if (draft.kind === "comment") {
+      onDraftDeleted(draft.id);
+
+      if (editor.editingCommentId === draft.id) {
+        dispatch({ type: "closed" });
+      }
+    } else {
+      onDecisionDraftChanged(draft.decisionId, null);
+    }
+
+    onNoticeClear();
+  }
+
+  function viewPendingFeedback(): void {
+    if (!isPendingFeedbackOpen) {
+      onPendingFeedbackOpenChange(true);
+      window.requestAnimationFrame(focusPendingFeedback);
+      return;
+    }
+
+    focusPendingFeedback();
+  }
+
+  function focusPendingFeedback(): void {
+    const panel = pendingFeedbackPanelRef.current;
+
+    panel?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    panel
+      ?.querySelector<HTMLButtonElement>(".pending-feedback-open")
+      ?.focus({ preventScroll: true });
+  }
+
   return (
     <>
-      <div className="document-stage" ref={documentStageRef}>
-        <article
-          className="markdown-body"
-          ref={documentSurfaceRef}
-          onMouseUp={handleDocumentSelection}
-          onKeyUp={handleDocumentSelection}
-          onClick={handleDocumentClick}
-          onMouseMove={handleDocumentMouseMove}
-          onMouseLeave={(event) => {
-            event.currentTarget.style.cursor = "";
-          }}
-        >
-          {parsedDocument.segments.map((segment, index) => {
-            const namespace = `segment-${index}`;
-
-            if (segment.type === "markdown") {
-              return (
-                <MarkdownSegment
-                  content={segment.content}
-                  key={namespace}
-                  namespace={namespace}
-                />
-              );
-            }
-
-            const draftChoice =
-              draftDecisions.find(
-                (draft) => draft.decisionId === segment.decision.id,
-              )?.choice ?? null;
-
-            return (
-              <Fragment key={segment.decision.id}>
-                <DecisionBlock
-                  decision={segment.decision}
-                  namespace={namespace}
-                  draftChoice={draftChoice}
-                  submittedChoice={
-                    submittedDecisions[segment.decision.id] ?? null
-                  }
-                  isSubmitting={isSubmitting}
-                  position={
-                    parsedDocument.decisions.findIndex(
-                      (decision) => decision.id === segment.decision.id,
-                    ) + 1
-                  }
-                  total={parsedDocument.decisions.length}
-                  onChoice={chooseDecision}
-                />
-              </Fragment>
-            );
-          })}
-        </article>
-
-        {draftComments.map((draft, index) => {
-          const position = draftPositions[draft.id];
-
-          if (!position) {
-            return null;
-          }
-
-          return (
-            <div
-              className="comment-footnote"
-              data-pena-annotation
-              key={draft.id}
-              style={{
-                top: position.marker.top,
-                left: position.marker.left,
-              }}
-            >
-              <button
-                className="comment-marker"
-                type="button"
-                aria-label={`Edit comment ${index + 1}`}
-                title={draft.comment}
-                onClick={() => openDraftForEditing(draft)}
-              >
-                {(index + 1).toString().padStart(2, "0")}
-              </button>
-            </div>
-          );
-        })}
-
-        {editor.passage && editor.position ? (
-          <div
-            className="selection-comment-popover"
-            data-pena-annotation
-            ref={commentPopoverRef}
-            style={{
-              top: editor.position.top,
-              left: editor.position.left,
+      <div
+        className={`document-review-layout${
+          draftFeedback.length > 0 && isPendingFeedbackOpen
+            ? " with-pending-feedback"
+            : ""
+        }`}
+      >
+        <div className="document-stage" ref={documentStageRef}>
+          <article
+            className="markdown-body"
+            ref={documentSurfaceRef}
+            onMouseUp={handleDocumentSelection}
+            onKeyUp={handleDocumentSelection}
+            onClick={handleDocumentClick}
+            onMouseMove={handleDocumentMouseMove}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.cursor = "";
             }}
           >
-            <CommentComposer
-              passage={editor.passage}
-              isEditing={editor.editingCommentId !== null}
-              commentText={editor.text}
-              commentInputRef={commentInputRef}
-              onCommentChange={(text) =>
-                dispatch({ type: "text-changed", text })
+            {parsedDocument.segments.map((segment, index) => {
+              const namespace = `segment-${index}`;
+
+              if (segment.type === "markdown") {
+                return (
+                  <MarkdownSegment
+                    content={segment.content}
+                    key={namespace}
+                    namespace={namespace}
+                  />
+                );
               }
-              onSubmit={saveComment}
-              onCancel={() => dispatch({ type: "closed" })}
-              onDelete={
-                editor.editingCommentId ? deleteEditingComment : undefined
-              }
-            />
-          </div>
+
+              const draftChoice =
+                draftDecisions.find(
+                  (draft) => draft.decisionId === segment.decision.id,
+                )?.choice ?? null;
+
+              return (
+                <Fragment key={segment.decision.id}>
+                  <DecisionBlock
+                    decision={segment.decision}
+                    namespace={namespace}
+                    draftChoice={draftChoice}
+                    submittedChoice={
+                      submittedDecisions[segment.decision.id] ?? null
+                    }
+                    isSubmitting={isSubmitting}
+                    position={
+                      parsedDocument.decisions.findIndex(
+                        (decision) => decision.id === segment.decision.id,
+                      ) + 1
+                    }
+                    total={parsedDocument.decisions.length}
+                    onChoice={chooseDecision}
+                  />
+                </Fragment>
+              );
+            })}
+          </article>
+
+          {draftComments.map((draft) => {
+            const position = draftPositions[draft.id];
+            const feedbackPosition =
+              draftFeedback.findIndex((item) => item.id === draft.id) + 1;
+
+            if (!position) {
+              return null;
+            }
+
+            return (
+              <div
+                className="comment-footnote"
+                data-pena-annotation
+                key={draft.id}
+                style={{
+                  top: position.marker.top,
+                  left: position.marker.left,
+                }}
+              >
+                <button
+                  className="comment-marker"
+                  type="button"
+                  aria-label={`Edit comment ${feedbackPosition}`}
+                  title={draft.comment}
+                  onClick={() => openDraftForEditing(draft)}
+                >
+                  {feedbackPosition.toString().padStart(2, "0")}
+                </button>
+              </div>
+            );
+          })}
+
+          {editor.passage && editor.position ? (
+            <div
+              className="selection-comment-popover"
+              data-pena-annotation
+              ref={commentPopoverRef}
+              style={{
+                top: editor.position.top,
+                left: editor.position.left,
+              }}
+            >
+              <CommentComposer
+                passage={editor.passage}
+                isEditing={editor.editingCommentId !== null}
+                commentText={editor.text}
+                commentInputRef={commentInputRef}
+                onCommentChange={(text) =>
+                  dispatch({ type: "text-changed", text })
+                }
+                onSubmit={saveComment}
+                onCancel={() => dispatch({ type: "closed" })}
+                onDelete={
+                  editor.editingCommentId ? deleteEditingComment : undefined
+                }
+              />
+            </div>
+          ) : null}
+        </div>
+
+        {isPendingFeedbackOpen ? (
+          <PendingFeedbackPanel
+            feedback={draftFeedback}
+            onActivateComment={openDraftFromSidebar}
+            onActivateDecision={focusDecision}
+            onClose={() => onPendingFeedbackOpenChange(false)}
+            onRemove={removePendingFeedback}
+            panelRef={pendingFeedbackPanelRef}
+          />
         ) : null}
       </div>
 
@@ -541,13 +633,35 @@ export function DocumentViewer({
         <FeedbackBar
           commentCount={draftComments.length}
           decisionCount={draftDecisions.length}
+          isPendingFeedbackOpen={isPendingFeedbackOpen}
           isSubmitting={isSubmitting}
           notice={notice}
           onSubmit={onSubmitFeedback}
+          onViewPending={viewPendingFeedback}
         />
       ) : null}
     </>
   );
+}
+
+function scrollRangeToEditorPosition(range: Range): void {
+  const anchorRect =
+    Array.from(range.getClientRects()).at(-1) ?? range.getBoundingClientRect();
+  const utilityBarBottom =
+    window.document
+      .querySelector<HTMLElement>(".utility-bar")
+      ?.getBoundingClientRect().bottom ?? 0;
+  const viewportPadding = 28;
+  const desiredTop = utilityBarBottom + viewportPadding;
+
+  if (Math.abs(anchorRect.top - desiredTop) < 1) {
+    return;
+  }
+
+  window.scrollTo({
+    top: Math.max(0, window.scrollY + anchorRect.top - desiredTop),
+    behavior: "auto",
+  });
 }
 
 interface MarkdownSegmentProps {

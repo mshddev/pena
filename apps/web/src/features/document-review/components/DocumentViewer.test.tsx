@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,12 +28,22 @@ beforeEach(() => {
   vi.stubGlobal("CSS", {
     escape: (value: string) => value,
   });
+  Object.defineProperty(Range.prototype, "getClientRects", {
+    configurable: true,
+    value: vi.fn(() => []),
+  });
+  Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+    configurable: true,
+    value: vi.fn(() => new DOMRect()),
+  });
 });
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  delete (Range.prototype as Partial<Range>).getClientRects;
+  delete (Range.prototype as Partial<Range>).getBoundingClientRect;
 });
 
 describe("DocumentViewer", () => {
@@ -40,6 +51,7 @@ describe("DocumentViewer", () => {
     const props: ComponentProps<typeof DocumentViewer> = {
       document,
       draftFeedback: [],
+      isPendingFeedbackOpen: true,
       submittedDecisions: {},
       isSubmitting: false,
       notice: null,
@@ -47,6 +59,7 @@ describe("DocumentViewer", () => {
       onDraftDeleted: vi.fn(),
       onDecisionDraftChanged: vi.fn(),
       onNoticeClear: vi.fn(),
+      onPendingFeedbackOpenChange: vi.fn(),
       onSubmitFeedback: vi.fn(),
       onOutlineChange: vi.fn(),
       onActiveSectionChange: vi.fn(),
@@ -88,6 +101,7 @@ describe("DocumentViewer", () => {
           ].join("\n"),
         }}
         draftFeedback={[]}
+        isPendingFeedbackOpen={true}
         submittedDecisions={{}}
         isSubmitting={false}
         notice={null}
@@ -95,6 +109,7 @@ describe("DocumentViewer", () => {
         onDraftDeleted={vi.fn()}
         onDecisionDraftChanged={vi.fn()}
         onNoticeClear={vi.fn()}
+        onPendingFeedbackOpenChange={vi.fn()}
         onSubmitFeedback={vi.fn()}
         onOutlineChange={onOutlineChange}
         onActiveSectionChange={vi.fn()}
@@ -108,5 +123,81 @@ describe("DocumentViewer", () => {
       // The decision's own heading belongs under the section that introduces it.
       { id: "pena-section-3", text: "Nested question", depth: 1 },
     ]);
+  });
+
+  it("scrolls to a sidebar comment before opening its editor", async () => {
+    const scrollTo = vi
+      .spyOn(window, "scrollTo")
+      .mockImplementation(() => undefined);
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue(
+      [new DOMRect(100, 700, 120, 20)] as unknown as DOMRectList,
+    );
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(100, 700, 120, 20),
+    );
+    vi.spyOn(
+      HTMLElement.prototype,
+      "getBoundingClientRect",
+    ).mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains("document-stage")) {
+        return new DOMRect(0, 0, 800, 1_400);
+      }
+
+      if (this.classList.contains("selection-comment-popover")) {
+        return new DOMRect(
+          100,
+          Number.parseFloat(this.style.top) || 0,
+          360,
+          280,
+        );
+      }
+
+      return new DOMRect();
+    });
+    const user = userEvent.setup();
+
+    render(
+      <DocumentViewer
+        document={document}
+        draftFeedback={[
+          {
+            kind: "comment",
+            id: "comment-1",
+            selectedText: "Selected passage.",
+            comment: "Clarify this sentence.",
+            contextBefore: "",
+            contextAfter: "",
+            anchorId: "segment-0-block-11",
+            anchorOffset: 0,
+          },
+        ]}
+        isPendingFeedbackOpen={true}
+        submittedDecisions={{}}
+        isSubmitting={false}
+        notice={null}
+        onDraftSaved={vi.fn()}
+        onDraftDeleted={vi.fn()}
+        onDecisionDraftChanged={vi.fn()}
+        onNoticeClear={vi.fn()}
+        onPendingFeedbackOpenChange={vi.fn()}
+        onSubmitFeedback={vi.fn()}
+        onOutlineChange={vi.fn()}
+        onActiveSectionChange={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /Selected passage.*Clarify this sentence/,
+      }),
+    );
+
+    expect(scrollTo).toHaveBeenCalledWith({
+      top: 672,
+      behavior: "auto",
+    });
+    expect(
+      screen.getByRole("textbox", { name: "Update your note" }),
+    ).toBeTruthy();
   });
 });

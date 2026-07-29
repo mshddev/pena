@@ -81,23 +81,49 @@ export function findDraftRange(
   surface: HTMLElement,
   draft: DraftComment,
 ): Range | null {
-  const anchor = resolveAnnotationAnchor(surface, draft.anchorId);
-  return anchor
-    ? findTextRange(anchor, draft.selectedText, draft.anchorOffset)
-    : null;
+  return findAnchoredTextRange(
+    surface,
+    draft.anchorId,
+    draft.selectedText,
+    draft.anchorOffset,
+  );
+}
+
+export function findAnchoredTextRange(
+  surface: HTMLElement,
+  anchorId: string,
+  selectedText: string,
+  anchorOffset: number,
+): Range | null {
+  for (const anchor of resolveAnnotationAnchors(surface, anchorId)) {
+    const range = findTextRange(anchor, selectedText, anchorOffset);
+
+    if (range) {
+      return range;
+    }
+  }
+
+  return null;
 }
 
 export function resolveAnnotationAnchor(
   surface: HTMLElement,
   anchorId: string,
 ): HTMLElement | null {
+  return resolveAnnotationAnchors(surface, anchorId)[0] ?? null;
+}
+
+function resolveAnnotationAnchors(
+  surface: HTMLElement,
+  anchorId: string,
+): HTMLElement[] {
   if (anchorId === DOCUMENT_ANCHOR_ID) {
-    return surface;
+    return [surface];
   }
 
-  return surface.querySelector<HTMLElement>(
-    `[data-annotation-block="${CSS.escape(anchorId)}"]`,
-  );
+  return Array.from(
+    surface.querySelectorAll<HTMLElement>("[data-annotation-block]"),
+  ).filter((anchor) => anchor.dataset.annotationBlock === anchorId);
 }
 
 export function readSelectionPosition(

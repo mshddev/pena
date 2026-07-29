@@ -5,12 +5,11 @@ import {
   type RefObject,
 } from "react";
 
-import { findTextRange } from "../../selection";
 import {
+  findAnchoredTextRange,
   findDraftRange,
   haveSameDraftPositions,
   readMarkerPosition,
-  resolveAnnotationAnchor,
 } from "./annotation";
 import type { DraftComment, DraftPosition } from "./types";
 
@@ -125,10 +124,12 @@ export function subscribeToSelectionPosition(
   onPositionChange: (range: Range) => void,
 ): () => void {
   function updateSelectionPosition(): void {
-    const anchor = resolveAnnotationAnchor(surface, anchorId);
-    const range = anchor
-      ? findTextRange(anchor, selectedText, anchorOffset)
-      : null;
+    const range = findAnchoredTextRange(
+      surface,
+      anchorId,
+      selectedText,
+      anchorOffset,
+    );
 
     if (range) {
       onPositionChange(range);

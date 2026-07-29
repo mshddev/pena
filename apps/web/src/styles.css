@@ -1121,6 +1121,220 @@ button:disabled {
   margin: 0 auto;
 }
 
+.document-review-layout {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.document-pane.has-pending-feedback {
+  padding-right: clamp(24px, 3vw, 48px);
+  padding-left: clamp(24px, 3vw, 48px);
+}
+
+.document-pane.has-pending-feedback .document-meta,
+.document-review-layout.with-pending-feedback {
+  max-width: 1290px;
+}
+
+.document-review-layout.with-pending-feedback {
+  display: grid;
+  grid-template-columns: minmax(0, 980px) minmax(240px, 278px);
+  align-items: start;
+  gap: clamp(24px, 3vw, 42px);
+}
+
+.pending-feedback-panel {
+  position: sticky;
+  top: calc(var(--bar-height) + 24px);
+  overflow-y: auto;
+  max-height: calc(100vh - var(--bar-height) - 48px);
+  border-left: 1px solid var(--line);
+  animation: pending-feedback-enter 200ms ease-out both;
+  scrollbar-width: thin;
+}
+
+.pending-feedback-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 2px 0 18px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pending-feedback-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pending-feedback-heading .section-label {
+  color: var(--accent-bright);
+}
+
+.pending-feedback-summary {
+  margin: 5px 0 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.pending-feedback-count {
+  display: grid;
+  min-width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgb(111 140 255 / 14%);
+  color: var(--accent-bright);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.pending-feedback-close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.pending-feedback-close:hover,
+.pending-feedback-close:focus-visible {
+  background: rgb(111 140 255 / 10%);
+  color: var(--accent-bright);
+}
+
+.pending-feedback-close svg {
+  width: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.pending-feedback-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pending-feedback-item {
+  position: relative;
+  border-bottom: 1px solid var(--line);
+  transition: background 150ms ease;
+}
+
+.pending-feedback-item:hover,
+.pending-feedback-item:focus-within {
+  background: rgb(111 140 255 / 5%);
+}
+
+.pending-feedback-open {
+  width: 100%;
+  padding: 17px 38px 18px 20px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.pending-feedback-item-heading {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 8px;
+}
+
+.pending-feedback-position {
+  color: var(--accent-bright);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.pending-feedback-kind {
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.pending-feedback-passage {
+  overflow: hidden;
+  display: -webkit-box;
+  margin: 0 0 8px;
+  color: var(--text-soft);
+  font-family: Charter, Georgia, serif;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.pending-feedback-detail {
+  overflow: hidden;
+  display: -webkit-box;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.pending-feedback-remove {
+  position: absolute;
+  top: 13px;
+  right: 7px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease;
+}
+
+.pending-feedback-item:hover .pending-feedback-remove,
+.pending-feedback-remove:focus-visible {
+  opacity: 1;
+}
+
+.pending-feedback-remove:hover,
+.pending-feedback-remove:focus-visible {
+  background: rgb(255 138 128 / 10%);
+  color: var(--danger);
+}
+
+.pending-feedback-remove svg {
+  width: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3,
@@ -1539,6 +1753,50 @@ button:disabled {
   min-width: 0;
   align-items: center;
   gap: 14px;
+}
+
+.feedback-summary-button {
+  max-width: 100%;
+  padding: 6px 8px 6px 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.feedback-summary-button:hover,
+.feedback-summary-button:focus-visible {
+  background: rgb(111 140 255 / 7%);
+}
+
+.feedback-summary-button:hover .feedback-title,
+.feedback-summary-button:focus-visible .feedback-title {
+  color: var(--accent-bright);
+}
+
+.view-pending-icon {
+  width: 16px;
+  flex: 0 0 auto;
+  margin-left: 2px;
+  fill: none;
+  stroke: var(--text-faint);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+  transition:
+    stroke 150ms ease,
+    transform 150ms ease;
+}
+
+.feedback-summary-button:hover .view-pending-icon,
+.feedback-summary-button:focus-visible .view-pending-icon {
+  stroke: var(--accent-bright);
+  transform: translateX(2px);
 }
 
 .feedback-summary .comment-count {
@@ -2536,6 +2794,13 @@ button:disabled {
   }
 }
 
+@keyframes pending-feedback-enter {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
 @keyframes loading {
   to {
     background-position: -200% 0;
@@ -2642,6 +2907,45 @@ button:disabled {
 
   .workspace-create-trigger {
     justify-content: center;
+  }
+}
+
+@media (max-width: 760px) {
+  .document-review-layout.with-pending-feedback {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .document-review-layout.with-pending-feedback .document-stage {
+    width: 100%;
+  }
+
+  .pending-feedback-panel {
+    position: static;
+    order: -1;
+    overflow: visible;
+    width: 100%;
+    max-height: none;
+    margin-bottom: 32px;
+    border-top: 1px solid var(--line);
+  }
+
+  .pending-feedback-heading {
+    padding-top: 18px;
+  }
+
+  .pending-feedback-remove {
+    opacity: 1;
+  }
+
+  .view-pending-icon {
+    transform: rotate(-90deg);
+  }
+
+  .feedback-summary-button:hover .view-pending-icon,
+  .feedback-summary-button:focus-visible .view-pending-icon {
+    transform: translateY(-2px) rotate(-90deg);
   }
 }
 

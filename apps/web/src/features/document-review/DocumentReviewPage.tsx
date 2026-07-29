@@ -44,6 +44,8 @@ interface DocumentReviewPageProps {
   workspaceSlug: string;
 }
 
+const COMPACT_FEEDBACK_BREAKPOINT = 760;
+
 export function DocumentReviewPage({
   documentSlug,
   workspaceSlug,
@@ -57,6 +59,9 @@ export function DocumentReviewPage({
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(documentSlug !== null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPendingFeedbackOpen, setIsPendingFeedbackOpen] = useState(
+    () => window.innerWidth > COMPACT_FEEDBACK_BREAKPOINT,
+  );
   const [isArchiving, setIsArchiving] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
   const [isMoveOpen, setIsMoveOpen] = useState(false);
@@ -392,7 +397,14 @@ export function DocumentReviewPage({
       sections={sections}
       workspaceSlug={workspaceSlug}
     >
-      <section className="document-pane" aria-label="Document">
+      <section
+        className={`document-pane${
+          draftFeedback.length > 0 && isPendingFeedbackOpen
+            ? " has-pending-feedback"
+            : ""
+        }`}
+        aria-label="Document"
+      >
         <header className="document-meta">
           <nav className="document-breadcrumb" aria-label="Breadcrumb">
             <a
@@ -543,6 +555,7 @@ export function DocumentReviewPage({
           <DocumentViewer
             document={currentDocument}
             draftFeedback={draftFeedback}
+            isPendingFeedbackOpen={isPendingFeedbackOpen}
             submittedDecisions={submittedDecisions}
             isSubmitting={isSubmitting}
             notice={notice}
@@ -554,6 +567,7 @@ export function DocumentReviewPage({
             }
             onDecisionDraftChanged={saveDecisionDraft}
             onNoticeClear={() => setNotice(null)}
+            onPendingFeedbackOpenChange={setIsPendingFeedbackOpen}
             onSubmitFeedback={() => void sendFeedback()}
             onOutlineChange={handleOutlineChange}
             onActiveSectionChange={handleActiveSectionChange}

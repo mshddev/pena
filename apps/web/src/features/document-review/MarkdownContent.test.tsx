@@ -46,11 +46,15 @@ describe("Markdown callouts", () => {
     const callout = screen.getByRole("note");
     const body = within(callout).getByText(/Do not confuse this/);
     const title = within(callout).getByText("Info");
+    const paragraph = body.closest("p");
 
     expect(callout.classList.contains("markdown-alert-note")).toBe(true);
-    expect(callout.dataset.annotationBlock).toBe("segment-0-block-0");
-    expect(body.closest("p")?.dataset.annotationBlock).toBe(
-      "segment-0-block-0",
+    expect(callout.dataset.annotationBlock).toBe(
+      "segment-0-block-0-callout",
+    );
+    expect(paragraph?.dataset.annotationBlock).toBe("segment-0-block-0");
+    expect(callout.dataset.annotationBlock).not.toBe(
+      paragraph?.dataset.annotationBlock,
     );
     expect(body.tagName).toBe("EM");
     expect(title.closest("p")?.hasAttribute("data-pena-annotation")).toBe(true);

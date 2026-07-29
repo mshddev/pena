@@ -25,9 +25,12 @@ function createMarkdownComponents(namespace?: string): Components {
           };
         }
       | undefined,
+    suffix?: string,
   ) =>
     namespace
-      ? { "data-annotation-block": `${namespace}-${readAnnotationBlockId(node)}` }
+      ? {
+          "data-annotation-block": `${namespace}-${readAnnotationBlockId(node)}${suffix ? `-${suffix}` : ""}`,
+        }
       : {};
 
   return {
@@ -36,7 +39,7 @@ function createMarkdownComponents(namespace?: string): Components {
         <aside
           className={className}
           role="note"
-          {...annotationId(node)}
+          {...annotationId(node, "callout")}
           {...props}
         />
       ) : (

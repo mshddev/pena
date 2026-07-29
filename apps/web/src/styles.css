@@ -18,6 +18,7 @@
   --danger: #ff8a80;
   --success: #7bd6a4;
   --bar-height: 56px;
+  --outline-width: clamp(214px, 21vw, 288px);
 }
 
 * {
@@ -159,9 +160,51 @@ button:disabled {
 }
 
 .workspace {
+  position: relative;
   display: grid;
-  grid-template-columns: 214px minmax(0, 1fr);
+  grid-template-columns: var(--outline-width) minmax(0, 1fr);
   min-height: calc(100vh - var(--bar-height));
+}
+
+.outline-resizer {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--outline-width) - 5px);
+  width: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.outline-resizer::after {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  content: "";
+  transition: background 140ms ease;
+}
+
+.outline-resizer:hover::after,
+.outline-resizer:focus-visible::after,
+.workspace.resizing-outline .outline-resizer::after {
+  background: rgb(111 140 255 / 55%);
+}
+
+.outline-resizer:focus-visible {
+  outline: none;
+}
+
+.workspace.resizing-outline,
+.workspace.resizing-outline * {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .document-index {
@@ -2188,7 +2231,7 @@ button:disabled {
 }
 
 .workspace {
-  grid-template-columns: 214px minmax(0, 1fr);
+  grid-template-columns: var(--outline-width) minmax(0, 1fr);
 }
 
 .document-index {
@@ -2516,6 +2559,10 @@ button:disabled {
 @media (max-width: 900px) {
   .workspace {
     display: block;
+  }
+
+  .outline-resizer {
+    display: none;
   }
 
   .document-index {

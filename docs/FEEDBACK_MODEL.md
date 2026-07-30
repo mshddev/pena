@@ -1,6 +1,6 @@
 # The Feedback Model
 
-How a comment travels from your browser to Claude. Four small shapes, one flow.
+How a comment travels from your browser to Claude. Four core shapes, one flow.
 
 [!info]
 *These live in `packages/contracts/src/index.ts`. Both the server and the web app import them, so the two sides always agree on the shape.*
@@ -39,7 +39,12 @@ One thing that trips people up: a batch does **not** hold many submissions. One 
 3. You press *Submit feedback*. Both comments travel together as one **submission**.
 4. The server receives it and stamps it with an `id` and the current time — now it's a **batch**.
 5. Later you spot something else, highlight, comment, and submit again — that's a second **batch**.
-6. Claude reads the feedback and gets the **response**: both batches, each showing when it came in.
+6. Pena wakes the document's Claude Code monitor. Claude reads the feedback and gets the **response**: both batches, each showing when it came in.
+
+The monitor event only says new feedback exists. It does not carry the
+authoritative comments. Claude still reads the response from Pena, so feedback
+submitted while Claude is busy is handled together and SQLite remains the
+source of truth.
 
 # Why Batch And Submission Are Separate
 

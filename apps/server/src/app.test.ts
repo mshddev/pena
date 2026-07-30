@@ -9,6 +9,7 @@ import { SqlitePenaStore } from "./storage/sqlite-pena-store.js";
 
 const DOCUMENT_URL = "/api/workspaces/default/documents/initial-spec";
 const FEEDBACK_URL = `${DOCUMENT_URL}/feedback`;
+const FEEDBACK_WAIT_URL = `${FEEDBACK_URL}/wait`;
 const feedbackPayload = {
   comments: [
     {
@@ -502,6 +503,143 @@ describe("Pena API", () => {
     expect(feedback.batches[0].comments).toHaveLength(2);
   });
 
+  it("returns committed feedback immediately after the supplied cursor", async () => {
+    const app = createApp();
+    const published = await publishDocument(app);
+    const etag = requiredEtag(published);
+    await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      headers: { "if-match": etag },
+      payload: feedbackPayload,
+    });
+    await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      headers: { "if-match": etag },
+      payload: feedbackPayload,
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `${FEEDBACK_WAIT_URL}?after=1&timeout=20`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(requiredEtag(response)).toBe(etag);
+    expect(response.json()).toEqual({
+      workspaceSlug: "default",
+      documentSlug: "initial-spec",
+      documentVersion: 1,
+      latestBatchId: 2,
+      batches: [{ id: 2, submittedAt: expect.any(String) }],
+    });
+  });
+
+  it("holds a feedback wait until matching feedback is committed", async () => {
+    const app = createApp();
+    const published = await publishDocument(app);
+    const etag = requiredEtag(published);
+    const waiting = app.inject({
+      method: "GET",
+      url: `${FEEDBACK_WAIT_URL}?after=0&timeout=1000`,
+    });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const submitted = await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      headers: { "if-match": etag },
+      payload: feedbackPayload,
+    });
+    const response = await waiting;
+
+    expect(submitted.statusCode).toBe(201);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      latestBatchId: submitted.json().id,
+      batches: [{ id: submitted.json().id }],
+    });
+  });
+
+  it("times out a feedback wait without emitting an event", async () => {
+    const app = createApp();
+    await publishDocument(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `${FEEDBACK_WAIT_URL}?after=0&timeout=5`,
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.body).toBe("");
+    expect(response.headers["cache-control"]).toBe("no-store");
+  });
+
+  it("isolates feedback waits by document", async () => {
+    const app = createApp();
+    const articleUrl = "/api/workspaces/default/documents/article-draft";
+    const articleWaitUrl = `${articleUrl}/feedback/wait`;
+    await publishDocument(app);
+    await publishDocument(app, articleUrl, "Article draft");
+    const defaultWait = app.inject({
+      method: "GET",
+      url: `${FEEDBACK_WAIT_URL}?after=0&timeout=20`,
+    });
+    const articleWait = app.inject({
+      method: "GET",
+      url: `${articleWaitUrl}?after=0&timeout=1000`,
+    });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await app.inject({
+      method: "POST",
+      url: `${articleUrl}/feedback`,
+      headers: { "if-match": await documentEtag(app, articleUrl) },
+      payload: feedbackPayload,
+    });
+
+    expect((await articleWait).statusCode).toBe(200);
+    expect((await defaultWait).statusCode).toBe(204);
+  });
+
+  it("validates feedback wait cursors and timeouts", async () => {
+    const app = createApp();
+    await publishDocument(app);
+
+    const invalidCursor = await app.inject({
+      method: "GET",
+      url: `${FEEDBACK_WAIT_URL}?after=-1&timeout=20`,
+    });
+    const invalidTimeout = await app.inject({
+      method: "GET",
+      url: `${FEEDBACK_WAIT_URL}?after=0&timeout=30001`,
+    });
+
+    expect(invalidCursor.statusCode).toBe(400);
+    expect(invalidCursor.json().error).toContain("non-negative integer");
+    expect(invalidTimeout.statusCode).toBe(400);
+    expect(invalidTimeout.json().error).toContain("1 to 30000");
+  });
+
+  it("releases a pending feedback wait during server shutdown", async () => {
+    const app = createApp();
+    await publishDocument(app);
+    const waiting = app.inject({
+      method: "GET",
+      url: `${FEEDBACK_WAIT_URL}?after=0&timeout=30000`,
+    });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const closing = app.close();
+    const response = await waiting;
+    await closing;
+    apps.delete(app);
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json().error).toContain("shutting down");
+  });
+
   it("rejects a feedback read when the retained document ETag is stale", async () => {
     const app = createApp();
     const first = await publishDocument(app);
@@ -932,6 +1070,9 @@ describe("Pena API", () => {
       },
       getFeedback() {
         throw new PersistedDataError("Invalid persisted feedback.");
+      },
+      listFeedbackReceiptsAfter() {
+        throw new Error("Not used in this test.");
       },
       close() {},
     };

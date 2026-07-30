@@ -184,3 +184,15 @@ export const FeedbackResponseSchema = z.object({
 });
 
 export type FeedbackResponse = z.infer<typeof FeedbackResponseSchema>;
+
+export const FeedbackWaitResponseSchema = z.object({
+  workspaceSlug: WorkspaceSlugSchema,
+  documentSlug: DocumentSlugSchema,
+  documentVersion: z.number().int().positive(),
+  latestBatchId: z.number().int().positive(),
+  batches: z.array(FeedbackReceiptSchema).min(1),
+});
+
+export type FeedbackWaitResponse = z.infer<
+  typeof FeedbackWaitResponseSchema
+>;

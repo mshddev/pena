@@ -16,6 +16,8 @@ Reviewing a document inside the terminal or a plain Markdown file is painful —
 
 - Node >= 24 (see `.nvmrc`)
 - pnpm
+- Claude Code >= 2.1.98 in an interactive CLI session for automatic feedback
+  delivery
 
 # SetUp
 
@@ -45,7 +47,8 @@ verify: the web app is at `http://127.0.0.1:5173` and the API server prints `Pen
 The skill is how Claude Code talks to Pena — it teaches the agent to publish documents, read feedback, and browse the archive.
 
 ```bash
-cp -R resources/skills/pena ~/.claude/skills/pena
+mkdir -p ~/.claude/skills/pena
+cp -R resources/skills/pena/. ~/.claude/skills/pena/
 ```
 
 verify: in a new Claude Code session, ask it to *"publish this plan to Pena"* — it should respond with a `http://127.0.0.1:5173/workspaces/...` URL.
@@ -54,7 +57,13 @@ verify: in a new Claude Code session, ask it to *"publish this plan to Pena"* �
 
 1. Ask Claude Code to publish a document to Pena. It posts the Markdown to the server under a workspace and document slug.
 2. Open the URL it gives you, select any text, and leave comments. Documents can also carry interactive decision blocks — single-choice questions you answer inline.
-3. Submit the feedback, then tell Claude to fetch it. It applies the comments and republishes to the same slug.
+3. Submit the feedback. The active Claude Code session picks it up
+   automatically, applies the comments, and republishes to the same slug.
+
+Claude starts one background feedback monitor after it publishes the document.
+The monitor stops when that Claude Code session ends. When the Monitor tool is
+not available, Pena keeps the feedback and you can still ask Claude to fetch it
+manually.
 
 Documents live in workspaces, retain immutable version history and
 version-specific feedback, and can compare or restore earlier Markdown from

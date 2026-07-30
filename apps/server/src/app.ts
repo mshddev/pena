@@ -7,11 +7,13 @@ import {
   DocumentUpdateRequestSchema,
   FeedbackReceiptSchema,
   FeedbackSubmissionSchema,
+  FeedbackWaitResponseSchema,
   WorkspaceCreateRequestSchema,
   WorkspaceSlugSchema,
   WorkspaceUpdateRequestSchema,
   parseDecisionDocument,
   type FeedbackResponse,
+  type FeedbackWaitResponse,
 } from "@pena/contracts";
 import Fastify, {
   type FastifyInstance,
@@ -36,6 +38,10 @@ import {
   type DocumentWriteCondition,
   type PenaStore,
 } from "./storage/pena-store.js";
+import {
+  FeedbackWaiters,
+  feedbackWaitKey,
+} from "./feedback-waiters.js";
 
 interface WorkspaceParams {
   workspaceSlug: string;
@@ -49,8 +55,21 @@ interface DocumentVersionParams extends DocumentParams {
   version: string;
 }
 
+interface FeedbackWaitQuery {
+  after?: string;
+  timeout?: string;
+}
+
+const DEFAULT_FEEDBACK_WAIT_TIMEOUT_MS = 25_000;
+const MAX_FEEDBACK_WAIT_TIMEOUT_MS = 30_000;
+
 export function buildApp(store: PenaStore): FastifyInstance {
   const app = Fastify({ logger: false });
+  const feedbackWaiters = new FeedbackWaiters();
+
+  app.addHook("preClose", () => {
+    feedbackWaiters.close();
+  });
 
   app.addHook("onClose", () => {
     store.close();
@@ -531,6 +550,9 @@ export function buildApp(store: PenaStore): FastifyInstance {
           parsedSubmission.data,
           expectedEtag,
         );
+        feedbackWaiters.notify(
+          feedbackWaitKey(params.workspaceSlug, params.documentSlug),
+        );
         const resource = store.getDocumentResource(
           params.workspaceSlug,
           params.documentSlug,
@@ -547,6 +569,102 @@ export function buildApp(store: PenaStore): FastifyInstance {
         }
 
         return sendDocumentError(reply, error);
+      }
+    },
+  );
+
+  app.get<{
+    Params: DocumentParams;
+    Querystring: FeedbackWaitQuery;
+  }>(
+    "/api/workspaces/:workspaceSlug/documents/:documentSlug/feedback/wait",
+    async (request, reply): Promise<FeedbackWaitResponse | void> => {
+      const params = parseDocumentParams(request.params, reply);
+      const query = parseFeedbackWaitQuery(request.query, reply);
+
+      if (!params || !query) {
+        return;
+      }
+
+      void reply.header("cache-control", "no-store");
+      const key = feedbackWaitKey(
+        params.workspaceSlug,
+        params.documentSlug,
+      );
+
+      try {
+        const immediate = getFeedbackWaitResponse(
+          store,
+          params,
+          query.after,
+        );
+
+        if (immediate) {
+          return sendFeedbackWaitResponse(reply, immediate);
+        }
+
+        const subscription = feedbackWaiters.subscribe(
+          key,
+          query.timeout,
+        );
+        const cancelWait = () => subscription.cancel();
+        request.raw.once("aborted", cancelWait);
+        reply.raw.once("close", cancelWait);
+
+        try {
+          // Register before this second read so feedback committed between the
+          // first read and subscription cannot be missed.
+          const afterSubscription = getFeedbackWaitResponse(
+            store,
+            params,
+            query.after,
+          );
+
+          if (afterSubscription) {
+            return sendFeedbackWaitResponse(reply, afterSubscription);
+          }
+
+          const result = await subscription.result;
+
+          if (result === "timeout") {
+            return reply.code(204).send();
+          }
+
+          if (result === "closed") {
+            return reply.code(503).send({
+              error: "The Pena server is shutting down.",
+            });
+          }
+
+          if (result === "cancelled") {
+            return;
+          }
+
+          const notified = getFeedbackWaitResponse(
+            store,
+            params,
+            query.after,
+          );
+
+          if (!notified) {
+            return reply.code(204).send();
+          }
+
+          return sendFeedbackWaitResponse(reply, notified);
+        } finally {
+          request.raw.removeListener("aborted", cancelWait);
+          reply.raw.removeListener("close", cancelWait);
+          subscription.cancel();
+        }
+      } catch (error) {
+        if (error instanceof PersistedDataError) {
+          await reply.code(500).send({
+            error: "The document feedback contains invalid persisted data.",
+          });
+          return;
+        }
+
+        await sendDocumentError(reply, error);
       }
     },
   );
@@ -663,6 +781,103 @@ function parseDocumentVersionParams(
   }
 
   return { ...documentParams, version };
+}
+
+function parseFeedbackWaitQuery(
+  query: FeedbackWaitQuery,
+  reply: FastifyReply,
+): { after: number; timeout: number } | null {
+  const after = query.after === undefined ? 0 : Number(query.after);
+  const timeout =
+    query.timeout === undefined
+      ? DEFAULT_FEEDBACK_WAIT_TIMEOUT_MS
+      : Number(query.timeout);
+
+  if (
+    !Number.isSafeInteger(after) ||
+    after < 0 ||
+    String(after) !== (query.after ?? "0")
+  ) {
+    void reply.code(400).send({
+      error: 'The feedback wait "after" cursor must be a non-negative integer.',
+    });
+    return null;
+  }
+
+  if (
+    !Number.isSafeInteger(timeout) ||
+    timeout < 1 ||
+    timeout > MAX_FEEDBACK_WAIT_TIMEOUT_MS ||
+    String(timeout) !==
+      (query.timeout ?? String(DEFAULT_FEEDBACK_WAIT_TIMEOUT_MS))
+  ) {
+    void reply.code(400).send({
+      error: `The feedback wait "timeout" must be an integer from 1 to ${MAX_FEEDBACK_WAIT_TIMEOUT_MS}.`,
+    });
+    return null;
+  }
+
+  return { after, timeout };
+}
+
+function getFeedbackWaitResponse(
+  store: PenaStore,
+  params: DocumentParams,
+  after: number,
+): { response: FeedbackWaitResponse; etag: string } | null {
+  const resource = store.getDocumentResource(
+    params.workspaceSlug,
+    params.documentSlug,
+  );
+
+  if (!resource) {
+    throw new DocumentNotFoundError(
+      params.workspaceSlug,
+      params.documentSlug,
+    );
+  }
+
+  if (resource.value.archivedAt !== null) {
+    throw new DocumentArchivedError(
+      params.workspaceSlug,
+      params.documentSlug,
+    );
+  }
+
+  const batches = store.listFeedbackReceiptsAfter(
+    params.workspaceSlug,
+    params.documentSlug,
+    after,
+  );
+
+  if (batches.length === 0) {
+    return null;
+  }
+
+  const latestBatchId = batches.at(-1)?.id;
+
+  if (latestBatchId === undefined) {
+    return null;
+  }
+
+  return {
+    etag: resource.etag,
+    response: FeedbackWaitResponseSchema.parse({
+      workspaceSlug: params.workspaceSlug,
+      documentSlug: params.documentSlug,
+      documentVersion: resource.value.version,
+      latestBatchId,
+      batches,
+    }),
+  };
+}
+
+function sendFeedbackWaitResponse(
+  reply: FastifyReply,
+  result: { response: FeedbackWaitResponse; etag: string },
+): FeedbackWaitResponse {
+  void reply.header("etag", result.etag);
+  return result.response;
 }
 
 function parsePublishCondition(

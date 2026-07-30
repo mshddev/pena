@@ -340,6 +340,18 @@ describe("SqlitePenaStore", () => {
       latestBatchId: secondBatch.id,
       batches: [firstBatch, secondBatch],
     });
+    expect(
+      store.listFeedbackReceiptsAfter(
+        DEFAULT_WORKSPACE_SLUG,
+        "initial-spec",
+        firstBatch.id,
+      ),
+    ).toEqual([
+      {
+        id: secondBatch.id,
+        submittedAt: secondBatch.submittedAt,
+      },
+    ]);
   });
 
   it("isolates feedback by document ID", () => {

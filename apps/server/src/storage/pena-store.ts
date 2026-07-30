@@ -4,6 +4,7 @@ import type {
   DocumentVersion,
   DocumentVersionSummary,
   FeedbackBatch,
+  FeedbackReceipt,
   FeedbackResponse,
   FeedbackSubmission,
   PenaDocument,
@@ -84,6 +85,11 @@ export interface PenaStore {
     submission: FeedbackSubmission,
     expectedEtag?: string,
   ): FeedbackBatch;
+  listFeedbackReceiptsAfter(
+    workspaceSlug: string,
+    slug: string,
+    after: number,
+  ): FeedbackReceipt[];
   getFeedback(workspaceSlug: string, slug: string): FeedbackResponse;
   close(): void;
 }

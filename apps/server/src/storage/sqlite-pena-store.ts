@@ -8,6 +8,7 @@ import {
   DocumentVersionSchema,
   DocumentVersionSummarySchema,
   FeedbackBatchSchema,
+  FeedbackReceiptSchema,
   FeedbackResponseSchema,
   FeedbackSubmissionSchema,
   WorkspaceNameSchema,
@@ -18,6 +19,7 @@ import {
   type DocumentVersion,
   type DocumentVersionSummary,
   type FeedbackBatch,
+  type FeedbackReceipt,
   type FeedbackResponse,
   type FeedbackSubmission,
   type PenaDocument,
@@ -103,6 +105,8 @@ interface FeedbackBatchRow {
   submitted_at: string;
   comments_json: string;
 }
+
+type FeedbackReceiptRow = Omit<FeedbackBatchRow, "comments_json">;
 
 export class SqlitePenaStore implements PenaStore {
   private readonly database: Database.Database;
@@ -791,6 +795,26 @@ export class SqlitePenaStore implements PenaStore {
     });
   }
 
+  listFeedbackReceiptsAfter(
+    workspaceSlug: string,
+    slug: string,
+    after: number,
+  ): FeedbackReceipt[] {
+    const document = this.requireDocumentRow(workspaceSlug, slug);
+    const rows = this.database
+      .prepare<[number, number], FeedbackReceiptRow>(
+        `
+          SELECT id, submitted_at
+          FROM feedback_batches
+          WHERE document_version_id = ? AND id > ?
+          ORDER BY id ASC
+        `,
+      )
+      .all(document.version_id, after);
+
+    return rows.map(parseFeedbackReceipt);
+  }
+
   close(): void {
     if (this.database.open) {
       this.database.close();
@@ -1359,6 +1383,22 @@ function parseFeedbackBatch(row: FeedbackBatchRow): FeedbackBatch {
     id: row.id,
     submittedAt: row.submitted_at,
     comments,
+  });
+
+  if (!result.success) {
+    throw new PersistedDataError(
+      `Feedback batch ${row.id} contains invalid persisted data.`,
+      { cause: result.error },
+    );
+  }
+
+  return result.data;
+}
+
+function parseFeedbackReceipt(row: FeedbackReceiptRow): FeedbackReceipt {
+  const result = FeedbackReceiptSchema.safeParse({
+    id: row.id,
+    submittedAt: row.submitted_at,
   });
 
   if (!result.success) {

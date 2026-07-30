@@ -1498,6 +1498,10 @@ button:disabled {
   font-size: 0.82em;
 }
 
+.markdown-body table :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+
 .markdown-body pre {
   overflow-x: auto;
   margin: 1.7em 0;

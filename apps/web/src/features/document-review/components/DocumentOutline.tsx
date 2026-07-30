@@ -4,22 +4,42 @@ import type { OutlineSection } from "../outline";
 
 interface DocumentOutlineProps {
   activeSectionId: string | null;
+  isOpen: boolean;
+  onCollapse: () => void;
   sections: OutlineSection[];
 }
 
 export function DocumentOutline({
   activeSectionId,
+  isOpen,
+  onCollapse,
   sections,
 }: DocumentOutlineProps) {
   const sectionCount = sections.filter((section) => section.depth === 0).length;
 
   return (
-    <aside className="document-index" aria-label="Document outline">
+    <aside
+      aria-hidden={!isOpen}
+      aria-label="Document outline"
+      className="document-index"
+      id="document-outline-panel"
+    >
       <div className="document-index-heading">
         <p className="section-label">Outline</p>
-        {sectionCount > 0 ? (
-          <span className="document-total">{sectionCount}</span>
-        ) : null}
+        <div className="document-index-actions">
+          {sectionCount > 0 ? (
+            <span className="document-total">{sectionCount}</span>
+          ) : null}
+          <button
+            aria-label="Hide document outline"
+            className="outline-collapse-button"
+            onClick={onCollapse}
+            title="Hide document outline"
+            type="button"
+          >
+            <CollapseOutlineIcon />
+          </button>
+        </div>
       </div>
 
       {sections.length === 0 ? (
@@ -55,5 +75,13 @@ export function DocumentOutline({
         </nav>
       )}
     </aside>
+  );
+}
+
+function CollapseOutlineIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path d="M3 3h10v10H3zM7 3v10M11 6l-2 2 2 2" />
+    </svg>
   );
 }

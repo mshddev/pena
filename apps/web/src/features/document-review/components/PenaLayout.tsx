@@ -14,6 +14,7 @@ import type { OutlineSection } from "../outline";
 import { DocumentOutline } from "./DocumentOutline";
 
 const OUTLINE_WIDTH_STORAGE_KEY = "pena:outline-width";
+const OUTLINE_VISIBILITY_STORAGE_KEY = "pena:outline-visibility";
 const MIN_OUTLINE_WIDTH = 214;
 const MAX_OUTLINE_WIDTH = 420;
 const OUTLINE_WIDTH_STEP = 12;
@@ -33,6 +34,9 @@ export function PenaLayout({
 }: PenaLayoutProps) {
   const [outlineWidth, setOutlineWidth] = useState<number | null>(
     readSavedOutlineWidth,
+  );
+  const [isOutlineOpen, setIsOutlineOpen] = useState(
+    readSavedOutlineVisibility,
   );
   const [isResizingOutline, setIsResizingOutline] = useState(false);
   const workspaceRef = useRef<HTMLElement>(null);
@@ -63,6 +67,17 @@ export function PenaLayout({
       // Resizing still works when storage is unavailable.
     }
   }, [outlineWidth]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        OUTLINE_VISIBILITY_STORAGE_KEY,
+        isOutlineOpen ? "open" : "closed",
+      );
+    } catch {
+      // Folding still works when storage is unavailable.
+    }
+  }, [isOutlineOpen]);
 
   function handleResizeStart(event: PointerEvent<HTMLDivElement>): void {
     if (event.button !== 0) {
@@ -135,32 +150,51 @@ export function PenaLayout({
       <UtilityBar current={null} workspaceSlug={workspaceSlug} />
 
       <main
-        className={`workspace${isResizingOutline ? " resizing-outline" : ""}`}
+        className={`workspace${isResizingOutline ? " resizing-outline" : ""}${
+          isOutlineOpen ? "" : " outline-collapsed"
+        }`}
         ref={workspaceRef}
         style={workspaceStyle}
       >
         <DocumentOutline
           activeSectionId={activeSectionId}
+          isOpen={isOutlineOpen}
+          onCollapse={() => setIsOutlineOpen(false)}
           sections={sections}
         />
-        <div
-          aria-label="Resize document outline"
-          aria-orientation="vertical"
-          aria-valuemax={MAX_OUTLINE_WIDTH}
-          aria-valuemin={MIN_OUTLINE_WIDTH}
-          aria-valuenow={Math.round(renderedOutlineWidth)}
-          aria-valuetext={`${Math.round(renderedOutlineWidth)} pixels`}
-          className="outline-resizer"
-          onDoubleClick={() => setOutlineWidth(null)}
-          onKeyDown={handleResizeKeyDown}
-          onLostPointerCapture={handleResizeEnd}
-          onPointerDown={handleResizeStart}
-          onPointerMove={handleResizeMove}
-          onPointerUp={handleResizeEnd}
-          role="separator"
-          tabIndex={0}
-          title="Drag to resize. Double-click to reset."
-        />
+        {isOutlineOpen ? (
+          <div
+            aria-label="Resize document outline"
+            aria-orientation="vertical"
+            aria-valuemax={MAX_OUTLINE_WIDTH}
+            aria-valuemin={MIN_OUTLINE_WIDTH}
+            aria-valuenow={Math.round(renderedOutlineWidth)}
+            aria-valuetext={`${Math.round(renderedOutlineWidth)} pixels`}
+            className="outline-resizer"
+            onDoubleClick={() => setOutlineWidth(null)}
+            onKeyDown={handleResizeKeyDown}
+            onLostPointerCapture={handleResizeEnd}
+            onPointerDown={handleResizeStart}
+            onPointerMove={handleResizeMove}
+            onPointerUp={handleResizeEnd}
+            role="separator"
+            tabIndex={0}
+            title="Drag to resize. Double-click to reset."
+          />
+        ) : (
+          <button
+            aria-controls="document-outline-panel"
+            aria-expanded="false"
+            aria-label="Show document outline"
+            className="outline-restore-button"
+            onClick={() => setIsOutlineOpen(true)}
+            title="Show document outline"
+            type="button"
+          >
+            <ExpandOutlineIcon />
+            <span>Outline</span>
+          </button>
+        )}
         {children}
       </main>
     </div>
@@ -196,4 +230,22 @@ function readSavedOutlineWidth(): number | null {
   } catch {
     return null;
   }
+}
+
+function readSavedOutlineVisibility(): boolean {
+  try {
+    return (
+      window.localStorage.getItem(OUTLINE_VISIBILITY_STORAGE_KEY) !== "closed"
+    );
+  } catch {
+    return true;
+  }
+}
+
+function ExpandOutlineIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path d="M3 3h10v10H3zM7 3v10M9 6l2 2-2 2" />
+    </svg>
+  );
 }

@@ -519,7 +519,7 @@ export function DocumentReviewPage({
           </div>
         ) : null}
 
-        {isLoading ? (
+        {isLoading && !currentDocument ? (
           <div className="document-state" aria-live="polite">
             <span className="loading-line" />
             <span className="loading-line short" />

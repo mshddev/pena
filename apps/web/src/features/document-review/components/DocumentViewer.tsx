@@ -93,6 +93,7 @@ export function DocumentViewer({
   const commentPopoverRef = useRef<HTMLDivElement>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const pendingFeedbackPanelRef = useRef<HTMLElement>(null);
+  const didRestoreLocationHashRef = useRef(false);
   const [editor, dispatch] = useReducer(
     commentEditorReducer,
     initialCommentEditorState,
@@ -136,9 +137,26 @@ export function DocumentViewer({
 
   // Read the outline back off the rendered headings, so it lists exactly what
   // is on the page — including the headings inside decision blocks.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const surface = documentSurfaceRef.current;
-    onOutlineChange(surface ? readOutlineSections(surface) : []);
+    const nextSections = surface ? readOutlineSections(surface) : [];
+
+    onOutlineChange(nextSections);
+
+    if (didRestoreLocationHashRef.current) {
+      return;
+    }
+
+    didRestoreLocationHashRef.current = true;
+
+    const sectionId = readLocationHash();
+    const target = sectionId
+      ? window.document.getElementById(sectionId)
+      : null;
+
+    if (surface && target && surface.contains(target)) {
+      target.scrollIntoView();
+    }
   }, [onOutlineChange, parsedDocument]);
 
   useEffect(() => {
@@ -642,6 +660,20 @@ export function DocumentViewer({
       ) : null}
     </>
   );
+}
+
+function readLocationHash(): string | null {
+  const hash = window.location.hash.slice(1);
+
+  if (!hash) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(hash);
+  } catch {
+    return hash;
+  }
 }
 
 function scrollRangeToEditorPosition(range: Range): void {

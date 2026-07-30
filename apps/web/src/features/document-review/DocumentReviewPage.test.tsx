@@ -52,6 +52,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  window.history.replaceState({}, "", "/");
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -327,6 +328,72 @@ describe("version history", () => {
 });
 
 describe("saved document index", () => {
+  it("restores a section hash after the async document render", async () => {
+    const scrollIntoView = vi.fn();
+
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    window.history.replaceState({}, "", "/#pena-section-1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/feedback")
+          ? jsonResponse({ latestBatchId: null, batches: [] })
+          : jsonResponse(documentResponse),
+      ),
+    );
+
+    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+
+    const target = await screen.findByRole("heading", {
+      name: "Add request caching",
+    });
+
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+    expect(target.id).toBe("pena-section-1");
+    expect(scrollIntoView.mock.instances[0]).toBe(target);
+  });
+
+  it("keeps the document mounted while a focus refresh is pending", async () => {
+    let resolveRefresh: ((response: Response) => void) | undefined;
+    const refreshResponse = new Promise<Response>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    let documentFetchCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith("/feedback")) {
+        return jsonResponse({ latestBatchId: null, batches: [] });
+      }
+
+      if (url.endsWith("/documents/review")) {
+        documentFetchCount += 1;
+        return documentFetchCount === 1
+          ? jsonResponse(documentResponse)
+          : refreshResponse;
+      }
+
+      return documentListResponse();
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+
+    await screen.findByRole("heading", { name: "Review" });
+    window.dispatchEvent(new Event("focus"));
+
+    await waitFor(() => expect(documentFetchCount).toBe(2));
+    expect(screen.getByRole("heading", { name: "Review" })).toBeTruthy();
+
+    resolveRefresh?.(jsonResponse(documentResponse));
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Review" })).toBeTruthy(),
+    );
+  });
+
   it("downloads the current document as an exact Markdown file", async () => {
     const NativeURL = URL;
     const createObjectURL = vi.fn((_blob: Blob) => "blob:pena-markdown");

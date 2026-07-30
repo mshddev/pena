@@ -1,6 +1,14 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildApp } from "./app.js";
+import {
+  FileAssetStore,
+  MAX_ASSET_BYTES,
+} from "./storage/file-asset-store.js";
 import {
   PersistedDataError,
   type PenaStore,
@@ -22,11 +30,21 @@ const feedbackPayload = {
 };
 
 const apps = new Set<ReturnType<typeof buildApp>>();
+const temporaryDirectories = new Set<string>();
 
 function createApp(): ReturnType<typeof buildApp> {
-  const app = buildApp(new SqlitePenaStore(":memory:"));
+  const app = buildApp(
+    new SqlitePenaStore(":memory:"),
+    createAssetStore(),
+  );
   apps.add(app);
   return app;
+}
+
+function createAssetStore(): FileAssetStore {
+  const directory = mkdtempSync(join(tmpdir(), "pena-assets-"));
+  temporaryDirectories.add(directory);
+  return new FileAssetStore(directory);
 }
 
 async function publishDocument(
@@ -81,12 +99,154 @@ function requiredEtag(response: { headers: Record<string, unknown> }): string {
   return etag;
 }
 
+function multipartImage(
+  content: Buffer,
+  {
+    contentType = "application/octet-stream",
+    fieldName = "file",
+    filename = "image.png",
+  }: {
+    contentType?: string;
+    fieldName?: string;
+    filename?: string;
+  } = {},
+): { headers: Record<string, string>; payload: Buffer } {
+  const boundary = "pena-test-boundary";
+  const prefix = Buffer.from(
+    [
+      `--${boundary}`,
+      `Content-Disposition: form-data; name="${fieldName}"; filename="${filename}"`,
+      `Content-Type: ${contentType}`,
+      "",
+      "",
+    ].join("\r\n"),
+  );
+  const suffix = Buffer.from(`\r\n--${boundary}--\r\n`);
+
+  return {
+    headers: {
+      "content-type": `multipart/form-data; boundary=${boundary}`,
+    },
+    payload: Buffer.concat([prefix, content, suffix]),
+  };
+}
+
 afterEach(async () => {
   await Promise.all([...apps].map((app) => app.close()));
   apps.clear();
+
+  for (const directory of temporaryDirectories) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+  temporaryDirectories.clear();
 });
 
 describe("Pena API", () => {
+  it("uploads, deduplicates, and serves an immutable image asset", async () => {
+    const app = createApp();
+    const image = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const upload = multipartImage(image, {
+      contentType: "text/plain",
+      filename: "pixel.txt",
+    });
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      ...upload,
+    });
+    const duplicate = await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      ...multipartImage(image),
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(duplicate.statusCode).toBe(200);
+    expect(created.json()).toEqual(duplicate.json());
+    expect(created.json()).toMatchObject({
+      id: expect.stringMatching(/^[a-f0-9]{64}\.png$/),
+      mediaType: "image/png",
+      size: image.byteLength,
+      url: expect.stringMatching(/^\/api\/assets\/[a-f0-9]{64}\.png$/),
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: created.json().url,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toBe("image/png");
+    expect(response.headers["content-length"]).toBe(String(image.byteLength));
+    expect(response.headers["cache-control"]).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+    expect(response.headers.etag).toMatch(/^"[a-f0-9]{64}"$/);
+    expect(response.rawPayload).toEqual(image);
+  });
+
+  it("validates asset upload shape, type, and size", async () => {
+    const app = createApp();
+    const wrongRequestType = await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: { "content-type": "image/png" },
+      payload: Buffer.from("not-an-image"),
+    });
+    const wrongField = await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      ...multipartImage(Buffer.from("GIF89a"), {
+        fieldName: "image",
+        filename: "image.gif",
+      }),
+    });
+    const unsupported = await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      ...multipartImage(Buffer.from("<svg></svg>"), {
+        contentType: "image/svg+xml",
+        filename: "image.svg",
+      }),
+    });
+    const oversizedImage = Buffer.alloc(MAX_ASSET_BYTES + 1);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(
+      oversizedImage,
+    );
+    const oversized = await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      ...multipartImage(oversizedImage),
+    });
+
+    expect(wrongRequestType.statusCode).toBe(415);
+    expect(wrongField.statusCode).toBe(400);
+    expect(unsupported.statusCode).toBe(415);
+    expect(oversized.statusCode).toBe(413);
+  });
+
+  it("does not serve malformed, missing, or non-file asset paths", async () => {
+    const app = createApp();
+
+    expect(
+      (await app.inject({ method: "GET", url: "/api/assets/not-an-id.png" }))
+        .statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/assets/${"a".repeat(64)}.png`,
+        })
+      ).statusCode,
+    ).toBe(404);
+  });
+
   it("requires workspace scope for every document route", async () => {
     const app = createApp();
     const response = await app.inject({
@@ -1076,7 +1236,7 @@ describe("Pena API", () => {
       },
       close() {},
     };
-    const app = buildApp(store);
+    const app = buildApp(store, createAssetStore());
     apps.add(app);
 
     const response = await app.inject({

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import {
   afterEach,
   beforeEach,
@@ -146,6 +152,122 @@ describe("embedded HTML", () => {
     expect(link?.hasAttribute("href")).toBe(false);
     expect(link?.hasAttribute("onclick")).toBe(false);
     expect(container.querySelector("script")).toBeNull();
+  });
+});
+
+describe("Markdown images", () => {
+  it("renders an internal image responsively with accessible defaults", () => {
+    render(
+      <MarkdownContent components={markdownComponents}>
+        {
+          "![Architecture diagram](/api/assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png \"System overview\")"
+        }
+      </MarkdownContent>,
+    );
+
+    const image = screen.getByRole("img", {
+      name: "Architecture diagram",
+    });
+
+    expect(image.tagName).toBe("IMG");
+    expect(image.getAttribute("src")).toBe(
+      "/api/assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
+    );
+    expect(image.getAttribute("title")).toBe("System overview");
+    expect(image.getAttribute("loading")).toBe("lazy");
+    expect(image.getAttribute("decoding")).toBe("async");
+    expect(image.classList.contains("markdown-image")).toBe(true);
+    expect(
+      screen.getByRole("button", {
+        name: "Enlarge image: Architecture diagram",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("opens an image lightbox and closes it with Escape", () => {
+    render(
+      <MarkdownContent components={markdownComponents}>
+        {"![Architecture diagram](/api/assets/example.png)"}
+      </MarkdownContent>,
+    );
+
+    const trigger = screen.getByRole("button", {
+      name: "Enlarge image: Architecture diagram",
+    });
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Enlarged image: Architecture diagram",
+    });
+    expect(
+      within(dialog).getByRole("img", {
+        name: "Architecture diagram",
+      }),
+    ).toBeTruthy();
+    expect(within(dialog).getByText("Architecture diagram")).toBeTruthy();
+    expect(document.body.style.overflow).toBe("hidden");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.body.style.overflow).toBe("");
+  });
+
+  it("closes an image lightbox from its close button", () => {
+    render(
+      <MarkdownContent components={markdownComponents}>
+        {"![Architecture diagram](/api/assets/example.png)"}
+      </MarkdownContent>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Enlarge image: Architecture diagram",
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close enlarged image" }),
+    );
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("shows the alt text when an image cannot load", () => {
+    const { container } = render(
+      <MarkdownContent
+        components={createAnnotatedMarkdownComponents("segment-0")}
+      >
+        {"![Architecture diagram](/api/assets/missing.png)"}
+      </MarkdownContent>,
+    );
+
+    fireEvent.error(
+      screen.getByRole("img", { name: "Architecture diagram" }),
+    );
+
+    const fallback = screen.getByRole("img", {
+      name: "Architecture diagram",
+    });
+    expect(fallback.tagName).toBe("SPAN");
+    expect(fallback.textContent).toBe(
+      "Image unavailable: Architecture diagram",
+    );
+    expect(fallback.dataset.annotationBlock).toBe("segment-0-block-0");
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("does not load file or data image URLs", () => {
+    const { container } = render(
+      <MarkdownContent components={markdownComponents}>
+        {
+          "![Private file](file:///Users/example/private.png)\n\n![Embedded](data:image/png;base64,AAAA)"
+        }
+      </MarkdownContent>,
+    );
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByText("Image unavailable: Private file")).toBeTruthy();
+    expect(screen.getByText("Image unavailable: Embedded")).toBeTruthy();
   });
 });
 

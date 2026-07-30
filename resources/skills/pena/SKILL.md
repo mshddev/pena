@@ -1,6 +1,6 @@
 ---
 name: pena
-description: Use Pena to publish and move versioned Markdown documents for review; retrieve, apply, and republish user feedback; inspect or restore document versions; and inspect archived documents. Use when the user asks to send, publish, move, compare, or restore a document in Pena, add Pena decision blocks, read Pena feedback, revise a document reviewed in Pena, or browse its archive.
+description: Use Pena to upload local images; publish and move versioned Markdown documents for review; retrieve, apply, and republish user feedback; inspect or restore document versions; and inspect archived documents. Use when the user asks to send, publish, move, compare, or restore a document in Pena, publish a document with images, add Pena decision blocks, read Pena feedback, revise a document reviewed in Pena, or browse its archive.
 ---
 
 # Pena
@@ -31,8 +31,36 @@ local content it describes; never use it to publish a different document base.
 
 ## Publish a document
 
-1. Ensure the complete Markdown content exists in a local file.
-2. Use a fenced `mermaid` code block when a diagram materially clarifies a
+1. Ensure the complete Markdown content exists in a local file. Publish from a
+   staged copy so Pena-specific asset URLs do not overwrite the user's source
+   document.
+2. Upload every local image referenced with standard Markdown image syntax
+   before publishing the staged copy. Resolve relative image paths from the
+   source Markdown file's directory. Pena accepts PNG, JPEG, WebP, and GIF
+   files up to 10 MiB.
+
+   ```bash
+   curl --fail --silent --show-error \
+     --request POST \
+     --form "file=@<absolute-image-path>" \
+     --output <asset-response-file> \
+     http://127.0.0.1:8788/api/assets
+   ```
+
+   Read the `url` from the JSON response and replace that image destination in
+   the staged Markdown:
+
+   ```markdown
+   ![Architecture diagram](/api/assets/<asset-id>)
+   ```
+
+   Reuse existing `/api/assets/` URLs. Leave `http://` and `https://` image
+   URLs unchanged. Do not upload paths found in ordinary links, code spans, or
+   fenced code blocks. Stop before publishing when a referenced local image is
+   missing, unsupported, or rejected. Use meaningful alt text for every image.
+   Uploaded assets are immutable and may remain stored when a later document
+   publish fails.
+3. Use a fenced `mermaid` code block when a diagram materially clarifies a
    flow, sequence, or relationship. Pena renders Mermaid fences as diagrams:
 
    ````markdown
@@ -56,7 +84,7 @@ local content it describes; never use it to publish a different document base.
    responsibilities and mutation behavior, and split large schemas into
    domain-focused diagrams.
 
-3. When an item requires one user choice, optionally add an interactive decision block:
+4. When an item requires one user choice, optionally add an interactive decision block:
 
    ```markdown
    :::pena-decision{#add-request-cache choice-a="Apply" choice-b="Skip"}
@@ -67,7 +95,7 @@ local content it describes; never use it to publish a different document base.
    ```
 
    Use a unique lowercase, kebab-case ID. Add exactly two short plain-text choices. Keep decision blocks top-level and do not nest them.
-4. For a new document without a retained ETag, attempt creation immediately.
+5. For a new document without a retained ETag, attempt creation immediately.
    Do not read the document first:
 
    ```bash
@@ -84,7 +112,7 @@ local content it describes; never use it to publish a different document base.
    exists; fetch its current content and ETag, then stop to reconcile it. On
    `404`, report that the workspace does not exist. Never convert a failed
    create into a blind overwrite.
-5. For an existing document, use the retained current ETag immediately. If no
+6. For an existing document, use the retained current ETag immediately. If no
    ETag is available, fetch the document and retain the exact response ETag
    before publishing:
 
@@ -110,7 +138,7 @@ local content it describes; never use it to publish a different document base.
    fetch the newer document and stop to reconcile it; never retry the old
    content blindly. If the current document has a non-null `archivedAt`, report
    that it must be explicitly unarchived; publishing never unarchives it.
-6. After a successful publish, start a persistent Claude Code Monitor for this
+7. After a successful publish, start a persistent Claude Code Monitor for this
    document unless one is already running in the current session. Run:
 
    ```bash
@@ -124,7 +152,7 @@ local content it describes; never use it to publish a different document base.
    feedback is committed. Keep the monitor running until the session ends or
    the document is archived. If Monitor is unavailable, report that automatic
    feedback delivery is unavailable and retain the manual read-feedback flow.
-7. Report whether publishing succeeded and provide the browser URL: `http://127.0.0.1:5173/workspaces/<workspace-slug>/documents/<document-slug>`.
+8. Report whether publishing succeeded and provide the browser URL: `http://127.0.0.1:5173/workspaces/<workspace-slug>/documents/<document-slug>`.
 
 ## Handle automatic feedback
 

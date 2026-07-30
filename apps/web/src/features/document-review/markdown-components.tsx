@@ -2,6 +2,7 @@ import { isValidElement, type ReactNode } from "react";
 import type { Components } from "react-markdown";
 
 import { readAnnotationBlockId } from "./annotation";
+import { MarkdownImage } from "./MarkdownImage";
 import { MermaidDiagram } from "./MermaidDiagram";
 
 export function createAnnotatedMarkdownComponents(
@@ -80,6 +81,9 @@ function createMarkdownComponents(namespace?: string): Components {
     ),
     summary: ({ node, ...props }) => (
       <summary {...annotationId(node)} {...props} />
+    ),
+    img: ({ node, ...props }) => (
+      <MarkdownImage {...annotationId(node)} {...props} />
     ),
     pre: ({ node, children, ...props }) => {
       const mermaidSource = readMermaidSource(children);

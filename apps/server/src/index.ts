@@ -1,23 +1,18 @@
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { buildApp } from "./app.js";
+import { readServerConfig } from "./config.js";
+import { FileAssetStore } from "./storage/file-asset-store.js";
 import { SqlitePenaStore } from "./storage/sqlite-pena-store.js";
 
-const defaultDatabasePath = fileURLToPath(
-  new URL("../../../.db/pena.sqlite", import.meta.url),
-);
-const databasePath = process.env.PENA_DB_PATH
-  ? resolve(process.env.PENA_DB_PATH)
-  : defaultDatabasePath;
+const { assetsDirectory, databasePath, port } = readServerConfig();
 const store = new SqlitePenaStore(databasePath);
-const app = buildApp(store);
-const port = Number(process.env.PORT ?? 8788);
+const assetStore = new FileAssetStore(assetsDirectory);
+const app = buildApp(store, assetStore);
 
 await app.listen({ host: "127.0.0.1", port });
 
 console.log(`Pena SERVER is running at http://127.0.0.1:${port}`);
 console.log(`Pena database: ${databasePath}`);
+console.log(`Pena assets: ${assetsDirectory}`);
 
 async function closeServer(): Promise<void> {
   await app.close();

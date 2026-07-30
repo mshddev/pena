@@ -2624,6 +2624,126 @@ button:disabled {
   background: #0b0d12;
 }
 
+.markdown-body .markdown-image-trigger {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 1.9em auto;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.markdown-body .markdown-image-trigger:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 4px;
+}
+
+.markdown-body .markdown-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0b0d12;
+  transition:
+    border-color 160ms ease,
+    filter 160ms ease;
+}
+
+.markdown-body .markdown-image-trigger:hover .markdown-image {
+  border-color: var(--line-strong);
+  filter: brightness(1.06);
+}
+
+.markdown-body .markdown-image-fallback {
+  display: flex;
+  min-height: 120px;
+  align-items: center;
+  justify-content: center;
+  margin: 1.9em 0;
+  padding: 20px;
+  border: 1px dashed rgb(255 138 128 / 36%);
+  border-radius: 10px;
+  background: #0b0d12;
+  color: var(--text-soft);
+  font-size: 14px;
+  text-align: center;
+}
+
+.image-lightbox {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 52px);
+  background: rgb(5 7 12 / 92%);
+  backdrop-filter: blur(10px);
+}
+
+.image-lightbox-panel {
+  position: relative;
+  display: grid;
+  max-width: 100%;
+  max-height: 100%;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+  margin: 0;
+}
+
+.image-lightbox-image {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 130px);
+  object-fit: contain;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: #07090e;
+  box-shadow: 0 28px 90px rgb(0 0 0 / 55%);
+}
+
+.image-lightbox-caption {
+  overflow: hidden;
+  max-width: min(900px, 88vw);
+  margin: 0 auto;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-lightbox-close {
+  position: absolute;
+  z-index: 1;
+  top: -14px;
+  right: -14px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0 0 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: #171b24;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 40%);
+}
+
+.image-lightbox-close:hover,
+.image-lightbox-close:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
 .markdown-body .mermaid-diagram {
   overflow-x: auto;
   margin: 1.9em 0;

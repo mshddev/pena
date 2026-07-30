@@ -55,7 +55,9 @@ verify: in a new Claude Code session, ask it to *"publish this plan to Pena"* �
 
 # How To Use
 
-1. Ask Claude Code to publish a document to Pena. It posts the Markdown to the server under a workspace and document slug.
+1. Ask Claude Code to publish a document to Pena. It uploads referenced local
+   PNG, JPEG, WebP, and GIF images, then posts the staged Markdown under a
+   workspace and document slug.
 2. Open the URL it gives you, select any text, and leave comments. Documents can also carry interactive decision blocks — single-choice questions you answer inline.
 3. Submit the feedback. The active Claude Code session picks it up
    automatically, applies the comments, and republishes to the same slug.
@@ -78,6 +80,11 @@ history or the download action.
 |---|---|---|
 | `PORT` | `8788` | API server port |
 | `PENA_DB_PATH` | `.db/pena.sqlite` | SQLite database location |
+| `PENA_ASSETS_DIR` | `.assets` | Uploaded image directory |
+
+Pena stores uploaded images by their content hash and does not delete them
+automatically. Back up both `PENA_DB_PATH` and `PENA_ASSETS_DIR` to preserve
+documents and their images.
 
 > [!IMPORTANT]
 > The server binds to `127.0.0.1` only and has no authentication. Pena is a local tool for your own machine — do not expose it to a network.
@@ -86,7 +93,7 @@ history or the download action.
 
 A pnpm monorepo with three packages:
 
-- `apps/server` — Fastify API with SQLite persistence
+- `apps/server` — Fastify API with SQLite persistence and filesystem image assets
 - `apps/web` — React + Vite review interface
 - `packages/contracts` — shared Zod schemas between the two
 

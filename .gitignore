@@ -5,6 +5,7 @@ playwright-report/
 .playwright-cli/
 test-results/
 .db/
+.assets/
 .DS_Store
 *.log
 *.tsbuildinfo

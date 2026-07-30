@@ -15,6 +15,8 @@ import {
   type FeedbackResponse,
   type FeedbackWaitResponse,
 } from "@pena/contracts";
+import multipart from "@fastify/multipart";
+import { createReadStream } from "node:fs";
 import Fastify, {
   type FastifyInstance,
   type FastifyReply,
@@ -39,6 +41,12 @@ import {
   type PenaStore,
 } from "./storage/pena-store.js";
 import {
+  AssetTooLargeError,
+  MAX_ASSET_BYTES,
+  UnsupportedAssetTypeError,
+  type AssetStore,
+} from "./storage/file-asset-store.js";
+import {
   FeedbackWaiters,
   feedbackWaitKey,
 } from "./feedback-waiters.js";
@@ -60,12 +68,26 @@ interface FeedbackWaitQuery {
   timeout?: string;
 }
 
+interface AssetParams {
+  assetId: string;
+}
+
 const DEFAULT_FEEDBACK_WAIT_TIMEOUT_MS = 25_000;
 const MAX_FEEDBACK_WAIT_TIMEOUT_MS = 30_000;
 
-export function buildApp(store: PenaStore): FastifyInstance {
+export function buildApp(
+  store: PenaStore,
+  assetStore: AssetStore,
+): FastifyInstance {
   const app = Fastify({ logger: false });
   const feedbackWaiters = new FeedbackWaiters();
+
+  void app.register(multipart, {
+    limits: {
+      files: 1,
+      fileSize: MAX_ASSET_BYTES,
+    },
+  });
 
   app.addHook("preClose", () => {
     feedbackWaiters.close();
@@ -84,6 +106,80 @@ export function buildApp(store: PenaStore): FastifyInstance {
   );
 
   app.get("/api/health", async () => ({ status: "ok" }));
+
+  app.post("/api/assets", async (request, reply) => {
+    if (!request.isMultipart()) {
+      return reply.code(415).send({
+        error: "Upload one image using multipart form data.",
+      });
+    }
+
+    try {
+      const file = await request.file({
+        limits: {
+          files: 1,
+          fileSize: MAX_ASSET_BYTES,
+        },
+      });
+
+      if (!file) {
+        return reply.code(400).send({
+          error: 'The multipart request must include a "file" field.',
+        });
+      }
+
+      if (file.fieldname !== "file") {
+        return reply.code(400).send({
+          error: 'The image must use the multipart field name "file".',
+        });
+      }
+
+      const asset = await assetStore.put(await file.toBuffer());
+
+      return reply
+        .code(asset.created ? 201 : 200)
+        .send({
+          id: asset.id,
+          mediaType: asset.mediaType,
+          size: asset.size,
+          url: asset.url,
+        });
+    } catch (error) {
+      if (
+        isMultipartFileTooLargeError(error) ||
+        error instanceof AssetTooLargeError
+      ) {
+        return reply.code(413).send({
+          error: `Images must not exceed ${MAX_ASSET_BYTES} bytes.`,
+        });
+      }
+
+      if (error instanceof UnsupportedAssetTypeError) {
+        return reply.code(415).send({ error: error.message });
+      }
+
+      throw error;
+    }
+  });
+
+  app.get<{ Params: AssetParams }>(
+    "/api/assets/:assetId",
+    async (request, reply) => {
+      const asset = await assetStore.get(request.params.assetId);
+
+      if (!asset) {
+        return reply.code(404).send({ error: "The image does not exist." });
+      }
+
+      return reply
+        .header("cache-control", "public, max-age=31536000, immutable")
+        .header("content-length", asset.size)
+        .header("etag", `"${asset.digest}"`)
+        .header("x-content-type-options", "nosniff")
+        .type(asset.mediaType)
+        .send(createReadStream(asset.path));
+    },
+  );
 
   app.get("/api/workspaces", async (_request, reply) =>
     reply.send({ workspaces: store.listWorkspaces() }),
@@ -1033,4 +1129,12 @@ function sendDocumentError(reply: FastifyReply, error: unknown) {
   }
 
   throw error;
+}
+
+function isMultipartFileTooLargeError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === "FST_REQ_FILE_TOO_LARGE"
+  );
 }

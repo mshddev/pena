@@ -10,7 +10,7 @@ Follow the SetUp section in [README.md](README.md). In short: Node >= 24, `pnpm 
 
 | Package | What it is |
 |---|---|
-| `apps/server` | Fastify API with SQLite persistence |
+| `apps/server` | Fastify API with SQLite persistence and filesystem image assets |
 | `apps/web` | React + Vite review interface |
 | `packages/contracts` | Shared Zod schemas between server and web |
 

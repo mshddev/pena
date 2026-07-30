@@ -7,7 +7,7 @@
 
 - [x] Git history is clean — single author `mshddev <mshddev@gmail.com>`, no company email in any commit.
 - [x] No secrets, API keys, or internal company references anywhere in source, docs, or the skill. All `127.0.0.1` references are by design (local-first tool).
-- [x] `.gitignore` already covers `.db/`, `dist/`, `node_modules/`, `*.tsbuildinfo`, and `TODO.local.md`.
+- [x] `.gitignore` already covers `.db/`, `.assets/`, `dist/`, `node_modules/`, `*.tsbuildinfo`, and `TODO.local.md`.
 
 ## Blockers — Must Be Done Before Going Public
 
@@ -27,7 +27,7 @@ Written at the root, covering:
 - [x] Requirements: Node >= 24 (`.nvmrc`), pnpm.
 - [x] Quick start: `pnpm install` then `pnpm dev`, and the URLs (web at `127.0.0.1:5173`, API at `127.0.0.1:8788`).
 - [x] How to install the Claude Code skill from `resources/skills/pena/`.
-- [x] Configuration: `PORT` and `PENA_DB_PATH` env vars, default database location (`.db/pena.sqlite`).
+- [x] Configuration: `PORT`, `PENA_DB_PATH`, and `PENA_ASSETS_DIR` env vars, with default storage in `.db/pena.sqlite` and `.assets`.
 - [x] Security note: the server binds to `127.0.0.1` only and has no auth — it is a local tool, do not expose it to a network.
 - [x] Pointer to `docs/` for the design documents.
 

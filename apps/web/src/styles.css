@@ -366,17 +366,20 @@ button:disabled {
 
 .document-pane {
   min-width: 0;
-  padding: clamp(32px, 5vw, 76px) clamp(24px, 5vw, 72px) 152px;
+  padding: 28px clamp(24px, 5vw, 72px) 152px;
   transition:
     padding-right 180ms ease,
     padding-left 180ms ease;
 }
 
-/* Operational identity sits above the reviewed artifact. The versioned title
-   is rendered once inside the reading surface. */
+/* Location, status, and document actions share one compact command row. The
+   document's human-readable title is rendered inside the reading surface. */
 .document-meta {
-  display: block;
+  display: grid;
   max-width: 980px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
   margin: 0 auto 40px;
   padding-bottom: 22px;
   border-bottom: 1px solid var(--line);
@@ -389,7 +392,7 @@ button:disabled {
   gap: 8px;
   color: var(--text-faint);
   font-size: 12px;
-  margin-bottom: 24px;
+  margin: 0;
 }
 
 .document-breadcrumb-workspace {
@@ -451,21 +454,23 @@ button:disabled {
 
 .document-identity {
   display: flex;
+  min-width: 0;
   align-items: center;
-  justify-content: space-between;
-  gap: 28px;
+  gap: 14px;
 }
 
 .document-version-meta {
   display: flex;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
   align-items: center;
   gap: 10px;
 }
 
-.document-version-meta code {
-  color: var(--text-faint);
-  font-size: 11px;
+.document-utilities {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
 }
 
 .document-actions {
@@ -2825,7 +2830,7 @@ button:disabled {
 }
 
 .document-pane {
-  padding: clamp(34px, 5vw, 64px) clamp(22px, 4vw, 64px) 150px;
+  padding: 28px clamp(22px, 4vw, 64px) 150px;
   background:
     radial-gradient(circle at 70% 10%, rgb(111 140 255 / 5%), transparent 30%),
     var(--bg);
@@ -2838,7 +2843,7 @@ button:disabled {
 }
 
 .document-identity {
-  gap: 28px;
+  gap: 14px;
 }
 
 /* 860px of text plus room either side for the comment markers to live in. */
@@ -3401,6 +3406,17 @@ button:disabled {
 }
 
 @media (max-width: 760px) {
+  .document-meta {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .document-utilities {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 12px 16px;
+  }
+
   .document-review-layout.with-pending-feedback {
     display: flex;
     flex-direction: column;
@@ -3462,18 +3478,17 @@ button:disabled {
   }
 
   .document-meta {
-    display: block;
     margin-bottom: 34px;
   }
 
   .document-identity {
-    align-items: stretch;
-    flex-direction: column;
+    flex-wrap: wrap;
+    gap: 10px 14px;
     margin: 0;
   }
 
-  .document-actions {
-    justify-content: flex-start;
+  .document-breadcrumb {
+    flex: 1 1 200px;
   }
 
   .move-document-panel {

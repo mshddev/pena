@@ -12,7 +12,7 @@ import {
   restoreDocumentVersion,
   type DocumentResource,
 } from "../../../api";
-import { formatRelativeTime } from "../../../format";
+import { formatClockTime, formatRelativeTime } from "../../../format";
 import { MarkdownContent } from "../MarkdownContent";
 import { markdownComponents } from "../markdown-components";
 import { diffMarkdown } from "../version-diff";
@@ -223,7 +223,7 @@ export function VersionHistory({
                   <strong>Current</strong>
                 ) : null}
                 <time dateTime={version.updatedAt}>
-                  {formatRelativeTime(version.updatedAt)}
+                  {`${formatRelativeTime(version.updatedAt)}, ${formatClockTime(version.updatedAt)}`}
                 </time>
               </button>
             ))}

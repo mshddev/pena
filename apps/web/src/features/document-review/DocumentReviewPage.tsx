@@ -18,7 +18,7 @@ import {
   moveDocument,
   submitFeedback,
 } from "../../api";
-import { formatRelativeTime } from "../../format";
+import { formatClockTime, formatRelativeTime } from "../../format";
 import { isSubmitAllShortcut } from "../../shortcuts";
 import { DocumentViewer } from "./components/DocumentViewer";
 import { PenaLayout } from "./components/PenaLayout";
@@ -432,21 +432,30 @@ export function DocumentReviewPage({
         aria-label="Document"
       >
         <header className="document-meta">
-          <nav className="document-breadcrumb" aria-label="Breadcrumb">
-            <a
-              className="document-breadcrumb-workspace"
-              href={`/workspaces/${workspaceSlug}`}
-            >
-              {workspaceSlug}
-            </a>
-            <span aria-hidden="true">/</span>
-            <span className="document-breadcrumb-current">{documentSlug}</span>
-          </nav>
+          <div className="document-identity">
+            <nav className="document-breadcrumb" aria-label="Breadcrumb">
+              <a
+                className="document-breadcrumb-workspace"
+                href={`/workspaces/${workspaceSlug}`}
+              >
+                {workspaceSlug}
+              </a>
+              <span aria-hidden="true">/</span>
+              <span
+                className="document-breadcrumb-current"
+                title={documentSlug}
+              >
+                {documentSlug}
+              </span>
+            </nav>
+          </div>
 
           {currentDocument ? (
-            <div className="document-identity">
+            <div className="document-utilities">
               <div className="document-version-meta">
-                <code>{documentSlug}</code>
+                <time dateTime={currentDocument.updatedAt}>
+                  {`Updated ${formatRelativeTime(currentDocument.updatedAt)}, ${formatClockTime(currentDocument.updatedAt)}`}
+                </time>
                 <button
                   className="document-version"
                   aria-label={`Version ${currentDocument.version}`}
@@ -456,9 +465,6 @@ export function DocumentReviewPage({
                 >
                   v{currentDocument.version}
                 </button>
-                <time dateTime={currentDocument.updatedAt}>
-                  Updated {formatRelativeTime(currentDocument.updatedAt)}
-                </time>
                 {currentDocument.archivedAt ? (
                   <span className="archived-document-label">Archived</span>
                 ) : null}

@@ -23,3 +23,11 @@ export function formatRelativeTime(date: string): string {
 
   return new Intl.DateTimeFormat(undefined, options).format(value);
 }
+
+/** Compact local clock time for metadata that also shows a date. */
+export function formatClockTime(date: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(date));
+}

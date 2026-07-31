@@ -89,6 +89,27 @@ describe("interactive decision review", () => {
     const skip = screen.getByRole("button", { name: "Skip" });
 
     expect(screen.getByText("v1")).toBeTruthy();
+    const documentSlug = screen.getAllByText("review", { exact: true });
+    expect(documentSlug).toHaveLength(1);
+    expect(documentSlug[0]?.getAttribute("title")).toBe("review");
+    const updatedAt = screen.getByText(/^Updated /);
+    const expectedClockTime = new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(documentResponse.updatedAt));
+    expect(updatedAt.textContent).toContain(expectedClockTime);
+    const documentUtilities = updatedAt.closest(".document-utilities");
+    expect(documentUtilities?.contains(screen.getByRole("button", {
+      name: "Version 1",
+    }))).toBe(true);
+    expect(documentUtilities?.contains(screen.getByRole("button", {
+      name: "Download",
+    }))).toBe(true);
+    expect(
+      updatedAt.compareDocumentPosition(screen.getByRole("button", {
+        name: "Version 1",
+      })) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.getAllByRole("heading", { name: "Review" })).toHaveLength(1);
     expect(
       screen.queryByRole("button", { name: "Rename document" }),
@@ -365,6 +386,22 @@ describe("version history", () => {
     expect(
       await screen.findByRole("heading", { name: "Version history" }),
     ).toBeTruthy();
+    const versionHistory = screen.getByRole("region", {
+      name: "Version history",
+    });
+    const clockFormatter = new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const versionTimes = [...versionHistory.querySelectorAll("time")].map(
+      (time) => time.textContent,
+    );
+    expect(versionTimes[0]).toContain(
+      clockFormatter.format(new Date("2026-07-18T11:00:00.000Z")),
+    );
+    expect(versionTimes[1]).toContain(
+      clockFormatter.format(new Date("2026-07-18T10:00:00.000Z")),
+    );
 
     await user.click(screen.getByRole("button", { name: /^v1/ }));
     expect(

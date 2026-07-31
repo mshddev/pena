@@ -469,6 +469,44 @@ describe("SqlitePenaStore", () => {
     ]);
   });
 
+  it("stores an instruction as part of its feedback batch", () => {
+    const store = createStore();
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Current draft",
+    );
+
+    const batch = store.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      {
+        instruction: "Keep the public API unchanged.",
+        comments: [],
+      },
+    );
+
+    expect(batch).toEqual({
+      id: 1,
+      submittedAt: expect.any(String),
+      instruction: "Keep the public API unchanged.",
+      comments: [],
+    });
+    expect(
+      store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches,
+    ).toEqual([batch]);
+    expect(
+      store.listFeedbackReceiptsAfter(
+        DEFAULT_WORKSPACE_SLUG,
+        "initial-spec",
+        0,
+      ),
+    ).toEqual([
+      { id: batch.id, submittedAt: batch.submittedAt },
+    ]);
+  });
+
   it("isolates feedback by document ID", () => {
     const store = createStore();
     publishStoreDocument(
@@ -1086,12 +1124,59 @@ describe("SqlitePenaStore", () => {
   it("rejects databases created by a newer schema version", () => {
     const databasePath = createDatabasePath();
     const database = new Database(databasePath);
-    database.pragma("user_version = 9");
+    database.pragma("user_version = 10");
     database.close();
 
     expect(() => createStore(databasePath)).toThrow(
       UnsupportedSchemaVersionError,
     );
+  });
+
+  it("adds nullable instructions to existing feedback batches", () => {
+    const databasePath = createDatabasePath();
+    const firstStore = createStore(databasePath);
+    publishStoreDocument(
+      firstStore,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Current draft",
+    );
+    const existingBatch = firstStore.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      feedbackSubmission,
+    );
+    firstStore.close();
+    stores.delete(firstStore);
+
+    const database = new Database(databasePath);
+    database.exec(`
+      ALTER TABLE feedback_batches DROP COLUMN instruction_text;
+      PRAGMA user_version = 8;
+    `);
+    database.close();
+
+    const migratedStore = createStore(databasePath);
+
+    expect(
+      migratedStore.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec"),
+    ).toEqual({
+      latestBatchId: existingBatch.id,
+      batches: [existingBatch],
+    });
+
+    const inspectionDatabase = new Database(databasePath);
+    expect(
+      inspectionDatabase.pragma("user_version", { simple: true }),
+    ).toBe(9);
+    expect(
+      (
+        inspectionDatabase.pragma("table_info(feedback_batches)") as Array<{
+          name: string;
+        }>
+      ).some(({ name }) => name === "instruction_text"),
+    ).toBe(true);
+    inspectionDatabase.close();
   });
 
   it("rolls back a failed migration", () => {

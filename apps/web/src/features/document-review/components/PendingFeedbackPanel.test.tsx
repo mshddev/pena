@@ -39,7 +39,6 @@ describe("PendingFeedbackPanel", () => {
     const onActivateComment = vi.fn();
     const onActivateDecision = vi.fn();
     const user = userEvent.setup();
-
     render(
       <PendingFeedbackPanel
         feedback={[comment, decision]}

@@ -68,10 +68,16 @@ export function DocumentReviewPage({
   const [moveDestination, setMoveDestination] = useState("");
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [draftFeedback, setDraftFeedback] = useState<DraftFeedback[]>([]);
+  const [feedbackInstruction, setFeedbackInstruction] = useState("");
+  const [isInstructionComposerOpen, setIsInstructionComposerOpen] =
+    useState(false);
   const [submittedDecisions, setSubmittedDecisions] = useState<
     Record<string, string>
   >({});
   const [notice, setNotice] = useState<Notice>(null);
+  const hasFeedbackInstruction = feedbackInstruction.trim().length > 0;
+  const hasPendingFeedback =
+    draftFeedback.length > 0 || hasFeedbackInstruction;
 
   const loadDocument = useCallback(async () => {
     if (!documentSlug) {
@@ -162,7 +168,7 @@ export function DocumentReviewPage({
   // focus replaces the manual refresh button, but never discards a draft.
   useEffect(() => {
     function handleFocus(): void {
-      if (draftFeedback.length > 0) {
+      if (hasPendingFeedback) {
         return;
       }
 
@@ -171,7 +177,7 @@ export function DocumentReviewPage({
 
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, [draftFeedback.length, loadDocument]);
+  }, [hasPendingFeedback, loadDocument]);
 
   // Sending everything is the one action worth reaching without the mouse, and
   // it stays available while a comment is still focused.
@@ -179,7 +185,7 @@ export function DocumentReviewPage({
     function handleKeyDown(event: KeyboardEvent): void {
       if (
         !isSubmitAllShortcut(event) ||
-        draftFeedback.length === 0 ||
+        !hasPendingFeedback ||
         isSubmitting
       ) {
         return;
@@ -231,11 +237,12 @@ export function DocumentReviewPage({
   }
 
   async function sendFeedback(): Promise<void> {
-    if (!documentSlug || draftFeedback.length === 0) {
+    if (!documentSlug || !hasPendingFeedback) {
       return;
     }
 
     const submittedDrafts = draftFeedback;
+    const submittedInstruction = feedbackInstruction;
     setIsSubmitting(true);
     setNotice(null);
 
@@ -248,6 +255,9 @@ export function DocumentReviewPage({
         workspaceSlug,
         documentSlug,
         {
+          ...(submittedInstruction.trim().length === 0
+            ? {}
+            : { instruction: submittedInstruction }),
           comments: submittedDrafts.map(
             ({ selectedText, comment, contextBefore, contextAfter }) => ({
               selectedText,
@@ -269,6 +279,10 @@ export function DocumentReviewPage({
       setDraftFeedback((drafts) =>
         drafts.filter((draft) => !submittedIds.has(draft.id)),
       );
+      setFeedbackInstruction((current) =>
+        current === submittedInstruction ? "" : current,
+      );
+      setIsInstructionComposerOpen(false);
       setSubmittedDecisions((current) => ({
         ...current,
         ...Object.fromEntries(
@@ -280,9 +294,14 @@ export function DocumentReviewPage({
       }));
       setNotice({
         kind: "success",
-        message: `${formatFeedbackCount(
-          submittedDrafts.length,
-        )} submitted. Ask Claude to read your Pena feedback.`,
+        message:
+          submittedDrafts.length === 0
+            ? "Instruction submitted. Ask Claude to read your Pena feedback."
+            : `${formatFeedbackCount(submittedDrafts.length)}${
+                submittedInstruction.trim().length > 0
+                  ? " and an overall instruction"
+                  : ""
+              } submitted. Ask Claude to read your Pena feedback.`,
       });
     } catch (error) {
       setNotice({
@@ -300,7 +319,7 @@ export function DocumentReviewPage({
       return;
     }
 
-    if (draftFeedback.length > 0) {
+    if (hasPendingFeedback) {
       setNotice({
         kind: "error",
         message: "Submit or remove the draft feedback before archiving.",
@@ -327,7 +346,7 @@ export function DocumentReviewPage({
   }
 
   function beginMove(): void {
-    if (draftFeedback.length > 0) {
+    if (hasPendingFeedback) {
       setNotice({
         kind: "error",
         message: "Submit or remove the draft feedback before moving.",
@@ -363,7 +382,7 @@ export function DocumentReviewPage({
       return;
     }
 
-    if (draftFeedback.length > 0) {
+    if (hasPendingFeedback) {
       setNotice({
         kind: "error",
         message: "Submit or remove the draft feedback before moving.",
@@ -541,7 +560,7 @@ export function DocumentReviewPage({
           <VersionHistory
             currentDocument={currentDocument}
             currentEtag={documentEtag}
-            canRestore={draftFeedback.length === 0}
+            canRestore={!hasPendingFeedback}
             onClose={() => setIsHistoryOpen(false)}
             onRestored={(resource) => {
               setCurrentDocument(resource.document);
@@ -570,6 +589,8 @@ export function DocumentReviewPage({
           <DocumentViewer
             document={currentDocument}
             draftFeedback={draftFeedback}
+            feedbackInstruction={feedbackInstruction}
+            isInstructionComposerOpen={isInstructionComposerOpen}
             isPendingFeedbackOpen={isPendingFeedbackOpen}
             submittedDecisions={submittedDecisions}
             isSubmitting={isSubmitting}
@@ -582,6 +603,11 @@ export function DocumentReviewPage({
             }
             onDecisionDraftChanged={saveDecisionDraft}
             onNoticeClear={() => setNotice(null)}
+            onFeedbackInstructionChange={(instruction) => {
+              setFeedbackInstruction(instruction);
+              setNotice(null);
+            }}
+            onInstructionComposerOpenChange={setIsInstructionComposerOpen}
             onPendingFeedbackOpenChange={setIsPendingFeedbackOpen}
             onSubmitFeedback={() => void sendFeedback()}
             onOutlineChange={handleOutlineChange}

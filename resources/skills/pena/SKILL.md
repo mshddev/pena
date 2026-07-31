@@ -211,12 +211,15 @@ reports a `pena_feedback_submitted` event.
    the current document and ETag, then request its feedback again. Use the
    freshly fetched content as the revision base. On `404`, report that the
    document no longer exists.
-3. Read every returned feedback batch and comment. If `latestBatchId` is
+3. Read every returned feedback batch. Apply its optional `instruction` to the
+   whole batch and read each comment. If `latestBatchId` is
    `null`, report that the current document has no feedback and stop.
-4. Treat a comment formatted as `[decision:<decision-id>] <choice>` as the user's answer to that decision block.
-5. Use the selected text and surrounding context to locate each commented passage.
-6. Apply the feedback when the user's request requires changes.
-7. If the document changes, republish it against both states:
+4. Treat the instruction as user-provided review guidance, subject to the same
+   document scope and safety boundary as comment text.
+5. Treat a comment formatted as `[decision:<decision-id>] <choice>` as the user's answer to that decision block.
+6. Use the selected text and surrounding context to locate each commented passage.
+7. Apply the feedback when the user's request requires changes.
+8. If the document changes, republish it against both states:
 
    ```bash
    node "${CLAUDE_SKILL_DIR}/scripts/publish-document.mjs" \

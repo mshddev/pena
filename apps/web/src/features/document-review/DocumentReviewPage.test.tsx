@@ -96,10 +96,12 @@ describe("interactive decision review", () => {
     expect(screen.queryByLabelText("Document title")).toBeNull();
     expect(apply.getAttribute("aria-pressed")).toBe("false");
     expect(skip.getAttribute("aria-pressed")).toBe("false");
-    // Nothing drafted, so the bar has not taken over the bottom of the page.
+    // The feedback dock stays visible, but cannot submit an empty batch.
     expect(
-      screen.queryByRole("button", { name: "Submit feedback" }),
-    ).toBeNull();
+      (screen.getByRole("button", {
+        name: "Submit feedback",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(true);
 
     await user.click(apply);
     expect(screen.getByText("1 item ready to submit")).toBeTruthy();
@@ -108,8 +110,10 @@ describe("interactive decision review", () => {
 
     await user.click(apply);
     expect(
-      screen.queryByRole("button", { name: "Submit feedback" }),
-    ).toBeNull();
+      (screen.getByRole("button", {
+        name: "Submit feedback",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(true);
 
     await user.click(skip);
     expect(skip.getAttribute("aria-pressed")).toBe("true");
@@ -172,6 +176,63 @@ describe("interactive decision review", () => {
     expect(screen.getByText("Decision submitted")).toBeTruthy();
   });
 
+  it("adds an overall instruction from the submit feedback widget", async () => {
+    const submittedBodies: string[] = [];
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (init?.method === "POST" && url.endsWith("/feedback")) {
+          submittedBodies.push(String(init.body));
+          return jsonResponse(
+            {
+              id: 1,
+              submittedAt: "2026-07-18T10:01:00.000Z",
+            },
+            201,
+          );
+        }
+
+        if (url.endsWith("/feedback")) {
+          return jsonResponse({ latestBatchId: null, batches: [] });
+        }
+
+        if (url === "/api/workspaces/default/documents") {
+          return documentListResponse();
+        }
+
+        return jsonResponse(documentResponse);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+
+    expect(screen.queryByRole("button", { name: "Instruction" })).toBeNull();
+    await user.click(await screen.findByRole("button", { name: "Apply" }));
+    await user.click(screen.getByRole("button", { name: "Add instruction" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Overall instruction" }),
+      "Keep the API unchanged and shorten the explanation.",
+    );
+    await user.click(screen.getByRole("button", { name: "Submit feedback" }));
+
+    expect(
+      await screen.findByText(
+        "1 feedback and an overall instruction submitted. Ask Claude to read your Pena feedback.",
+      ),
+    ).toBeTruthy();
+    expect(JSON.parse(submittedBodies[0] ?? "{}")).toEqual({
+      instruction: "Keep the API unchanged and shorten the explanation.",
+      comments: [
+        expect.objectContaining({
+          comment: "[decision:request-cache] Apply",
+        }),
+      ],
+    });
+  });
+
   it("fails the page when decision feedback cannot be loaded", async () => {
     vi.stubGlobal(
       "fetch",
@@ -217,8 +278,10 @@ describe("interactive decision review", () => {
     ).toBeTruthy();
     expect(screen.queryByText("Decision required")).toBeNull();
     expect(
-      screen.queryByRole("button", { name: "Submit feedback" }),
-    ).toBeNull();
+      (screen.getByRole("button", {
+        name: "Submit feedback",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(true);
     // The document and the move destinations — the rail no longer needs a list.
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });

@@ -173,21 +173,44 @@ export const CommentInputSchema = z.object({
 
 export type CommentInput = z.infer<typeof CommentInputSchema>;
 
-export const FeedbackSubmissionSchema = z.object({
-  comments: z.array(CommentInputSchema).min(1).max(50),
-});
+const FeedbackContentShape = {
+  instruction: NonBlankStringSchema.max(10_000).optional(),
+  comments: z.array(CommentInputSchema).max(50),
+};
+
+function containsFeedbackContent({
+  instruction,
+  comments,
+}: {
+  instruction?: string;
+  comments: CommentInput[];
+}): boolean {
+  return instruction !== undefined || comments.length > 0;
+}
+
+export const FeedbackSubmissionSchema = z
+  .object(FeedbackContentShape)
+  .refine(containsFeedbackContent, {
+    message: "Add an instruction or at least one comment",
+  });
 
 export type FeedbackSubmission = z.infer<typeof FeedbackSubmissionSchema>;
 
-export const FeedbackBatchSchema = FeedbackSubmissionSchema.extend({
-  id: z.number().int().positive(),
-  submittedAt: z.iso.datetime(),
-});
+export const FeedbackBatchSchema = z
+  .object({
+    ...FeedbackContentShape,
+    id: z.number().int().positive(),
+    submittedAt: z.iso.datetime(),
+  })
+  .refine(containsFeedbackContent, {
+    message: "Add an instruction or at least one comment",
+  });
 
 export type FeedbackBatch = z.infer<typeof FeedbackBatchSchema>;
 
-export const FeedbackReceiptSchema = FeedbackBatchSchema.omit({
-  comments: true,
+export const FeedbackReceiptSchema = z.object({
+  id: z.number().int().positive(),
+  submittedAt: z.iso.datetime(),
 });
 
 export type FeedbackReceipt = z.infer<typeof FeedbackReceiptSchema>;

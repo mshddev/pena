@@ -40,7 +40,9 @@ export function PendingFeedbackPanel({
           </p>
         </div>
         <div className="pending-feedback-heading-actions">
-          <span className="pending-feedback-count">{feedback.length}</span>
+          {feedback.length > 0 ? (
+            <span className="pending-feedback-count">{feedback.length}</span>
+          ) : null}
           <button
             className="pending-feedback-close"
             type="button"
@@ -87,7 +89,9 @@ export function PendingFeedbackPanel({
               <button
                 className="pending-feedback-remove"
                 type="button"
-                aria-label={`Remove ${isComment ? "comment" : "decision"} ${position}`}
+                aria-label={`Remove ${
+                  isComment ? "comment" : "decision"
+                } ${position}`}
                 title="Remove from pending feedback"
                 onClick={() => onRemove(draft)}
               >

@@ -56,6 +56,8 @@ import { PendingFeedbackPanel } from "./PendingFeedbackPanel";
 interface DocumentViewerProps {
   document: PenaDocument;
   draftFeedback: DraftFeedback[];
+  feedbackInstruction: string;
+  isInstructionComposerOpen: boolean;
   isPendingFeedbackOpen: boolean;
   submittedDecisions: Record<string, string>;
   isSubmitting: boolean;
@@ -67,6 +69,8 @@ interface DocumentViewerProps {
     draft: DraftDecision | null,
   ) => void;
   onNoticeClear: () => void;
+  onFeedbackInstructionChange: (instruction: string) => void;
+  onInstructionComposerOpenChange: (isOpen: boolean) => void;
   onPendingFeedbackOpenChange: (isOpen: boolean) => void;
   onSubmitFeedback: () => void;
   onOutlineChange: (sections: OutlineSection[]) => void;
@@ -76,6 +80,8 @@ interface DocumentViewerProps {
 export function DocumentViewer({
   document: penaDocument,
   draftFeedback,
+  feedbackInstruction,
+  isInstructionComposerOpen,
   isPendingFeedbackOpen,
   submittedDecisions,
   isSubmitting,
@@ -84,6 +90,8 @@ export function DocumentViewer({
   onDraftDeleted,
   onDecisionDraftChanged,
   onNoticeClear,
+  onFeedbackInstructionChange,
+  onInstructionComposerOpenChange,
   onPendingFeedbackOpenChange,
   onSubmitFeedback,
   onOutlineChange,
@@ -117,6 +125,8 @@ export function DocumentViewer({
       ),
     [draftFeedback],
   );
+  const isPendingPanelVisible =
+    isPendingFeedbackOpen && draftFeedback.length > 0;
   const draftPositions = useDraftPositions(
     documentSurfaceRef,
     documentStageRef,
@@ -509,18 +519,20 @@ export function DocumentViewer({
     const panel = pendingFeedbackPanelRef.current;
 
     panel?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
-    panel
-      ?.querySelector<HTMLButtonElement>(".pending-feedback-open")
-      ?.focus({ preventScroll: true });
+    const firstFeedback = panel?.querySelector<HTMLButtonElement>(
+      ".pending-feedback-open",
+    );
+
+    if (firstFeedback) {
+      firstFeedback.focus({ preventScroll: true });
+    }
   }
 
   return (
     <>
       <div
         className={`document-review-layout${
-          draftFeedback.length > 0 && isPendingFeedbackOpen
-            ? " with-pending-feedback"
-            : ""
+          isPendingPanelVisible ? " with-pending-feedback" : ""
         }`}
       >
         <div className="document-stage" ref={documentStageRef}>
@@ -637,7 +649,7 @@ export function DocumentViewer({
           ) : null}
         </div>
 
-        {isPendingFeedbackOpen ? (
+        {isPendingPanelVisible ? (
           <PendingFeedbackPanel
             feedback={draftFeedback}
             onActivateComment={openDraftFromSidebar}
@@ -653,9 +665,13 @@ export function DocumentViewer({
         <FeedbackBar
           commentCount={draftComments.length}
           decisionCount={draftDecisions.length}
+          instruction={feedbackInstruction}
+          isInstructionComposerOpen={isInstructionComposerOpen}
           isPendingFeedbackOpen={isPendingFeedbackOpen}
           isSubmitting={isSubmitting}
           notice={notice}
+          onInstructionChange={onFeedbackInstructionChange}
+          onInstructionComposerOpenChange={onInstructionComposerOpenChange}
           onSubmit={onSubmitFeedback}
           onViewPending={viewPendingFeedback}
         />

@@ -55,7 +55,7 @@ import {
 
 export const DEFAULT_WORKSPACE_SLUG = "default";
 
-const CURRENT_SCHEMA_VERSION = 8;
+const CURRENT_SCHEMA_VERSION = 9;
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
 
 interface SqlitePenaStoreOptions {
@@ -105,10 +105,11 @@ interface DocumentVersionRow {
 interface FeedbackBatchRow {
   id: number;
   submitted_at: string;
+  instruction_text: string | null;
   comments_json: string;
 }
 
-type FeedbackReceiptRow = Omit<FeedbackBatchRow, "comments_json">;
+type FeedbackReceiptRow = Pick<FeedbackBatchRow, "id" | "submitted_at">;
 
 export class SqlitePenaStore implements PenaStore {
   private readonly database: Database.Database;
@@ -773,14 +774,15 @@ export class SqlitePenaStore implements PenaStore {
     const validatedSubmission = FeedbackSubmissionSchema.parse(submission);
     const submittedAt = this.clock().toISOString();
     const result = this.database
-      .prepare<[number, string, string, number, string]>(
+      .prepare<[number, string, string | null, string, number, string]>(
         `
           INSERT INTO feedback_batches (
             document_version_id,
             submitted_at,
+            instruction_text,
             comments_json
           )
-          SELECT ?, ?, ?
+          SELECT ?, ?, ?, ?
           FROM documents
           WHERE id = ? AND state_token = ? AND archived_at IS NULL
         `,
@@ -788,6 +790,7 @@ export class SqlitePenaStore implements PenaStore {
       .run(
         document.version_id,
         submittedAt,
+        validatedSubmission.instruction ?? null,
         JSON.stringify(validatedSubmission.comments),
         document.id,
         document.state_token,
@@ -800,6 +803,9 @@ export class SqlitePenaStore implements PenaStore {
     return FeedbackBatchSchema.parse({
       id: Number(result.lastInsertRowid),
       submittedAt,
+      ...(validatedSubmission.instruction === undefined
+        ? {}
+        : { instruction: validatedSubmission.instruction }),
       comments: validatedSubmission.comments,
     });
   }
@@ -809,7 +815,7 @@ export class SqlitePenaStore implements PenaStore {
     const rows = this.database
       .prepare<[number], FeedbackBatchRow>(
         `
-          SELECT id, submitted_at, comments_json
+          SELECT id, submitted_at, instruction_text, comments_json
           FROM feedback_batches
           WHERE document_version_id = ?
           ORDER BY id ASC
@@ -1089,6 +1095,11 @@ function migrateDatabase(database: Database.Database): void {
 
   if (schemaVersion < 8) {
     migrateLegacyTitlesOutOfContent(database);
+    schemaVersion = 8;
+  }
+
+  if (schemaVersion < 9) {
+    migrateToFeedbackInstructions(database);
   }
 }
 
@@ -1409,6 +1420,22 @@ function migrateLegacyTitlesOutOfContent(database: Database.Database): void {
   })();
 }
 
+function migrateToFeedbackInstructions(database: Database.Database): void {
+  const columns = database.pragma("table_info(feedback_batches)") as Array<{
+    name: string;
+  }>;
+
+  database.transaction(() => {
+    if (!columns.some(({ name }) => name === "instruction_text")) {
+      database.exec(
+        "ALTER TABLE feedback_batches ADD COLUMN instruction_text TEXT;",
+      );
+    }
+
+    database.pragma("user_version = 9");
+  })();
+}
+
 function formatDocumentSlug(slug: string): string {
   return slug
     .split("-")
@@ -1510,6 +1537,9 @@ function parseFeedbackBatch(row: FeedbackBatchRow): FeedbackBatch {
   const result = FeedbackBatchSchema.safeParse({
     id: row.id,
     submittedAt: row.submitted_at,
+    ...(row.instruction_text === null
+      ? {}
+      : { instruction: row.instruction_text }),
     comments,
   });
 

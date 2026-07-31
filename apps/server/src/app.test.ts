@@ -713,6 +713,43 @@ describe("Pena API", () => {
     expect(feedback.batches[0].comments).toHaveLength(2);
   });
 
+  it("stores a submission-level instruction without an inline comment", async () => {
+    const app = createApp();
+    const published = await publishDocument(app);
+    const etag = requiredEtag(published);
+
+    const submitResponse = await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      headers: { "if-match": etag },
+      payload: {
+        instruction: "Keep the public API unchanged.",
+        comments: [],
+      },
+    });
+
+    expect(submitResponse.statusCode).toBe(201);
+    expect(submitResponse.json()).toEqual({
+      id: 1,
+      submittedAt: expect.any(String),
+    });
+
+    const feedbackResponse = await app.inject({
+      method: "GET",
+      url: FEEDBACK_URL,
+      headers: { "if-match": etag },
+    });
+
+    expect(feedbackResponse.json().batches).toEqual([
+      {
+        id: 1,
+        submittedAt: expect.any(String),
+        instruction: "Keep the public API unchanged.",
+        comments: [],
+      },
+    ]);
+  });
+
   it("returns committed feedback immediately after the supplied cursor", async () => {
     const app = createApp();
     const published = await publishDocument(app);

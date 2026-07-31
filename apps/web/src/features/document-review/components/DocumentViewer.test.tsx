@@ -52,6 +52,8 @@ describe("DocumentViewer", () => {
     const props: ComponentProps<typeof DocumentViewer> = {
       document,
       draftFeedback: [],
+      feedbackInstruction: "",
+      isInstructionComposerOpen: false,
       isPendingFeedbackOpen: true,
       submittedDecisions: {},
       isSubmitting: false,
@@ -60,6 +62,8 @@ describe("DocumentViewer", () => {
       onDraftDeleted: vi.fn(),
       onDecisionDraftChanged: vi.fn(),
       onNoticeClear: vi.fn(),
+      onFeedbackInstructionChange: vi.fn(),
+      onInstructionComposerOpenChange: vi.fn(),
       onPendingFeedbackOpenChange: vi.fn(),
       onSubmitFeedback: vi.fn(),
       onOutlineChange: vi.fn(),
@@ -100,6 +104,8 @@ describe("DocumentViewer", () => {
           ].join("\n"),
         }}
         draftFeedback={[]}
+        feedbackInstruction=""
+        isInstructionComposerOpen={false}
         isPendingFeedbackOpen={true}
         submittedDecisions={{}}
         isSubmitting={false}
@@ -108,6 +114,8 @@ describe("DocumentViewer", () => {
         onDraftDeleted={vi.fn()}
         onDecisionDraftChanged={vi.fn()}
         onNoticeClear={vi.fn()}
+        onFeedbackInstructionChange={vi.fn()}
+        onInstructionComposerOpenChange={vi.fn()}
         onPendingFeedbackOpenChange={vi.fn()}
         onSubmitFeedback={vi.fn()}
         onOutlineChange={onOutlineChange}
@@ -170,6 +178,8 @@ describe("DocumentViewer", () => {
             anchorOffset: 0,
           },
         ]}
+        feedbackInstruction=""
+        isInstructionComposerOpen={false}
         isPendingFeedbackOpen={true}
         submittedDecisions={{}}
         isSubmitting={false}
@@ -178,6 +188,8 @@ describe("DocumentViewer", () => {
         onDraftDeleted={vi.fn()}
         onDecisionDraftChanged={vi.fn()}
         onNoticeClear={vi.fn()}
+        onFeedbackInstructionChange={vi.fn()}
+        onInstructionComposerOpenChange={vi.fn()}
         onPendingFeedbackOpenChange={vi.fn()}
         onSubmitFeedback={vi.fn()}
         onOutlineChange={vi.fn()}

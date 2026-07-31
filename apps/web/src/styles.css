@@ -1883,6 +1883,10 @@ button:disabled {
   left: auto;
   width: auto;
   padding: 0;
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 14px 34px rgb(35 58 145 / 32%);
+  backdrop-filter: none;
   animation: feedback-widget-minimize 180ms ease-out both;
 }
 
@@ -1895,7 +1899,7 @@ button:disabled {
   border: 0;
   border-radius: inherit;
   background: transparent;
-  color: var(--text-soft);
+  color: var(--accent-ink);
   cursor: pointer;
   font-size: 11px;
   font-weight: 650;
@@ -1906,8 +1910,8 @@ button:disabled {
 
 .feedback-widget-expand:hover,
 .feedback-widget-expand:focus-visible {
-  background: rgb(111 140 255 / 8%);
-  color: var(--accent-bright);
+  background: var(--accent-bright);
+  color: var(--accent-ink);
 }
 
 .feedback-widget-expand svg,
@@ -1923,7 +1927,8 @@ button:disabled {
 
 .feedback-widget-expand svg:last-child {
   width: 12px;
-  color: var(--text-faint);
+  color: currentColor;
+  opacity: 0.68;
 }
 
 .feedback-widget-badge {
@@ -1933,8 +1938,8 @@ button:disabled {
   place-items: center;
   padding: 0 5px;
   border-radius: 999px;
-  background: rgb(111 140 255 / 16%);
-  color: var(--accent-bright);
+  background: rgb(10 16 34 / 14%);
+  color: var(--accent-ink);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 9px;
   font-weight: 750;

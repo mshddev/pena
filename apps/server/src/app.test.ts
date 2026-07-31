@@ -51,6 +51,7 @@ async function publishDocument(
   app: ReturnType<typeof buildApp>,
   url = DOCUMENT_URL,
   content = "Current draft",
+  title = "Initial Specification",
 ) {
   const current = await app.inject({ method: "GET", url });
   const condition =
@@ -61,8 +62,8 @@ async function publishDocument(
   return app.inject({
     method: "PUT",
     url,
-    headers: { "content-type": "text/markdown", ...condition },
-    payload: content,
+    headers: { "content-type": "application/json", ...condition },
+    payload: { title, content },
   });
 }
 
@@ -70,15 +71,16 @@ async function createDocument(
   app: ReturnType<typeof buildApp>,
   url = DOCUMENT_URL,
   content = "Current draft",
+  title = "Initial Specification",
 ) {
   return app.inject({
     method: "PUT",
     url,
     headers: {
-      "content-type": "text/markdown",
+      "content-type": "application/json",
       "if-none-match": "*",
     },
-    payload: content,
+    payload: { title, content },
   });
 }
 
@@ -439,12 +441,12 @@ describe("Pena API", () => {
     await publishDocument(
       app,
       "/api/workspaces/default/documents/older-draft",
-      "# Older draft",
+      "## Older draft",
     );
     await publishDocument(
       app,
       "/api/workspaces/default/documents/newer-draft",
-      "# Newer draft",
+      "## Newer draft",
     );
 
     const response = await app.inject({
@@ -457,8 +459,8 @@ describe("Pena API", () => {
       documents: [
         expect.objectContaining({
           slug: "newer-draft",
+          title: "Initial Specification",
           version: 1,
-          heading: "Newer draft",
           excerpt: "",
         }),
         expect.objectContaining({ slug: "older-draft", version: 1 }),
@@ -585,7 +587,7 @@ describe("Pena API", () => {
     const publishResponse = await createDocument(
       app,
       DOCUMENT_URL,
-      "# First draft\n\nHello Pena.",
+      "Hello Pena.",
     );
 
     expect(publishResponse.statusCode).toBe(201);
@@ -593,6 +595,7 @@ describe("Pena API", () => {
     expect(publishResponse.json()).toEqual({
       workspaceSlug: "default",
       slug: "initial-spec",
+      title: "Initial Specification",
       version: 1,
       updatedAt: expect.any(String),
       archivedAt: null,
@@ -606,9 +609,56 @@ describe("Pena API", () => {
     expect(documentResponse.statusCode).toBe(200);
     expect(documentResponse.json()).toMatchObject({
       slug: "initial-spec",
-      content: "# First draft\n\nHello Pena.",
+      title: "Initial Specification",
+      content: "Hello Pena.",
       version: 1,
     });
+  });
+
+  it("requires an explicit title and content for every publication", async () => {
+    const app = createApp();
+    const missingTitle = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: {
+        "content-type": "application/json",
+        "if-none-match": "*",
+      },
+      payload: { content: "# Untitled" },
+    });
+    const blankTitle = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: {
+        "content-type": "application/json",
+        "if-none-match": "*",
+      },
+      payload: { title: "   ", content: "# Untitled" },
+    });
+
+    expect(missingTitle.statusCode).toBe(400);
+    expect(blankTitle.statusCode).toBe(400);
+    expect(missingTitle.json().error).toContain("nonblank title");
+    expect(
+      (await app.inject({ method: "GET", url: DOCUMENT_URL })).statusCode,
+    ).toBe(404);
+  });
+
+  it("rejects Markdown that repeats the explicit title as a leading H1", async () => {
+    const app = createApp();
+    const response = await createDocument(
+      app,
+      DOCUMENT_URL,
+      "# Initial Specification\n\nHello Pena.",
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain(
+      "must not repeat the document title as a leading H1",
+    );
+    expect(
+      (await app.inject({ method: "GET", url: DOCUMENT_URL })).statusCode,
+    ).toBe(404);
   });
 
   it("stores multiple comments in one feedback batch", async () => {
@@ -847,11 +897,14 @@ describe("Pena API", () => {
       method: "PUT",
       url: DOCUMENT_URL,
       headers: {
-        "content-type": "text/markdown",
+        "content-type": "application/json",
         "if-match": etag,
         "if-feedback-match": String(firstLatestBatchId),
       },
-      payload: "Revision that missed newer feedback",
+      payload: {
+        title: "Initial Specification",
+        content: "Revision that missed newer feedback",
+      },
     });
 
     expect(staleFeedbackPublish.statusCode).toBe(412);
@@ -872,11 +925,14 @@ describe("Pena API", () => {
       method: "PUT",
       url: DOCUMENT_URL,
       headers: {
-        "content-type": "text/markdown",
+        "content-type": "application/json",
         "if-match": etag,
         "if-feedback-match": String(latestFeedback.json().latestBatchId),
       },
-      payload: "Revision including all feedback",
+      payload: {
+        title: "Initial Specification",
+        content: "Revision including all feedback",
+      },
     });
 
     expect(revised.statusCode).toBe(200);
@@ -884,7 +940,7 @@ describe("Pena API", () => {
     expect(requiredEtag(revised)).not.toBe(etag);
   });
 
-  it("keeps feedback when identical document content is published again", async () => {
+  it("keeps feedback when an identical title and content are published again", async () => {
     const app = createApp();
     const firstPublish = await publishDocument(app);
     await app.inject({
@@ -907,7 +963,7 @@ describe("Pena API", () => {
     expect(feedbackResponse.json().batches).toHaveLength(1);
   });
 
-  it("increments the document version only when content changes", async () => {
+  it("increments the document version when title or content changes", async () => {
     const app = createApp();
 
     const firstPublish = await publishDocument(app);
@@ -921,10 +977,23 @@ describe("Pena API", () => {
       DOCUMENT_URL,
       "Replacement draft",
     );
+    const renamedPublish = await publishDocument(
+      app,
+      DOCUMENT_URL,
+      "Replacement draft",
+      "Architecture Specification",
+    );
 
     expect(firstPublish.json().version).toBe(1);
     expect(changedPublish.json().version).toBe(2);
     expect(repeatedPublish.json().version).toBe(2);
+    expect(renamedPublish.json()).toMatchObject({
+      title: "Architecture Specification",
+      version: 3,
+    });
+    expect(requiredEtag(renamedPublish)).not.toBe(
+      requiredEtag(repeatedPublish),
+    );
   });
 
   it("requires current HTTP preconditions and rejects stale publication", async () => {
@@ -932,8 +1001,8 @@ describe("Pena API", () => {
     const missingPrecondition = await app.inject({
       method: "PUT",
       url: DOCUMENT_URL,
-      headers: { "content-type": "text/markdown" },
-      payload: "First",
+      headers: { "content-type": "application/json" },
+      payload: { title: "Initial Specification", content: "First" },
     });
     expect(missingPrecondition.statusCode).toBe(428);
 
@@ -954,15 +1023,16 @@ describe("Pena API", () => {
       method: "PUT",
       url: DOCUMENT_URL,
       headers: {
-        "content-type": "text/markdown",
+        "content-type": "application/json",
         "if-match": staleEtag,
       },
-      payload: "Second",
+      payload: { title: "Initial Specification", content: "Second" },
     });
     expect(updated.statusCode).toBe(200);
     expect(updated.json()).toEqual({
       workspaceSlug: "default",
       slug: "initial-spec",
+      title: "Initial Specification",
       version: 2,
       updatedAt: expect.any(String),
       archivedAt: null,
@@ -973,10 +1043,13 @@ describe("Pena API", () => {
       method: "PUT",
       url: DOCUMENT_URL,
       headers: {
-        "content-type": "text/markdown",
+        "content-type": "application/json",
         "if-match": staleEtag,
       },
-      payload: "Stale replacement",
+      payload: {
+        title: "Initial Specification",
+        content: "Stale replacement",
+      },
     });
 
     expect(stale.statusCode).toBe(412);
@@ -1138,11 +1211,14 @@ describe("Pena API", () => {
       method: "PUT",
       url: DOCUMENT_URL,
       headers: {
-        "content-type": "text/markdown",
+        "content-type": "application/json",
         "if-match": etag,
         "if-feedback-match": "0",
       },
-      payload: "Replacement draft",
+      payload: {
+        title: "Initial Specification",
+        content: "Replacement draft",
+      },
     });
 
     expect(invalidRead.statusCode).toBe(400);
@@ -1200,6 +1276,7 @@ describe("Pena API", () => {
           value: {
             workspaceSlug: "default",
             slug: "initial-spec",
+            title: "Initial Specification",
             content: "Current draft",
             version: 1,
             updatedAt: "2026-07-26T00:00:00.000Z",
@@ -1253,7 +1330,7 @@ describe("Pena API", () => {
   it("publishes valid decision blocks and preserves their Markdown", async () => {
     const app = createApp();
     const content = [
-      "# Review",
+      "Review the proposed change.",
       "",
       ':::pena-decision{#add-request-cache choice-a="Apply" choice-b="Skip"}',
       "## Add request caching",

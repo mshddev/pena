@@ -56,8 +56,8 @@ verify: in a new Claude Code session, ask it to *"publish this plan to Pena"* â€
 # How To Use
 
 1. Ask Claude Code to publish a document to Pena. It uploads referenced local
-   PNG, JPEG, WebP, and GIF images, then posts the staged Markdown under a
-   workspace and document slug.
+   PNG, JPEG, WebP, and GIF images, chooses an explicit title, then publishes
+   the title and staged Markdown under a workspace and stable document slug.
 2. Open the URL it gives you, select any text, and leave comments. Documents can also carry interactive decision blocks â€” single-choice questions you answer inline.
 3. Submit the feedback. The active Claude Code session picks it up
    automatically, applies the comments, and republishes to the same slug.
@@ -67,9 +67,12 @@ The monitor stops when that Claude Code session ends. When the Monitor tool is
 not available, Pena keeps the feedback and you can still ask Claude to fetch it
 manually.
 
-Documents live in workspaces, retain immutable version history and
-version-specific feedback, and can compare or restore earlier Markdown from
-the document view. The current version can also be downloaded as a `.md` file.
+Documents live in workspaces. Each immutable version contains its explicit
+title and Markdown content, with feedback attached to that exact version.
+Changing only the title still creates a version. The document view separates
+operational metadata from the reviewed body and renders the explicit title once
+inside the document surface. Earlier versions can be compared or restored. The
+current Markdown can also be downloaded as a `.md` file.
 Finished documents move to a browsable archive at
 `http://127.0.0.1:5173/archive`; archiving pauses publishing without removing
 history or the download action.

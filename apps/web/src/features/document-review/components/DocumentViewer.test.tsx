@@ -10,7 +10,8 @@ import { DocumentViewer } from "./DocumentViewer";
 const document = {
   workspaceSlug: "default",
   slug: "highlight-test",
-  content: "# Heading\n\nSelected passage.",
+  title: "Highlight Test",
+  content: "## Heading\n\nSelected passage.",
   version: 1,
   updatedAt: "2026-07-20T10:00:00.000Z",
   archivedAt: null,
@@ -87,8 +88,6 @@ describe("DocumentViewer", () => {
         document={{
           ...document,
           content: [
-            "# Title",
-            "",
             "## First section",
             "",
             "### Deep detail",
@@ -117,7 +116,7 @@ describe("DocumentViewer", () => {
     );
 
     expect(onOutlineChange).toHaveBeenCalledWith([
-      { id: "pena-section-0", text: "Title", depth: 0 },
+      { id: "pena-section-0", text: "Highlight Test", depth: 0 },
       { id: "pena-section-1", text: "First section", depth: 1 },
       { id: "pena-section-2", text: "Deep detail", depth: 2 },
       // The decision's own heading belongs under the section that introduces it.
@@ -167,7 +166,7 @@ describe("DocumentViewer", () => {
             comment: "Clarify this sentence.",
             contextBefore: "",
             contextAfter: "",
-            anchorId: "segment-0-block-11",
+            anchorId: "segment-0-block-12",
             anchorOffset: 0,
           },
         ]}

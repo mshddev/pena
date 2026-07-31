@@ -31,7 +31,7 @@ const DOCUMENTS: Record<string, unknown[]> = {
       version: 1,
       updatedAt: "2026-07-18T10:00:00.000Z",
       archivedAt: null,
-      heading: "Reviewing the release",
+      title: "Reviewing the release",
       excerpt: "What has to be true before we ship on Friday.",
     },
   ],
@@ -42,7 +42,7 @@ const DOCUMENTS: Record<string, unknown[]> = {
       version: 3,
       updatedAt: "2026-07-17T10:00:00.000Z",
       archivedAt: null,
-      heading: null,
+      title: "Architecture Notes",
       excerpt: "The storage layer owns migrations; nothing above it does.",
     },
   ],
@@ -108,7 +108,7 @@ describe("workspace home", () => {
     expect(screen.queryByRole("link", { name: /^Review/ })).toBeNull();
   });
 
-  it("titles an entry with the document's own heading", async () => {
+  it("titles entries with explicit document titles", async () => {
     stubLibrary();
 
     render(<HomePage workspaceSlug={null} />);
@@ -117,10 +117,10 @@ describe("workspace home", () => {
     expect(
       screen.getByText("What has to be true before we ship on Friday."),
     ).toBeTruthy();
-    // The slug is left to the URL rather than repeated above the heading.
+    // The stable slug remains in the URL rather than replacing the title.
     expect(screen.queryByText("Review")).toBeNull();
 
-    // With no heading the slug is all there is to title the entry with.
+    // A title remains explicit even when the Markdown has no heading.
     expect(screen.getByText("Architecture Notes")).toBeTruthy();
     expect(screen.queryByText("architecture-notes")).toBeNull();
   });

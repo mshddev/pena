@@ -119,13 +119,19 @@ HTTP routes must not contain SQL. They depend on a small storage contract:
 
 ```ts
 interface PenaStore {
-  publishDocument(slug: string, content: string): PenaDocument;
-  getDocument(slug: string): PenaDocument | null;
+  publishDocument(
+    workspaceSlug: string,
+    slug: string,
+    title: string,
+    content: string,
+  ): PenaDocument;
+  getDocument(workspaceSlug: string, slug: string): PenaDocument | null;
   addFeedback(
+    workspaceSlug: string,
     slug: string,
     submission: FeedbackSubmission,
   ): FeedbackBatch;
-  getFeedback(slug: string): FeedbackResponse;
+  getFeedback(workspaceSlug: string, slug: string): FeedbackResponse;
   close(): void;
 }
 ```
@@ -160,12 +166,36 @@ The data remains persistent as long as the selected database file remains intact
 
 ### Publishing a New Document
 
-`PUT /api/documents/:slug` inserts a new document when its slug does not exist.
-The document starts at version `1`.
+`PUT /api/workspaces/:workspaceSlug/documents/:slug` inserts a new document
+when its slug does not exist. The JSON request contains the complete
+representation:
 
-### Republishing Identical Content
+```json
+{
+  "title": "Persistent Storage Architecture",
+  "content": "## Architecture\n\nDraft."
+}
+```
 
-If the stored Markdown and submitted Markdown are exactly equal — including whitespace and line endings — Pena treats the request as a retry:
+The document starts at version `1`. The title is explicit and does not come
+from a Markdown heading.
+
+### Migrating Legacy Titles
+
+Schema version `8` normalizes every historical document version. If its
+Markdown begins with an H1, the migration stores that heading as the explicit
+title and removes it from the body. A version without a leading H1 keeps the
+humanized-slug title created by the previous migration.
+
+The document version number, publication timestamp, and attached feedback stay
+unchanged. Pena rotates the document's opaque state token whenever any version
+is normalized, so a client cannot publish against pre-migration state.
+
+### Republishing An Identical Version
+
+If the stored title and submitted title are equal, and the stored Markdown and
+submitted Markdown are exactly equal — including whitespace and line endings
+— Pena treats the request as a retry:
 
 - Return the existing document.
 - Preserve the current version.
@@ -174,20 +204,23 @@ If the stored Markdown and submitted Markdown are exactly equal — including wh
 
 This keeps document publishing idempotent and avoids deleting feedback because of a network or agent retry.
 
-### Replacing Changed Content
+### Publishing A Changed Version
 
-If the Markdown differs, Pena performs the following inside one transaction:
+If either the title or Markdown differs, Pena performs the following inside one
+transaction:
 
-1. Delete all feedback for the document.
-2. Update the document content.
-3. Increase the version by one.
-4. Set a new `updatedAt`.
+1. Insert a new immutable `document_versions` row containing the title and
+   Markdown.
+2. Point the document at the new version.
+3. Replace its opaque state token.
+4. Set the new version's publication timestamp.
 
 Either every step succeeds or none of them does.
 
-The document's internal ID remains unchanged. One slug continues to represent one current document, and all feedback applies exclusively to that exact document content.
-
-The version is only a revision counter. Pena does not retain old content or provide an API for retrieving previous versions.
+The document's internal ID and slug remain unchanged. Earlier title-and-content
+versions remain available for comparison and restore. Existing feedback stays
+attached to its original version; it is not copied into the new current
+version.
 
 ### Submitting Feedback
 
@@ -196,9 +229,12 @@ Submitted feedback is append-only:
 - A submission creates one feedback batch.
 - Comments remain grouped and ordered inside that batch.
 - Reading feedback does not mutate it.
-- Feedback remains available until changed document content replaces the current document.
+- Feedback remains available on the exact title-and-content version that was
+  reviewed.
 
-There is no document deletion, individual feedback deletion, revision history, or soft deletion in this implementation.
+Pena retains immutable document revision history. Permanent document deletion
+is limited to archived documents; feedback remains owned by the version on
+which it was submitted.
 
 # Database Schema
 
@@ -302,10 +338,13 @@ The document contract includes the current version:
 
 ```json
 {
+  "workspaceSlug": "default",
   "slug": "initial-spec",
-  "content": "# Initial Spec",
+  "title": "Initial Spec",
+  "content": "Opening prose.",
   "version": 1,
-  "updatedAt": "2026-07-19T10:00:00.000Z"
+  "updatedAt": "2026-07-19T10:00:00.000Z",
+  "archivedAt": null
 }
 ```
 
@@ -354,10 +393,11 @@ Internal document IDs are not exposed through the API.
 - Return feedback batches in integer-ID order.
 - Isolate documents and feedback.
 - Reject feedback for a missing document.
-- Replace changed content and clear only its feedback.
+- Replace a changed title or content and clear only its feedback.
 - Start new documents at version `1`.
-- Increment the version when changed content replaces a document.
-- Republish identical content without changing its version, timestamp, or feedback.
+- Increment the version when a changed title or content replaces a document.
+- Republish an identical title and content without changing its version,
+  timestamp, or feedback.
 - Roll back replacement when part of the transaction fails.
 
 ## File Persistence Test
@@ -385,9 +425,9 @@ An in-memory database cannot prove this requirement.
 - Preserve all existing endpoint behavior.
 - Return numeric feedback batch IDs.
 - Return the current document version.
-- Increment the version only after changed content is published.
-- Preserve feedback after an identical publish.
-- Delete feedback after a changed publish.
+- Increment the version only after a changed title or content is published.
+- Preserve feedback after an identical title-and-content publish.
+- Delete feedback after a changed title-or-content publish.
 - Return feedback in submission order.
 - Return HTTP `500` for storage failures.
 
@@ -398,8 +438,8 @@ An in-memory database cannot prove this requirement.
 3. Stop Pena.
 4. Restart Pena.
 5. Verify that the document and comments remain available.
-6. Republish identical content and verify that the comments remain.
-7. Publish changed content and verify that the comments are cleared.
+6. Republish an identical title and content and verify that the comments remain.
+7. Publish a changed title or content and verify that the comments are cleared.
 
 No new browser end-to-end test is required because the browser continues to use the same HTTP API.
 

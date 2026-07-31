@@ -29,6 +29,7 @@ export interface PenaStore {
   publishDocument(
     workspaceSlug: string,
     slug: string,
+    title: string,
     content: string,
     condition?: DocumentWriteCondition,
     expectedLatestFeedbackBatchId?: number,

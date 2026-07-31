@@ -124,6 +124,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
       return (
         document.slug.toLowerCase().includes(search) ||
         formatSlug(document.slug).toLowerCase().includes(search) ||
+        document.title.toLowerCase().includes(search) ||
         document.workspaceSlug.toLowerCase().includes(search) ||
         workspace.toLowerCase().includes(search)
       );
@@ -379,7 +380,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                         <a
                           href={`/workspaces/${document.workspaceSlug}/documents/${document.slug}`}
                         >
-                          {formatSlug(document.slug)}
+                          {document.title}
                         </a>
                       </h2>
                       <div className="archive-document-meta">
@@ -432,7 +433,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                     <div className="delete-confirmation">
                       <div>
                         <p className="delete-confirmation-title">
-                          Permanently delete {formatSlug(document.slug)}?
+                          Permanently delete {document.title}?
                         </p>
                         <p>
                           The document, its version history and all of its

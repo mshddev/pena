@@ -16,6 +16,7 @@ import { formatRelativeTime } from "../../../format";
 import { MarkdownContent } from "../MarkdownContent";
 import { markdownComponents } from "../markdown-components";
 import { diffMarkdown } from "../version-diff";
+import { DocumentPageTitle } from "./DocumentPageTitle";
 
 interface VersionHistoryProps {
   currentDocument: PenaDocument;
@@ -108,6 +109,7 @@ export function VersionHistory({
           [version]: {
             workspaceSlug: currentDocument.workspaceSlug,
             slug: currentDocument.slug,
+            title: currentDocument.title,
             content: currentDocument.content,
             version: currentDocument.version,
             updatedAt: currentDocument.updatedAt,
@@ -152,6 +154,10 @@ export function VersionHistory({
         : [],
     [afterDocument, beforeDocument],
   );
+  const titleChanged =
+    beforeDocument &&
+    afterDocument &&
+    beforeDocument.title !== afterDocument.title;
 
   async function handleRestore(): Promise<void> {
     setIsRestoring(true);
@@ -209,13 +215,16 @@ export function VersionHistory({
                   setIsConfirmingRestore(false);
                 }}
               >
-                <span>v{version.version}</span>
-                <time dateTime={version.updatedAt}>
-                  {formatRelativeTime(version.updatedAt)}
-                </time>
+                <span className="version-history-number">
+                  v{version.version}
+                </span>
+                <span className="version-history-title">{version.title}</span>
                 {version.version === currentDocument.version ? (
                   <strong>Current</strong>
                 ) : null}
+                <time dateTime={version.updatedAt}>
+                  {formatRelativeTime(version.updatedAt)}
+                </time>
               </button>
             ))}
           </div>
@@ -237,7 +246,7 @@ export function VersionHistory({
           <>
             <header className="version-content-heading compare-heading">
               <div>
-                <p className="section-label">Markdown changes</p>
+                <p className="section-label">Version changes</p>
                 <h2>
                   v{beforeVersion} → v{afterVersion}
                 </h2>
@@ -259,20 +268,34 @@ export function VersionHistory({
             </header>
 
             {beforeDocument && afterDocument ? (
-              <div className="version-diff" aria-label="Version comparison">
-                {diff.map((line, index) => (
-                  <div className={`diff-line ${line.kind}`} key={index}>
-                    <span aria-hidden="true">
-                      {line.kind === "added"
-                        ? "+"
-                        : line.kind === "removed"
-                          ? "−"
-                          : " "}
-                    </span>
-                    <code>{line.text || " "}</code>
+              <>
+                {titleChanged ? (
+                  <div className="version-title-diff" aria-label="Title change">
+                    <p>
+                      <span aria-hidden="true">−</span>
+                      {beforeDocument.title}
+                    </p>
+                    <p>
+                      <span aria-hidden="true">+</span>
+                      {afterDocument.title}
+                    </p>
                   </div>
-                ))}
-              </div>
+                ) : null}
+                <div className="version-diff" aria-label="Version comparison">
+                  {diff.map((line, index) => (
+                    <div className={`diff-line ${line.kind}`} key={index}>
+                      <span aria-hidden="true">
+                        {line.kind === "added"
+                          ? "+"
+                          : line.kind === "removed"
+                            ? "−"
+                            : " "}
+                      </span>
+                      <code>{line.text || " "}</code>
+                    </div>
+                  ))}
+                </div>
+              </>
             ) : (
               <p className="version-history-state">Loading comparison…</p>
             )}
@@ -315,9 +338,9 @@ export function VersionHistory({
             {isConfirmingRestore ? (
               <div className="restore-version-confirmation">
                 <p>
-                  Make v{selectedVersion} current? If its content differs,
-                  Pena will create v{currentDocument.version + 1}. Earlier
-                  feedback will remain on v{selectedVersion}.
+                  Make v{selectedVersion} current? If its title or content
+                  differs, Pena will create v{currentDocument.version + 1}.
+                  Earlier feedback will remain on v{selectedVersion}.
                 </p>
                 <div>
                   <button
@@ -341,7 +364,10 @@ export function VersionHistory({
             ) : null}
 
             {selectedDocument ? (
-              <ReadOnlyDocument content={selectedDocument.content} />
+              <ReadOnlyDocument
+                title={selectedDocument.title}
+                content={selectedDocument.content}
+              />
             ) : (
               <p className="version-history-state">Loading version…</p>
             )}
@@ -374,7 +400,7 @@ function VersionSelect({
       >
         {[...versions].reverse().map((version) => (
           <option value={version.version} key={version.version}>
-            v{version.version}
+            v{version.version} — {version.title}
           </option>
         ))}
       </select>
@@ -382,11 +408,18 @@ function VersionSelect({
   );
 }
 
-export function ReadOnlyDocument({ content }: { content: string }) {
+export function ReadOnlyDocument({
+  title,
+  content,
+}: {
+  title: string;
+  content: string;
+}) {
   const parsed = useMemo(() => parseDecisionDocument(content), [content]);
 
   return (
     <article className="markdown-body readonly-document">
+      <DocumentPageTitle title={title} />
       {parsed.segments.map((segment, index) =>
         segment.type === "markdown" ? (
           <MarkdownContent

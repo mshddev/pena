@@ -144,12 +144,19 @@ export function DocumentReviewPage({
 
   useEffect(() => {
     if (documentSlug) {
-      window.document.title = `${documentSlug} · ${workspaceSlug} · Pena`;
       void loadDocument();
     } else {
       window.document.title = `${workspaceSlug} · Pena`;
     }
-  }, [documentSlug, loadDocument]);
+  }, [documentSlug, loadDocument, workspaceSlug]);
+
+  useEffect(() => {
+    if (currentDocument) {
+      window.document.title = `${currentDocument.title} · ${workspaceSlug} · Pena`;
+    } else if (documentSlug) {
+      window.document.title = `${documentSlug} · ${workspaceSlug} · Pena`;
+    }
+  }, [currentDocument, documentSlug, workspaceSlug]);
 
   // Claude republishes while the window sits in the background. Refetching on
   // focus replaces the manual refresh button, but never discards a draft.
@@ -416,9 +423,11 @@ export function DocumentReviewPage({
             <span aria-hidden="true">/</span>
             <span className="document-breadcrumb-current">{documentSlug}</span>
           </nav>
-          <div className="document-identity">
-            {currentDocument ? (
-              <>
+
+          {currentDocument ? (
+            <div className="document-identity">
+              <div className="document-version-meta">
+                <code>{documentSlug}</code>
                 <button
                   className="document-version"
                   aria-label={`Version ${currentDocument.version}`}
@@ -434,6 +443,9 @@ export function DocumentReviewPage({
                 {currentDocument.archivedAt ? (
                   <span className="archived-document-label">Archived</span>
                 ) : null}
+              </div>
+
+              <div className="document-actions">
                 <button
                   className="download-document-button"
                   type="button"
@@ -467,9 +479,9 @@ export function DocumentReviewPage({
                     {isArchiving ? "Archiving" : "Archive"}
                   </button>
                 ) : null}
-              </>
-            ) : null}
-          </div>
+              </div>
+            </div>
+          ) : null}
         </header>
 
         {isMoveOpen && currentDocument ? (
@@ -549,7 +561,10 @@ export function DocumentReviewPage({
               This document is archived. Its content and version history remain
               available, but review and publishing are paused.
             </p>
-            <ReadOnlyDocument content={currentDocument.content} />
+            <ReadOnlyDocument
+              title={currentDocument.title}
+              content={currentDocument.content}
+            />
           </div>
         ) : currentDocument ? (
           <DocumentViewer

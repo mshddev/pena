@@ -49,6 +49,7 @@ import type {
 } from "../types";
 import { CommentComposer } from "./CommentComposer";
 import { DecisionBlock } from "./DecisionBlock";
+import { DocumentPageTitle } from "./DocumentPageTitle";
 import { FeedbackBar } from "./FeedbackBar";
 import { PendingFeedbackPanel } from "./PendingFeedbackPanel";
 
@@ -138,8 +139,8 @@ export function DocumentViewer({
   // Read the outline back off the rendered headings, so it lists exactly what
   // is on the page — including the headings inside decision blocks.
   useLayoutEffect(() => {
-    const surface = documentSurfaceRef.current;
-    const nextSections = surface ? readOutlineSections(surface) : [];
+    const stage = documentStageRef.current;
+    const nextSections = stage ? readOutlineSections(stage) : [];
 
     onOutlineChange(nextSections);
 
@@ -154,14 +155,14 @@ export function DocumentViewer({
       ? window.document.getElementById(sectionId)
       : null;
 
-    if (surface && target && surface.contains(target)) {
+    if (stage && target && stage.contains(target)) {
       target.scrollIntoView();
     }
-  }, [onOutlineChange, parsedDocument]);
+  }, [onOutlineChange, parsedDocument, penaDocument.title]);
 
   useEffect(() => {
     function trackActiveSection(): void {
-      const surface = documentSurfaceRef.current;
+      const surface = documentStageRef.current;
 
       if (surface) {
         onActiveSectionChange(readActiveSection(surface));
@@ -176,7 +177,7 @@ export function DocumentViewer({
       window.removeEventListener("scroll", trackActiveSection);
       window.removeEventListener("resize", trackActiveSection);
     };
-  }, [onActiveSectionChange, parsedDocument]);
+  }, [onActiveSectionChange, parsedDocument, penaDocument.title]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -523,6 +524,7 @@ export function DocumentViewer({
         }`}
       >
         <div className="document-stage" ref={documentStageRef}>
+          <DocumentPageTitle title={penaDocument.title} />
           <article
             className="markdown-body"
             ref={documentSurfaceRef}

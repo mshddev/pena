@@ -5,7 +5,11 @@ Pena — [Initial Specification](./INITIAL_SPEC.md)
 # Overview
 
 [!info]
-*This is the initial architecture. Its in-memory storage design has been superseded by [Persistent Storage Architecture](./PERSISTENT_STORAGE_ARCHITECTURE.md). The rest of the initial review flow remains relevant.*
+*This is the initial architecture. Its in-memory storage design has been
+superseded by [Persistent Storage Architecture](./PERSISTENT_STORAGE_ARCHITECTURE.md).
+The current implementation also stores an explicit title and Markdown content
+in every immutable document version. Markdown headings are content, not
+document metadata.*
 
 Pena is a local web-based document review interface. Claude publishes a Markdown document to Pena under a document slug, the user reviews it in the browser, and Claude reads the submitted feedback for that slug when the user asks for it.
 
@@ -42,7 +46,10 @@ Pena does not associate a Claude Code session identity with a document. The docu
 
 ## The Pena Web
 
-The web interface reads the current Markdown document from the Pena Server using the slug in `/documents/:slug`. The user can select text, attach a comment, repeat the same process for other passages, and submit the comments together.
+The web interface reads the current title-and-content version from the Pena
+Server using its workspace and slug. The user can select Markdown text, attach
+a comment, repeat the same process for other passages, and submit the comments
+together.
 
 The browser uses normal HTTP for reading and submitting data. The first slice provides a refresh action to load replaced document content. Automatic refresh may be added later.
 
@@ -60,13 +67,14 @@ The user copy-pastes one instruction into the active Claude Code session. The in
 4. Apply the feedback based on the user's request.
 5. Publish the updated document under the same slug when another review cycle is needed.
 
-For example, Claude can publish a document with:
+For example, Claude can publish a complete document version with:
 
 ```bash
 curl --request PUT \
-  --header "Content-Type: text/markdown" \
-  --data-binary @document.md \
-  http://127.0.0.1:8788/api/documents/initial-spec
+  --header "Content-Type: application/json" \
+  --header "If-None-Match: *" \
+  --data '{"title":"Initial Specification","content":"## Overview\n\nDraft."}' \
+  http://127.0.0.1:8788/api/workspaces/default/documents/initial-spec
 ```
 
 The instruction contains the HTTP endpoints and exact commands, so a Pena Skill, plugin, and dedicated CLI are not needed for the first slice.
@@ -139,10 +147,10 @@ The initial API may look like this:
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `PUT` | `/api/documents/:slug` | Publish or replace the current Markdown document under a slug |
-| `GET` | `/api/documents/:slug` | Read the current document for a slug |
-| `POST` | `/api/documents/:slug/feedback` | Submit a batch of comments for a slug |
-| `GET` | `/api/documents/:slug/feedback` | Read all submitted feedback batches for a slug |
+| `PUT` | `/api/workspaces/:workspaceSlug/documents/:slug` | Publish a complete title-and-content version |
+| `GET` | `/api/workspaces/:workspaceSlug/documents/:slug` | Read the current document version |
+| `POST` | `/api/workspaces/:workspaceSlug/documents/:slug/feedback` | Submit a batch of comments for the current version |
+| `GET` | `/api/workspaces/:workspaceSlug/documents/:slug/feedback` | Read feedback for the current version |
 
 The exact payloads are intentionally not fixed yet. They should be decided while implementing the first vertical slice.
 
@@ -150,7 +158,13 @@ The exact payloads are intentionally not fixed yet. They should be decided while
 
 ## The Document
 
-Pena keeps the current Markdown content and enough metadata to serve it through a direct slug URL. A slug uses lowercase letters, numbers, and single hyphens, with a maximum length of 64 characters. Replacing the content under a slug does not create a document revision.
+Pena keeps immutable document versions containing an explicit title and
+Markdown content. A slug uses lowercase letters, numbers, and single hyphens,
+with a maximum length of 64 characters. The slug is stable identity; changing
+either the title or content creates the next version. Publishing an identical
+title and identical content is an idempotent no-op. The document surface
+renders the explicit title above the Markdown body, so the body starts with
+prose or H2 sections rather than repeating the title as an H1.
 
 ## The Comment
 
@@ -164,7 +178,11 @@ Each comment contains:
 
 A feedback batch contains one or more comments submitted together. Pena returns all batches for the current document when Claude requests feedback.
 
-The first implementation used an in-memory map. Pena now stores the current document and feedback batches in SQLite so they survive server restarts. Publishing changed document content clears the existing feedback batches for that slug only; publishing identical content preserves them.
+The first implementation used an in-memory map. Pena now stores immutable
+versions and feedback batches in SQLite so they survive server restarts.
+Feedback remains attached to the version on which it was submitted. Publishing
+a changed title or content starts a new current version without copying the
+previous version's feedback.
 
 # The Technical Stack
 

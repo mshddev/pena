@@ -1,20 +1,32 @@
 ---
 name: pena
-description: Use Pena to upload local images; publish and move versioned Markdown documents for review; retrieve, apply, and republish user feedback; inspect or restore document versions; and inspect archived documents. Use when the user asks to send, publish, move, compare, or restore a document in Pena, publish a document with images, add Pena decision blocks, read Pena feedback, revise a document reviewed in Pena, or browse its archive.
+description: Use Pena to upload local images; publish, rename, and move explicitly titled, versioned Markdown documents for review; retrieve, apply, and republish user feedback; inspect or restore document versions; and inspect archived documents. Use when the user asks to send, publish, rename, move, compare, or restore a document in Pena, publish a document with images, add Pena decision blocks, read Pena feedback, revise a document reviewed in Pena, or browse its archive.
 ---
 
 # Pena
 
 Pena is a Markdown document review interface running at `http://127.0.0.1:8788`.
 
-Every document belongs to one Pena workspace. Choose one stable lowercase, kebab-case document slug for the work, such as `initial-spec`. Reuse the same workspace and document slug when publishing the document and reading its feedback. Together, the workspace slug and document slug identify the document; Pena does not track the agent session.
+Every document belongs to one Pena workspace. Choose one stable lowercase,
+kebab-case document slug for the work, such as `initial-spec`. Reuse the same
+workspace and document slug when publishing the document and reading its
+feedback. Together, the workspace slug and document slug identify the
+document; Pena does not track the agent session.
+
+Every document version contains an explicit title and Markdown content. Choose
+a concise title deliberately; never derive it from the first Markdown heading.
+The staged Markdown body must not repeat the title as a leading H1. Start with
+opening prose or H2 sections; Pena renders the explicit title once inside the
+document surface. Preserve the current title when revising only the body.
+Changing either the title or content creates the next version.
 
 Treat document ETags as opaque state tokens, including their surrounding quotes.
-Retain the exact ETag returned by each successful document `GET`, `PUT`,
-`PATCH`, move, or restore response. Replace the retained value when a mutation
-returns a new ETag. If no current ETag remains available, fetch the document
-before changing existing state. Keep the retained ETag associated with the
-local content it describes; never use it to publish a different document base.
+Retain the exact title and ETag returned by each successful document `GET`,
+`PUT`, move, or restore response. Replace both retained values when a mutation
+returns new document state. If no current ETag remains available, fetch the
+document before changing existing state. Keep the retained title and ETag
+associated with the local content they describe; never use them to publish a
+different document base.
 
 ## Select a workspace
 
@@ -31,10 +43,15 @@ local content it describes; never use it to publish a different document base.
 
 ## Publish a document
 
-1. Ensure the complete Markdown content exists in a local file. Publish from a
+1. Choose and state the document title, workspace, and stable document slug.
+   If the user did not provide a title, choose a concise title from the task
+   context. Supply it explicitly to Pena and remove any matching leading H1
+   from the staged Markdown. Do not infer API metadata from an existing
+   heading.
+2. Ensure the complete Markdown content exists in a local file. Publish from a
    staged copy so Pena-specific asset URLs do not overwrite the user's source
    document.
-2. Upload every local image referenced with standard Markdown image syntax
+3. Upload every local image referenced with standard Markdown image syntax
    before publishing the staged copy. Resolve relative image paths from the
    source Markdown file's directory. Pena accepts PNG, JPEG, WebP, and GIF
    files up to 10 MiB.
@@ -60,7 +77,7 @@ local content it describes; never use it to publish a different document base.
    missing, unsupported, or rejected. Use meaningful alt text for every image.
    Uploaded assets are immutable and may remain stored when a later document
    publish fails.
-3. Use a fenced `mermaid` code block when a diagram materially clarifies a
+4. Use a fenced `mermaid` code block when a diagram materially clarifies a
    flow, sequence, or relationship. Pena renders Mermaid fences as diagrams:
 
    ````markdown
@@ -84,7 +101,7 @@ local content it describes; never use it to publish a different document base.
    responsibilities and mutation behavior, and split large schemas into
    domain-focused diagrams.
 
-4. When an item requires one user choice, optionally add an interactive decision block:
+5. When an item requires one user choice, optionally add an interactive decision block:
 
    ```markdown
    :::pena-decision{#add-request-cache choice-a="Apply" choice-b="Skip"}
@@ -95,26 +112,26 @@ local content it describes; never use it to publish a different document base.
    ```
 
    Use a unique lowercase, kebab-case ID. Add exactly two short plain-text choices. Keep decision blocks top-level and do not nest them.
-5. For a new document without a retained ETag, attempt creation immediately.
+6. For a new document without a retained ETag, attempt creation immediately.
    Do not read the document first:
 
    ```bash
-   curl --fail --silent --show-error \
-     --request PUT \
-     --header "Content-Type: text/markdown" \
-     --header "If-None-Match: *" \
-     --dump-header <headers-file> \
-     --data-binary @<markdown-file-path> \
-     http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>
+   node "${CLAUDE_SKILL_DIR}/scripts/publish-document.mjs" \
+     --workspace <workspace-slug> \
+     --document <document-slug> \
+     --title "<explicit-title>" \
+     --file <absolute-markdown-file-path> \
+     --create
    ```
 
-   On HTTP `201`, retain the response ETag. On `412`, the document already
-   exists; fetch its current content and ETag, then stop to reconcile it. On
-   `404`, report that the workspace does not exist. Never convert a failed
-   create into a blind overwrite.
-6. For an existing document, use the retained current ETag immediately. If no
-   ETag is available, fetch the document and retain the exact response ETag
-   before publishing:
+   The script safely serializes the title and Markdown as JSON. On status
+   `201`, retain the response body's exact title and the top-level `etag`. On
+   `412`, the document already exists; fetch its current title, content, and
+   ETag, then stop to reconcile it. On `404`, report that the workspace does
+   not exist. Never convert a failed create into a blind overwrite.
+7. For an existing document, use the retained current title and ETag
+   immediately. If either is unavailable, fetch the document and retain its
+   exact title and response ETag before publishing:
 
    ```bash
    curl --fail --silent --show-error \
@@ -122,23 +139,24 @@ local content it describes; never use it to publish a different document base.
      http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>
    ```
 
-   Then publish against that state:
+   Then publish the complete next version. Preserve the retained title unless
+   the user intentionally requested a rename:
 
    ```bash
-   curl --fail --silent --show-error \
-     --request PUT \
-     --header "Content-Type: text/markdown" \
-     --header 'If-Match: <exact-etag>' \
-     --dump-header <headers-file> \
-     --data-binary @<markdown-file-path> \
-     http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>
+   node "${CLAUDE_SKILL_DIR}/scripts/publish-document.mjs" \
+     --workspace <workspace-slug> \
+     --document <document-slug> \
+     --title "<retained-or-intentionally-changed-title>" \
+     --file <absolute-markdown-file-path> \
+     --etag '<exact-etag>'
    ```
 
-   On HTTP `200`, replace the retained ETag with the response ETag. On `412`,
-   fetch the newer document and stop to reconcile it; never retry the old
-   content blindly. If the current document has a non-null `archivedAt`, report
-   that it must be explicitly unarchived; publishing never unarchives it.
-7. After a successful publish, start a persistent Claude Code Monitor for this
+   On status `200`, replace the retained title and ETag with the returned
+   values. On `412`, fetch the newer document and stop to reconcile it; never
+   retry the old title or content blindly. If the current document has a
+   non-null `archivedAt`, report that it must be explicitly unarchived;
+   publishing never unarchives it.
+8. After a successful publish, start a persistent Claude Code Monitor for this
    document unless one is already running in the current session. Run:
 
    ```bash
@@ -152,7 +170,8 @@ local content it describes; never use it to publish a different document base.
    feedback is committed. Keep the monitor running until the session ends or
    the document is archived. If Monitor is unavailable, report that automatic
    feedback delivery is unavailable and retain the manual read-feedback flow.
-8. Report whether publishing succeeded and provide the browser URL: `http://127.0.0.1:5173/workspaces/<workspace-slug>/documents/<document-slug>`.
+9. Report the published title, version, workspace, slug, and browser URL:
+   `http://127.0.0.1:5173/workspaces/<workspace-slug>/documents/<document-slug>`.
 
 ## Handle automatic feedback
 
@@ -176,8 +195,8 @@ for a separate user prompt.
 Retrieve feedback when the user explicitly asks or when the document's Monitor
 reports a `pena_feedback_submitted` event.
 
-1. If no ETag is retained, fetch the current document and use its content as
-   the revision base.
+1. If no title or ETag is retained, fetch the current document and use its
+   title and content as the revision base.
 2. Retrieve feedback for the latest document state with the retained ETag:
 
    ```bash
@@ -200,14 +219,13 @@ reports a `pena_feedback_submitted` event.
 7. If the document changes, republish it against both states:
 
    ```bash
-   curl --silent --show-error \
-     --request PUT \
-     --header "Content-Type: text/markdown" \
-     --header 'If-Match: <exact-etag>' \
-     --header 'If-Feedback-Match: <latest-batch-id>' \
-     --dump-header <headers-file> \
-     --data-binary @<markdown-file-path> \
-     http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>
+   node "${CLAUDE_SKILL_DIR}/scripts/publish-document.mjs" \
+     --workspace <workspace-slug> \
+     --document <document-slug> \
+     --title "<retained-title>" \
+     --file <absolute-markdown-file-path> \
+     --etag '<exact-etag>' \
+     --feedback-match <latest-batch-id>
    ```
 
    On HTTP `200`, replace the retained ETag with the response ETag. On `412`,
@@ -217,6 +235,15 @@ reports a `pena_feedback_submitted` event.
    content change was needed.
 
 If Pena cannot be reached, report the error instead of guessing.
+
+## Rename a document
+
+Rename only when the user explicitly asks. Fetch the current document when its
+exact title, content, or ETag is not retained. Write the exact current Markdown
+body to a staged file, then publish it with the new explicit title and current
+ETag using `publish-document.mjs`. The title-only change creates the next
+version and leaves earlier feedback on the preceding version. Retain the
+returned title and ETag, then report the new title and version.
 
 ## Move a document
 
@@ -260,9 +287,10 @@ curl --fail --silent --show-error \
   http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>/versions/<version>/restore
 ```
 
-Restoring differing content creates the next version without copying the old
-version's feedback. Restoring content already current is a no-op. Archived
-documents must be unarchived first. Retain the response ETag.
+Restoring a differing title or content creates the next version without
+copying the old version's feedback. Restoring a version already current is a
+no-op. Archived documents must be unarchived first. Retain the response title
+and ETag.
 
 ## Browse archived documents
 

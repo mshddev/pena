@@ -2,6 +2,7 @@ import {
   DecisionBlockSyntaxError,
   DocumentMetadataSchema,
   DocumentMoveRequestSchema,
+  DocumentPublishRequestSchema,
   DocumentSlugSchema,
   DocumentStatusSchema,
   DocumentUpdateRequestSchema,
@@ -50,6 +51,7 @@ import {
   FeedbackWaiters,
   feedbackWaitKey,
 } from "./feedback-waiters.js";
+import { extractLeadingDocumentTitle } from "./storage/document-preview.js";
 
 interface WorkspaceParams {
   workspaceSlug: string;
@@ -96,14 +98,6 @@ export function buildApp(
   app.addHook("onClose", () => {
     store.close();
   });
-
-  app.addContentTypeParser(
-    "text/markdown",
-    { parseAs: "string" },
-    (_request, body, done) => {
-      done(null, body);
-    },
-  );
 
   app.get("/api/health", async () => ({ status: "ok" }));
 
@@ -323,14 +317,26 @@ export function buildApp(
         return;
       }
 
-      if (typeof request.body !== "string") {
+      const parsedRequest = DocumentPublishRequestSchema.safeParse(request.body);
+
+      if (!parsedRequest.success) {
         return reply.code(400).send({
-          error: "The request body must contain Markdown text.",
+          error:
+            "The request body must contain a nonblank title of at most 200 characters and Markdown content.",
+        });
+      }
+
+      if (
+        extractLeadingDocumentTitle(parsedRequest.data.content).title !== null
+      ) {
+        return reply.code(400).send({
+          error:
+            "Markdown content must not repeat the document title as a leading H1.",
         });
       }
 
       try {
-        parseDecisionDocument(request.body);
+        parseDecisionDocument(parsedRequest.data.content);
       } catch (error) {
         if (error instanceof DecisionBlockSyntaxError) {
           return reply.code(400).send({ error: error.message });
@@ -358,7 +364,8 @@ export function buildApp(
         const document = store.publishDocument(
           params.workspaceSlug,
           params.documentSlug,
-          request.body,
+          parsedRequest.data.title,
+          parsedRequest.data.content,
           condition,
           expectedLatestFeedbackBatchId,
         );

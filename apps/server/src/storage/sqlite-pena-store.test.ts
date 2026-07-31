@@ -12,8 +12,12 @@ import {
   DocumentSlugConflictError,
   PersistedDataError,
   UnsupportedSchemaVersionError,
+  type DocumentWriteCondition,
 } from "./pena-store.js";
-import { DEFAULT_WORKSPACE_SLUG, SqlitePenaStore } from "./sqlite-pena-store.js";
+import {
+  DEFAULT_WORKSPACE_SLUG,
+  SqlitePenaStore,
+} from "./sqlite-pena-store.js";
 
 const feedbackSubmission = {
   comments: [
@@ -44,6 +48,31 @@ function createDatabasePath(): string {
   return join(directory, "pena.sqlite");
 }
 
+function publishStoreDocument(
+  store: SqlitePenaStore,
+  workspaceSlug: string,
+  slug: string,
+  content: string,
+  condition?: DocumentWriteCondition,
+  expectedLatestFeedbackBatchId?: number,
+) {
+  return store.publishDocument(
+    workspaceSlug,
+    slug,
+    formatTestTitle(slug),
+    content,
+    condition,
+    expectedLatestFeedbackBatchId,
+  );
+}
+
+function formatTestTitle(slug: string): string {
+  return slug
+    .split("-")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
 afterEach(() => {
   for (const store of stores) {
     store.close();
@@ -72,9 +101,19 @@ describe("SqlitePenaStore", () => {
 
       return timestamp;
     });
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "first-draft", "First");
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "second-draft", "Second");
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "first-draft", "First, revised");
+    publishStoreDocument(store, DEFAULT_WORKSPACE_SLUG, "first-draft", "First");
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "second-draft",
+      "Second",
+    );
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "first-draft",
+      "First, revised",
+    );
 
     expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG)).toEqual([
       {
@@ -83,7 +122,7 @@ describe("SqlitePenaStore", () => {
         version: 2,
         updatedAt: "2026-07-19T10:02:00.000Z",
         archivedAt: null,
-        heading: null,
+        title: "First Draft",
         excerpt: "First, revised",
       },
       {
@@ -92,15 +131,16 @@ describe("SqlitePenaStore", () => {
         version: 1,
         updatedAt: "2026-07-19T10:01:00.000Z",
         archivedAt: null,
-        heading: null,
+        title: "Second Draft",
         excerpt: "Second",
       },
     ]);
   });
 
-  it("previews a document by its own heading and opening prose", () => {
+  it("previews a document with its explicit title and opening prose", () => {
     const store = createStore();
-    store.publishDocument(
+    publishStoreDocument(
+      store,
       DEFAULT_WORKSPACE_SLUG,
       "initial-spec",
       [
@@ -113,7 +153,7 @@ describe("SqlitePenaStore", () => {
         "Pena is a [Markdown](https://commonmark.org) review surface.",
         "",
         "```ts",
-        "const ignored = \"code is not prose\";",
+        'const ignored = "code is not prose";',
         "```",
         "",
         "## The problem it solves",
@@ -122,7 +162,7 @@ describe("SqlitePenaStore", () => {
         "|---|---|",
         "| V1 | Live |",
         "",
-        ":::pena-decision{#pick choice-a=\"Apply\" choice-b=\"Skip\"}",
+        ':::pena-decision{#pick choice-a="Apply" choice-b="Skip"}',
         "An agent writes a document and publishes it here.",
         ":::",
       ].join("\n"),
@@ -130,7 +170,7 @@ describe("SqlitePenaStore", () => {
 
     const [summary] = store.listDocuments(DEFAULT_WORKSPACE_SLUG);
 
-    expect(summary?.heading).toBe("Pena, in one document");
+    expect(summary?.title).toBe("Initial Spec");
     expect(summary?.excerpt).toBe(
       "Pena is a Markdown review surface. An agent writes a document and publishes it here.",
     );
@@ -138,7 +178,8 @@ describe("SqlitePenaStore", () => {
 
   it("caps a long excerpt on a word boundary", () => {
     const store = createStore();
-    store.publishDocument(
+    publishStoreDocument(
+      store,
       DEFAULT_WORKSPACE_SLUG,
       "initial-spec",
       `# Long\n\n${"alpha ".repeat(120).trim()}`,
@@ -166,29 +207,59 @@ describe("SqlitePenaStore", () => {
 
       return timestamp;
     });
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Current draft");
-    store.addFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec", feedbackSubmission);
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Current draft",
+    );
+    store.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      feedbackSubmission,
+    );
 
-    const archived = store.archiveDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec");
+    const archived = store.archiveDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+    );
 
     expect(archived.archivedAt).toBe("2026-07-19T10:02:00.000Z");
     expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG)).toEqual([]);
-    expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG, "archived")).toEqual([archived]);
-    expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches).toHaveLength(1);
+    expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG, "archived")).toEqual([
+      archived,
+    ]);
+    expect(
+      store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches,
+    ).toHaveLength(1);
 
-    const restored = store.unarchiveDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec");
+    const restored = store.unarchiveDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+    );
 
     expect(restored.archivedAt).toBeNull();
     expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG)).toEqual([restored]);
     expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG, "archived")).toEqual([]);
-    expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches).toHaveLength(1);
+    expect(
+      store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches,
+    ).toHaveLength(1);
   });
 
   it("moves an active document and its feedback to another workspace", () => {
     const store = createStore();
     store.createWorkspace("Research");
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Current draft");
-    store.addFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec", feedbackSubmission);
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Current draft",
+    );
+    store.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      feedbackSubmission,
+    );
 
     const moved = store.moveDocument(
       DEFAULT_WORKSPACE_SLUG,
@@ -202,19 +273,28 @@ describe("SqlitePenaStore", () => {
       version: 1,
       archivedAt: null,
     });
-    expect(store.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toBeNull();
+    expect(
+      store.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec"),
+    ).toBeNull();
     expect(store.getDocument("research", "initial-spec")).toMatchObject({
       content: "Current draft",
       workspaceSlug: "research",
     });
-    expect(store.getFeedback("research", "initial-spec").batches).toHaveLength(1);
+    expect(store.getFeedback("research", "initial-spec").batches).toHaveLength(
+      1,
+    );
   });
 
   it("blocks moving archived documents and destination slug collisions", () => {
     const store = createStore();
     store.createWorkspace("Research");
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Default");
-    store.publishDocument("research", "initial-spec", "Research");
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Default",
+    );
+    publishStoreDocument(store, "research", "initial-spec", "Research");
 
     expect(() =>
       store.moveDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "research"),
@@ -244,8 +324,13 @@ describe("SqlitePenaStore", () => {
       return timestamp;
     });
     store.createWorkspace("Research");
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "shared-draft", "Default");
-    store.publishDocument("research", "shared-draft", "Research");
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "shared-draft",
+      "Default",
+    );
+    publishStoreDocument(store, "research", "shared-draft", "Research");
     store.archiveDocument(DEFAULT_WORKSPACE_SLUG, "shared-draft");
     store.archiveDocument("research", "shared-draft");
 
@@ -269,20 +354,31 @@ describe("SqlitePenaStore", () => {
 
   it("only permanently deletes archived documents and cascades feedback", () => {
     const store = createStore();
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Current draft");
-    store.addFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec", feedbackSubmission);
-
-    expect(() => store.deleteArchivedDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toThrow(
-      DocumentNotArchivedError,
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Current draft",
     );
+    store.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      feedbackSubmission,
+    );
+
+    expect(() =>
+      store.deleteArchivedDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec"),
+    ).toThrow(DocumentNotArchivedError);
 
     store.archiveDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec");
     store.deleteArchivedDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec");
 
-    expect(store.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toBeNull();
-    expect(() => store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toThrow(
-      DocumentNotFoundError,
-    );
+    expect(
+      store.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec"),
+    ).toBeNull();
+    expect(() =>
+      store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec"),
+    ).toThrow(DocumentNotFoundError);
   });
 
   it("requires an archived document to be explicitly unarchived before publishing", () => {
@@ -299,11 +395,17 @@ describe("SqlitePenaStore", () => {
 
       return timestamp;
     });
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Current draft");
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Current draft",
+    );
     store.archiveDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec");
 
     expect(() =>
-      store.publishDocument(
+      publishStoreDocument(
+        store,
         DEFAULT_WORKSPACE_SLUG,
         "initial-spec",
         "Current draft",
@@ -311,28 +413,41 @@ describe("SqlitePenaStore", () => {
     ).toThrow(DocumentArchivedError);
     expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG)).toEqual([]);
     expect(store.listDocuments(DEFAULT_WORKSPACE_SLUG, "archived")).toEqual([
-      expect.objectContaining({ slug: "initial-spec", archivedAt: expect.any(String) }),
+      expect.objectContaining({
+        slug: "initial-spec",
+        archivedAt: expect.any(String),
+      }),
     ]);
   });
 
   it("stores ordered feedback batches with numeric IDs", () => {
     const store = createStore();
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Current draft");
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Current draft",
+    );
 
-    const firstBatch = store.addFeedback(DEFAULT_WORKSPACE_SLUG,
+    const firstBatch = store.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
       "initial-spec",
       feedbackSubmission,
     );
-    const secondBatch = store.addFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec", {
-      comments: [
-        {
-          selectedText: "draft",
-          comment: "Use proposal instead.",
-          contextBefore: "Current ",
-          contextAfter: "",
-        },
-      ],
-    });
+    const secondBatch = store.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      {
+        comments: [
+          {
+            selectedText: "draft",
+            comment: "Use proposal instead.",
+            contextBefore: "Current ",
+            contextAfter: "",
+          },
+        ],
+      },
+    );
 
     expect(firstBatch.id).toBe(1);
     expect(secondBatch.id).toBe(2);
@@ -356,13 +471,35 @@ describe("SqlitePenaStore", () => {
 
   it("isolates feedback by document ID", () => {
     const store = createStore();
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Initial draft");
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "article-draft", "Article draft");
-    store.addFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec", feedbackSubmission);
-    store.addFeedback(DEFAULT_WORKSPACE_SLUG, "article-draft", feedbackSubmission);
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Initial draft",
+    );
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "article-draft",
+      "Article draft",
+    );
+    store.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      feedbackSubmission,
+    );
+    store.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "article-draft",
+      feedbackSubmission,
+    );
 
-    expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches).toHaveLength(1);
-    expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "article-draft").batches).toHaveLength(1);
+    expect(
+      store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches,
+    ).toHaveLength(1);
+    expect(
+      store.getFeedback(DEFAULT_WORKSPACE_SLUG, "article-draft").batches,
+    ).toHaveLength(1);
   });
 
   it("preserves feedback and timestamps for identical content", () => {
@@ -380,31 +517,49 @@ describe("SqlitePenaStore", () => {
 
       return timestamp;
     });
-    const firstDocument = store.publishDocument(DEFAULT_WORKSPACE_SLUG,
+    const firstDocument = publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
       "initial-spec",
       "Current draft",
     );
-    store.addFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec", feedbackSubmission);
+    store.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      feedbackSubmission,
+    );
 
-    const repeatedDocument = store.publishDocument(DEFAULT_WORKSPACE_SLUG,
+    const repeatedDocument = publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
       "initial-spec",
       "Current draft",
     );
 
     expect(repeatedDocument.updatedAt).toBe(firstDocument.updatedAt);
     expect(repeatedDocument.version).toBe(1);
-    expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches).toHaveLength(1);
+    expect(
+      store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches,
+    ).toHaveLength(1);
   });
 
   it("increments the version when changed content replaces a document", () => {
     const store = createStore();
-    const firstDocument = store.publishDocument(DEFAULT_WORKSPACE_SLUG,
+    const firstDocument = publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
       "initial-spec",
       "Current draft",
     );
-    store.addFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec", feedbackSubmission);
+    store.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      feedbackSubmission,
+    );
 
-    const replacement = store.publishDocument(DEFAULT_WORKSPACE_SLUG,
+    const replacement = publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
       "initial-spec",
       "Replacement draft",
     );
@@ -418,17 +573,73 @@ describe("SqlitePenaStore", () => {
     });
   });
 
-  it("keeps immutable content history and restores an older version as the next version", () => {
-    const databasePath = createDatabasePath();
-    const store = createStore(databasePath);
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Version one");
+  it("creates a new version when only the explicit title changes", () => {
+    const store = createStore();
+    const first = store.publishDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Initial Specification",
+      "Unchanged content",
+    );
     store.addFeedback(
       DEFAULT_WORKSPACE_SLUG,
       "initial-spec",
       feedbackSubmission,
     );
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Version two");
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Version three");
+
+    const renamed = store.publishDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Architecture Specification",
+      "Unchanged content",
+    );
+
+    expect(first.version).toBe(1);
+    expect(renamed).toMatchObject({
+      title: "Architecture Specification",
+      content: "Unchanged content",
+      version: 2,
+    });
+    expect(
+      store
+        .listDocumentVersions(DEFAULT_WORKSPACE_SLUG, "initial-spec")
+        .map(({ title, version }) => ({ title, version })),
+    ).toEqual([
+      { title: "Architecture Specification", version: 2 },
+      { title: "Initial Specification", version: 1 },
+    ]);
+    expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual({
+      latestBatchId: null,
+      batches: [],
+    });
+  });
+
+  it("keeps immutable document history and restores an older title and content", () => {
+    const databasePath = createDatabasePath();
+    const store = createStore(databasePath);
+    store.publishDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "First title",
+      "Version one",
+    );
+    store.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      feedbackSubmission,
+    );
+    store.publishDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Second title",
+      "Version two",
+    );
+    store.publishDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Third title",
+      "Version three",
+    );
 
     expect(
       store
@@ -437,7 +648,11 @@ describe("SqlitePenaStore", () => {
     ).toEqual([3, 2, 1]);
     expect(
       store.getDocumentVersion(DEFAULT_WORKSPACE_SLUG, "initial-spec", 1),
-    ).toMatchObject({ content: "Version one", version: 1 });
+    ).toMatchObject({
+      title: "First title",
+      content: "Version one",
+      version: 1,
+    });
 
     const restored = store.restoreDocumentVersion(
       DEFAULT_WORKSPACE_SLUG,
@@ -445,7 +660,11 @@ describe("SqlitePenaStore", () => {
       1,
     );
 
-    expect(restored).toMatchObject({ content: "Version one", version: 4 });
+    expect(restored).toMatchObject({
+      title: "First title",
+      content: "Version one",
+      version: 4,
+    });
     expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual({
       latestBatchId: null,
       batches: [],
@@ -469,7 +688,7 @@ describe("SqlitePenaStore", () => {
 
   it("treats restoring identical content as a no-op", () => {
     const store = createStore();
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Same");
+    publishStoreDocument(store, DEFAULT_WORKSPACE_SLUG, "initial-spec", "Same");
 
     const restored = store.restoreDocumentVersion(
       DEFAULT_WORKSPACE_SLUG,
@@ -485,22 +704,33 @@ describe("SqlitePenaStore", () => {
 
   it("does not restore a historical version while the document is archived", () => {
     const store = createStore();
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "First");
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Second");
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "First",
+    );
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Second",
+    );
     store.archiveDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec");
 
     expect(() =>
-      store.restoreDocumentVersion(
-        DEFAULT_WORKSPACE_SLUG,
-        "initial-spec",
-        1,
-      ),
+      store.restoreDocumentVersion(DEFAULT_WORKSPACE_SLUG, "initial-spec", 1),
     ).toThrow(DocumentArchivedError);
   });
 
   it("rejects stale document state tokens after lifecycle changes", () => {
     const store = createStore();
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Current");
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Current",
+    );
     const resource = store.getDocumentResource(
       DEFAULT_WORKSPACE_SLUG,
       "initial-spec",
@@ -525,8 +755,17 @@ describe("SqlitePenaStore", () => {
   it("rolls back feedback deletion when document replacement fails", () => {
     const databasePath = createDatabasePath();
     const store = createStore(databasePath);
-    store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Current draft");
-    const batch = store.addFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec", feedbackSubmission);
+    publishStoreDocument(
+      store,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Current draft",
+    );
+    const batch = store.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      feedbackSubmission,
+    );
     const triggerConnection = new Database(databasePath);
     triggerConnection.exec(`
       CREATE TRIGGER reject_document_update
@@ -538,12 +777,19 @@ describe("SqlitePenaStore", () => {
     triggerConnection.close();
 
     expect(() =>
-      store.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Replacement draft"),
+      publishStoreDocument(
+        store,
+        DEFAULT_WORKSPACE_SLUG,
+        "initial-spec",
+        "Replacement draft",
+      ),
     ).toThrow("forced document update failure");
-    expect(store.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")?.content).toBe(
-      "Current draft",
-    );
-    expect(store.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")?.version).toBe(1);
+    expect(
+      store.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")?.content,
+    ).toBe("Current draft");
+    expect(
+      store.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")?.version,
+    ).toBe(1);
     expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual({
       latestBatchId: batch.id,
       batches: [batch],
@@ -553,11 +799,14 @@ describe("SqlitePenaStore", () => {
   it("persists documents and feedback after the store is reopened", () => {
     const databasePath = createDatabasePath();
     const firstStore = createStore(databasePath);
-    const document = firstStore.publishDocument(DEFAULT_WORKSPACE_SLUG,
+    const document = publishStoreDocument(
+      firstStore,
+      DEFAULT_WORKSPACE_SLUG,
       "initial-spec",
       "Persistent draft",
     );
-    const batch = firstStore.addFeedback(DEFAULT_WORKSPACE_SLUG,
+    const batch = firstStore.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
       "initial-spec",
       feedbackSubmission,
     );
@@ -566,8 +815,12 @@ describe("SqlitePenaStore", () => {
 
     const reopenedStore = createStore(databasePath);
 
-    expect(reopenedStore.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual(document);
-    expect(reopenedStore.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual({
+    expect(
+      reopenedStore.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec"),
+    ).toEqual(document);
+    expect(
+      reopenedStore.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec"),
+    ).toEqual({
       latestBatchId: batch.id,
       batches: [batch],
     });
@@ -576,15 +829,21 @@ describe("SqlitePenaStore", () => {
   it("does not rerun migrations when an initialized database is reopened", () => {
     const databasePath = createDatabasePath();
     const firstStore = createStore(databasePath);
-    firstStore.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Persistent draft");
+    publishStoreDocument(
+      firstStore,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Persistent draft",
+    );
     firstStore.close();
     stores.delete(firstStore);
 
     const reopenedStore = createStore(databasePath);
 
-    expect(reopenedStore.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")?.content).toBe(
-      "Persistent draft",
-    );
+    expect(
+      reopenedStore.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")
+        ?.content,
+    ).toBe("Persistent draft");
   });
 
   it("migrates existing documents to version 1", () => {
@@ -636,6 +895,7 @@ describe("SqlitePenaStore", () => {
     expect(store.getDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toEqual({
       workspaceSlug: "default",
       slug: "initial-spec",
+      title: "Initial Spec",
       content: "Existing draft",
       version: 1,
       updatedAt: "2026-07-19T10:00:00.000Z",
@@ -718,18 +978,21 @@ describe("SqlitePenaStore", () => {
       {
         workspaceSlug: "default",
         slug: "initial-spec",
+        title: "Initial Spec",
         version: 7,
         updatedAt: "2026-07-19T10:00:00.000Z",
       },
     ]);
-    expect(store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches)
-      .toHaveLength(1);
+    expect(
+      store.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec").batches,
+    ).toHaveLength(1);
   });
 
   it("migrates numeric development state revisions to opaque ETags", () => {
     const databasePath = createDatabasePath();
     const firstStore = createStore(databasePath);
-    firstStore.publishDocument(
+    publishStoreDocument(
+      firstStore,
       DEFAULT_WORKSPACE_SLUG,
       "initial-spec",
       "Existing version history",
@@ -742,6 +1005,7 @@ describe("SqlitePenaStore", () => {
       ALTER TABLE documents DROP COLUMN state_token;
       ALTER TABLE documents
         ADD COLUMN state_revision INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE document_versions DROP COLUMN title;
       PRAGMA user_version = 5;
     `);
     database.close();
@@ -756,10 +1020,73 @@ describe("SqlitePenaStore", () => {
     expect(resource?.value.content).toBe("Existing version history");
   });
 
+  it("moves each legacy leading H1 into its historical version title", () => {
+    const databasePath = createDatabasePath();
+    const firstStore = createStore(databasePath);
+    firstStore.publishDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Legacy Fallback",
+      "# First title\n\nFirst body.",
+    );
+    firstStore.publishDocument(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Legacy Fallback",
+      "Second title\n===\n\nSecond body.",
+    );
+    firstStore.close();
+    stores.delete(firstStore);
+
+    const database = new Database(databasePath);
+    const previousState = database
+      .prepare<[], { state_token: string }>(
+        "SELECT state_token FROM documents WHERE slug = 'initial-spec'",
+      )
+      .get();
+    database.exec(`
+      UPDATE document_versions SET title = 'Initial Spec';
+      PRAGMA user_version = 7;
+    `);
+    database.close();
+
+    const migratedStore = createStore(databasePath);
+    const current = migratedStore.getDocumentResource(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+    );
+
+    expect(current?.value).toMatchObject({
+      title: "Second title",
+      content: "Second body.",
+      version: 2,
+    });
+    expect(current?.etag).not.toBe(`"pena-${previousState?.state_token}"`);
+    expect(
+      migratedStore.listDocumentVersions(
+        DEFAULT_WORKSPACE_SLUG,
+        "initial-spec",
+      ),
+    ).toEqual([
+      expect.objectContaining({ title: "Second title", version: 2 }),
+      expect.objectContaining({ title: "First title", version: 1 }),
+    ]);
+    expect(
+      migratedStore.getDocumentVersion(
+        DEFAULT_WORKSPACE_SLUG,
+        "initial-spec",
+        1,
+      ),
+    ).toMatchObject({
+      title: "First title",
+      content: "First body.",
+    });
+  });
+
   it("rejects databases created by a newer schema version", () => {
     const databasePath = createDatabasePath();
     const database = new Database(databasePath);
-    database.pragma("user_version = 7");
+    database.pragma("user_version = 9");
     database.close();
 
     expect(() => createStore(databasePath)).toThrow(
@@ -801,8 +1128,17 @@ describe("SqlitePenaStore", () => {
   it("rejects invalid persisted comment data", () => {
     const databasePath = createDatabasePath();
     const firstStore = createStore(databasePath);
-    firstStore.publishDocument(DEFAULT_WORKSPACE_SLUG, "initial-spec", "Persistent draft");
-    firstStore.addFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec", feedbackSubmission);
+    publishStoreDocument(
+      firstStore,
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      "Persistent draft",
+    );
+    firstStore.addFeedback(
+      DEFAULT_WORKSPACE_SLUG,
+      "initial-spec",
+      feedbackSubmission,
+    );
     firstStore.close();
     stores.delete(firstStore);
 
@@ -813,19 +1149,23 @@ describe("SqlitePenaStore", () => {
     database.close();
     const reopenedStore = createStore(databasePath);
 
-    expect(() => reopenedStore.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec")).toThrow(
-      PersistedDataError,
-    );
+    expect(() =>
+      reopenedStore.getFeedback(DEFAULT_WORKSPACE_SLUG, "initial-spec"),
+    ).toThrow(PersistedDataError);
   });
 
   it("rejects feedback operations for a missing document", () => {
     const store = createStore();
 
     expect(() =>
-      store.addFeedback(DEFAULT_WORKSPACE_SLUG, "missing-document", feedbackSubmission),
+      store.addFeedback(
+        DEFAULT_WORKSPACE_SLUG,
+        "missing-document",
+        feedbackSubmission,
+      ),
     ).toThrow(DocumentNotFoundError);
-    expect(() => store.getFeedback(DEFAULT_WORKSPACE_SLUG, "missing-document")).toThrow(
-      DocumentNotFoundError,
-    );
+    expect(() =>
+      store.getFeedback(DEFAULT_WORKSPACE_SLUG, "missing-document"),
+    ).toThrow(DocumentNotFoundError);
   });
 });

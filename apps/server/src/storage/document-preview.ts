@@ -1,30 +1,80 @@
-/**
- * A document's own first heading and the prose that opens it, derived here so a
- * listing can say what a document is about without being sent its whole body.
- */
+/** Derives opening prose for document listings without returning the body. */
 
 /** Roughly a short paragraph — enough to preview, far short of the document. */
 const EXCERPT_LIMIT = 320;
+const TITLE_LIMIT = 200;
 
-export function readDocumentHeading(content: string): string | null {
-  for (const line of readableLines(content)) {
-    const heading = /^\s{0,3}#\s+(.*)$/.exec(line);
+export interface ExtractedDocumentTitle {
+  title: string | null;
+  content: string;
+}
 
-    if (!heading) {
-      continue;
-    }
+/**
+ * Moves a legacy leading Markdown H1 into explicit metadata while preserving
+ * front matter and every later body block. An H1 elsewhere is a real section,
+ * not legacy title material.
+ */
+export function extractLeadingDocumentTitle(
+  content: string,
+): ExtractedDocumentTitle {
+  const bomLength = content.startsWith("\uFEFF") ? 1 : 0;
+  let prefixEnd = bomLength;
+  let hasFrontMatter = false;
+  const firstLine = readLine(content, bomLength);
 
-    // A closed ATX heading repeats the hashes at the end: `# Title #`.
-    const text = stripInline(
-      (heading[1] ?? "").replace(/\s+#+\s*$/, ""),
-    ).trim();
+  if (firstLine.text.trim() === "---") {
+    let cursor = firstLine.next;
 
-    if (text.length > 0) {
-      return text;
+    while (cursor < content.length) {
+      const line = readLine(content, cursor);
+
+      if (line.text.trim() === "---") {
+        prefixEnd = line.next;
+        hasFrontMatter = true;
+        break;
+      }
+
+      cursor = line.next;
     }
   }
 
-  return null;
+  const headingStart = skipBlankLines(content, prefixEnd);
+  const headingLine = readLine(content, headingStart);
+  const atxHeading = /^ {0,3}#[\t ]+(.*)$/.exec(headingLine.text);
+  let rawTitle: string | null = null;
+  let headingEnd = headingLine.next;
+
+  if (atxHeading) {
+    rawTitle = (atxHeading[1] ?? "").replace(/[\t ]+#+[\t ]*$/, "");
+  } else if (headingLine.text.trim().length > 0) {
+    const underline = readLine(content, headingLine.next);
+
+    if (/^ {0,3}=+[\t ]*$/.test(underline.text)) {
+      rawTitle = headingLine.text;
+      headingEnd = underline.next;
+    }
+  }
+
+  if (rawTitle === null) {
+    return { title: null, content };
+  }
+
+  const title = stripInline(rawTitle).trim().slice(0, TITLE_LIMIT).trimEnd();
+
+  if (!title) {
+    return { title: null, content };
+  }
+
+  const bodyStart = skipBlankLines(content, headingEnd);
+  const body = content.slice(bodyStart);
+  const prefix = content.slice(0, prefixEnd);
+  const lineEnding = readLineEnding(content) ?? "\n";
+  const separator = hasFrontMatter && body.length > 0 ? lineEnding : "";
+
+  return {
+    title,
+    content: `${prefix}${separator}${body}`,
+  };
 }
 
 export function readDocumentExcerpt(content: string): string {
@@ -142,4 +192,56 @@ function capAtWord(text: string): string {
   const lastSpace = cut.lastIndexOf(" ");
 
   return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd();
+}
+
+interface ContentLine {
+  text: string;
+  next: number;
+}
+
+function readLine(content: string, start: number): ContentLine {
+  const lineFeed = content.indexOf("\n", start);
+
+  if (lineFeed === -1) {
+    return {
+      text: content.slice(start).replace(/\r$/, ""),
+      next: content.length,
+    };
+  }
+
+  const lineEnd =
+    lineFeed > start && content[lineFeed - 1] === "\r"
+      ? lineFeed - 1
+      : lineFeed;
+
+  return {
+    text: content.slice(start, lineEnd),
+    next: lineFeed + 1,
+  };
+}
+
+function skipBlankLines(content: string, start: number): number {
+  let cursor = start;
+
+  while (cursor < content.length) {
+    const line = readLine(content, cursor);
+
+    if (line.text.trim().length > 0) {
+      break;
+    }
+
+    cursor = line.next;
+  }
+
+  return cursor;
+}
+
+function readLineEnding(content: string): "\r\n" | "\n" | null {
+  const lineFeed = content.indexOf("\n");
+
+  if (lineFeed === -1) {
+    return null;
+  }
+
+  return lineFeed > 0 && content[lineFeed - 1] === "\r" ? "\r\n" : "\n";
 }

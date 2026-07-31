@@ -104,8 +104,7 @@ export function WorkspaceHome({
           search.length === 0 ||
           document.slug.toLowerCase().includes(search) ||
           formatSlug(document.slug).toLowerCase().includes(search) ||
-          // What a document says is as good a way to find it as its filename.
-          (document.heading ?? "").toLowerCase().includes(search) ||
+          document.title.toLowerCase().includes(search) ||
           document.excerpt.toLowerCase().includes(search),
       )
       .slice()
@@ -328,10 +327,6 @@ interface DocumentEntryProps {
 
 function DocumentEntry({ document, feedback }: DocumentEntryProps) {
   const feedbackTotal = feedback?.total ?? 0;
-  // The document's own heading says what it is. The slug only repeats it in a
-  // worse voice, so it is left to the URL; a document without a heading is the
-  // one case where the slug has to stand in.
-  const title = document.heading ?? formatSlug(document.slug);
 
   return (
     <a
@@ -339,7 +334,7 @@ function DocumentEntry({ document, feedback }: DocumentEntryProps) {
       href={`/workspaces/${document.workspaceSlug}/documents/${document.slug}`}
     >
       <span className="document-entry-head">
-        <span className="document-entry-title">{title}</span>
+        <span className="document-entry-title">{document.title}</span>
         <ArrowIcon />
       </span>
 
@@ -473,4 +468,3 @@ function ArrowIcon() {
     </svg>
   );
 }
-

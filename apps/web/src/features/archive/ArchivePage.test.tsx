@@ -9,6 +9,7 @@ import { ArchivePage } from "./ArchivePage";
 const archivedDocument = {
   workspaceSlug: "default",
   slug: "old-draft",
+  title: "Old Draft",
   version: 2,
   updatedAt: "2026-07-18T10:00:00.000Z",
   archivedAt: "2026-07-20T10:00:00.000Z",

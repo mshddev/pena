@@ -1,13 +1,15 @@
 # Pena — Initial Specification
 
 [!info]
-*This is the initial specification. The implementation may introduce different or better decisions later.*
+*This is the initial specification. The current implementation requires an
+explicit document title and stores the title together with Markdown in every
+immutable version. The slug remains the stable document identity.*
 
 # Overview
 
 Pena is a local web-based Markdown document review interface for active Claude Code sessions.
 
-Claude Code publishes a document — such as a plan, article, specification, system document, report, or other draft — to Pena under a document slug. The user reads the document in a browser, selects specific text, adds comments, and submits the feedback. The active Claude Code session receives the pending feedback for that slug.
+Claude Code publishes a document — such as a plan, article, specification, system document, report, or other draft — to Pena with an explicit title and stable document slug. The user reads the document in a browser, selects specific text, adds comments, and submits the feedback. The active Claude Code session receives the pending feedback for that slug.
 
 The slug identifies the document, not the Claude Code session. Several Claude Code sessions can use one running Pena server as long as they use different document slugs.
 
@@ -48,7 +50,7 @@ Pena should make this review loop simpler.
 - Every document has a unique lowercase, kebab-case slug.
 - The document is rendered in the browser.
 - Claude can replace the current content of an existing document.
-- Pena only keeps the current content for each document slug.
+- Pena keeps immutable title-and-content versions for each document slug.
 - Replacing one document does not affect documents or feedback under other slugs.
 
 # The Feedback

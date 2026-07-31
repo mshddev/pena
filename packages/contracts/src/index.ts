@@ -24,6 +24,12 @@ export const DocumentSlugSchema = z
 
 export type DocumentSlug = z.infer<typeof DocumentSlugSchema>;
 
+export const DocumentTitleSchema = NonBlankStringSchema.max(200).transform(
+  (value) => value.trim(),
+);
+
+export type DocumentTitle = z.infer<typeof DocumentTitleSchema>;
+
 export const WorkspaceSlugSchema = DocumentSlugSchema;
 
 export type WorkspaceSlug = z.infer<typeof WorkspaceSlugSchema>;
@@ -74,6 +80,7 @@ export type WorkspaceUpdateRequest = z.infer<
 export const DocumentSchema = z.object({
   workspaceSlug: WorkspaceSlugSchema,
   slug: DocumentSlugSchema,
+  title: DocumentTitleSchema,
   content: z.string(),
   version: z.number().int().positive(),
   updatedAt: z.iso.datetime(),
@@ -87,6 +94,15 @@ export const DocumentMetadataSchema = DocumentSchema.omit({
 });
 
 export type DocumentMetadata = z.infer<typeof DocumentMetadataSchema>;
+
+export const DocumentPublishRequestSchema = z.strictObject({
+  title: DocumentTitleSchema,
+  content: z.string(),
+});
+
+export type DocumentPublishRequest = z.infer<
+  typeof DocumentPublishRequestSchema
+>;
 
 export const DocumentVersionSchema = DocumentSchema.omit({
   archivedAt: true,
@@ -131,8 +147,6 @@ export type DocumentMoveRequest = z.infer<typeof DocumentMoveRequestSchema>;
 export const DocumentSummarySchema = DocumentSchema.omit({
   content: true,
 }).extend({
-  /** The document's own first heading, or null when it has none. */
-  heading: z.string().nullable(),
   /**
    * The opening prose with Markdown stripped, so a listing can preview what a
    * document says without being sent the whole body.

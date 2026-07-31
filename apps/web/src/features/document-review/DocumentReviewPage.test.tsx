@@ -12,8 +12,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentReviewPage } from "./DocumentReviewPage";
 
 const DECISION_DOCUMENT = [
-  "# Review",
-  "",
   ':::pena-decision{#request-cache choice-a="Apply" choice-b="Skip"}',
   "## Add request caching",
   "",
@@ -24,6 +22,7 @@ const DECISION_DOCUMENT = [
 const documentResponse = {
   workspaceSlug: "default",
   slug: "review",
+  title: "Review",
   content: DECISION_DOCUMENT,
   version: 1,
   updatedAt: "2026-07-18T10:00:00.000Z",
@@ -90,6 +89,11 @@ describe("interactive decision review", () => {
     const skip = screen.getByRole("button", { name: "Skip" });
 
     expect(screen.getByText("v1")).toBeTruthy();
+    expect(screen.getAllByRole("heading", { name: "Review" })).toHaveLength(1);
+    expect(
+      screen.queryByRole("button", { name: "Rename document" }),
+    ).toBeNull();
+    expect(screen.queryByLabelText("Document title")).toBeNull();
     expect(apply.getAttribute("aria-pressed")).toBe("false");
     expect(skip.getAttribute("aria-pressed")).toBe("false");
     // Nothing drafted, so the bar has not taken over the bottom of the page.
@@ -201,7 +205,7 @@ describe("interactive decision review", () => {
         ? documentListResponse()
         : jsonResponse({
             ...documentResponse,
-            content: "# Markdown only\n\nSelect this passage.",
+            content: "## Markdown only\n\nSelect this passage.",
           }),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -224,13 +228,15 @@ describe("version history", () => {
   it("views, compares, and restores a historical version", async () => {
     const currentDocument = {
       ...documentResponse,
-      content: "# Second draft\n\nNew line.",
+      title: "Second draft",
+      content: "New line.",
       version: 2,
       updatedAt: "2026-07-18T11:00:00.000Z",
     };
     const restoredDocument = {
       ...currentDocument,
-      content: "# First draft\n\nOriginal line.",
+      title: "First draft",
+      content: "Original line.",
       version: 3,
       updatedAt: "2026-07-18T12:00:00.000Z",
     };
@@ -254,7 +260,8 @@ describe("version history", () => {
           return jsonResponse({
             workspaceSlug: "default",
             slug: "review",
-            content: "# First draft\n\nOriginal line.",
+            title: "First draft",
+            content: "Original line.",
             version: 1,
             updatedAt: "2026-07-18T10:00:00.000Z",
           });
@@ -266,12 +273,14 @@ describe("version history", () => {
               {
                 workspaceSlug: "default",
                 slug: "review",
+                title: "Second draft",
                 version: 2,
                 updatedAt: "2026-07-18T11:00:00.000Z",
               },
               {
                 workspaceSlug: "default",
                 slug: "review",
+                title: "First draft",
                 version: 1,
                 updatedAt: "2026-07-18T10:00:00.000Z",
               },
@@ -298,13 +307,14 @@ describe("version history", () => {
     expect(
       await screen.findByRole("heading", { name: "First draft" }),
     ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Version 1" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Compare versions" }));
     expect(
       await screen.findByLabelText("Version comparison"),
     ).toBeTruthy();
-    expect(screen.getByText("# First draft")).toBeTruthy();
-    expect(screen.getByText("# Second draft")).toBeTruthy();
+    expect(screen.getByText("Original line.")).toBeTruthy();
+    expect(screen.getByText("New line.")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: /^v1/ }));
     await user.click(
@@ -386,11 +396,11 @@ describe("saved document index", () => {
     window.dispatchEvent(new Event("focus"));
 
     await waitFor(() => expect(documentFetchCount).toBe(2));
-    expect(screen.getByRole("heading", { name: "Review" })).toBeTruthy();
+    expect(screen.getAllByRole("heading", { name: "Review" })).toHaveLength(1);
 
     resolveRefresh?.(jsonResponse(documentResponse));
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Review" })).toBeTruthy(),
+      expect(screen.getAllByRole("heading", { name: "Review" })).toHaveLength(1),
     );
   });
 

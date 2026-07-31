@@ -29,8 +29,8 @@ import {
 import Database from "better-sqlite3";
 
 import {
+  extractLeadingDocumentTitle,
   readDocumentExcerpt,
-  readDocumentHeading,
 } from "./document-preview.js";
 import {
   DefaultWorkspaceProtectedError,
@@ -55,7 +55,7 @@ import {
 
 export const DEFAULT_WORKSPACE_SLUG = "default";
 
-const CURRENT_SCHEMA_VERSION = 6;
+const CURRENT_SCHEMA_VERSION = 8;
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
 
 interface SqlitePenaStoreOptions {
@@ -80,6 +80,7 @@ interface DocumentRow {
   workspace_slug: string;
   slug: string;
   version_id: number;
+  title: string;
   content: string;
   version: number;
   updated_at: string;
@@ -95,6 +96,7 @@ type DocumentSummaryRow = Omit<
 interface DocumentVersionRow {
   workspace_slug: string;
   slug: string;
+  title: string;
   content: string;
   version: number;
   published_at: string;
@@ -114,6 +116,7 @@ export class SqlitePenaStore implements PenaStore {
   private readonly publishDocumentTransaction: (
     workspaceSlug: string,
     slug: string,
+    title: string,
     content: string,
     condition?: DocumentWriteCondition,
     expectedLatestFeedbackBatchId?: number,
@@ -144,6 +147,7 @@ export class SqlitePenaStore implements PenaStore {
       (
         workspaceSlug: string,
         slug: string,
+        title: string,
         content: string,
         condition?: DocumentWriteCondition,
         expectedLatestFeedbackBatchId?: number,
@@ -172,22 +176,24 @@ export class SqlitePenaStore implements PenaStore {
             .run(workspace.id, slug, randomUUID());
           const documentId = Number(result.lastInsertRowid);
           this.database
-            .prepare<[number, string, string]>(
+            .prepare<[number, string, string, string]>(
               `
                 INSERT INTO document_versions (
                   document_id,
                   version,
+                  title,
                   content,
                   published_at
                 )
-                VALUES (?, 1, ?, ?)
+                VALUES (?, 1, ?, ?, ?)
               `,
             )
-            .run(documentId, content, updatedAt);
+            .run(documentId, title, content, updatedAt);
 
           return DocumentSchema.parse({
             workspaceSlug,
             slug,
+            title,
             content,
             version: 1,
             updatedAt,
@@ -210,26 +216,31 @@ export class SqlitePenaStore implements PenaStore {
           expectedLatestFeedbackBatchId,
         );
 
-        if (currentDocument.content === content) {
+        if (
+          currentDocument.title === title &&
+          currentDocument.content === content
+        ) {
           return toDocument(currentDocument);
         }
 
         const updatedAt = this.clock().toISOString();
         this.database
-          .prepare<[number, number, string, string]>(
+          .prepare<[number, number, string, string, string]>(
             `
               INSERT INTO document_versions (
                 document_id,
                 version,
+                title,
                 content,
                 published_at
               )
-              VALUES (?, ?, ?, ?)
+              VALUES (?, ?, ?, ?, ?)
             `,
           )
           .run(
             currentDocument.id,
             currentDocument.version + 1,
+            title,
             content,
             updatedAt,
           );
@@ -255,6 +266,7 @@ export class SqlitePenaStore implements PenaStore {
         return DocumentSchema.parse({
           workspaceSlug,
           slug,
+          title,
           content,
           version: currentDocument.version + 1,
           updatedAt,
@@ -381,6 +393,7 @@ export class SqlitePenaStore implements PenaStore {
   publishDocument(
     workspaceSlug: string,
     slug: string,
+    title: string,
     content: string,
     condition?: DocumentWriteCondition,
     expectedLatestFeedbackBatchId?: number,
@@ -388,6 +401,7 @@ export class SqlitePenaStore implements PenaStore {
     return this.publishDocumentTransaction(
       workspaceSlug,
       slug,
+      title,
       content,
       condition,
       expectedLatestFeedbackBatchId,
@@ -420,6 +434,7 @@ export class SqlitePenaStore implements PenaStore {
           SELECT
             workspaces.slug AS workspace_slug,
             documents.slug,
+            document_versions.title,
             document_versions.content,
             document_versions.version,
             document_versions.published_at
@@ -465,25 +480,35 @@ export class SqlitePenaStore implements PenaStore {
         throw new DocumentVersionNotFoundError(workspaceSlug, slug, version);
       }
 
-      if (historical.content === current.content) {
+      if (
+        historical.title === current.title &&
+        historical.content === current.content
+      ) {
         return toDocument(current);
       }
 
       const nextVersion = current.version + 1;
       const updatedAt = this.clock().toISOString();
       this.database
-        .prepare<[number, number, string, string]>(
+        .prepare<[number, number, string, string, string]>(
           `
             INSERT INTO document_versions (
               document_id,
               version,
+              title,
               content,
               published_at
             )
-            VALUES (?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?)
           `,
         )
-        .run(current.id, nextVersion, historical.content, updatedAt);
+        .run(
+          current.id,
+          nextVersion,
+          historical.title,
+          historical.content,
+          updatedAt,
+        );
       const update = this.database
         .prepare<[number, string, number, string]>(
           `
@@ -501,6 +526,7 @@ export class SqlitePenaStore implements PenaStore {
       return DocumentSchema.parse({
         workspaceSlug,
         slug,
+        title: historical.title,
         content: historical.content,
         version: nextVersion,
         updatedAt,
@@ -528,6 +554,7 @@ export class SqlitePenaStore implements PenaStore {
           SELECT
             workspaces.slug AS workspace_slug,
             documents.slug,
+            current_version.title,
             current_version.content,
             current_version.version,
             current_version.published_at AS updated_at,
@@ -557,6 +584,7 @@ export class SqlitePenaStore implements PenaStore {
               SELECT
                 workspaces.slug AS workspace_slug,
                 documents.slug,
+                current_version.title,
                 current_version.content,
                 current_version.version,
                 current_version.published_at AS updated_at,
@@ -578,6 +606,7 @@ export class SqlitePenaStore implements PenaStore {
               SELECT
                 workspaces.slug AS workspace_slug,
                 documents.slug,
+                current_version.title,
                 current_version.content,
                 current_version.version,
                 current_version.published_at AS updated_at,
@@ -870,6 +899,7 @@ export class SqlitePenaStore implements PenaStore {
               workspaces.slug AS workspace_slug,
               documents.slug,
               current_version.id AS version_id,
+              current_version.title,
               current_version.content,
               current_version.version,
               current_version.published_at AS updated_at,
@@ -912,6 +942,7 @@ export class SqlitePenaStore implements PenaStore {
             SELECT
               workspaces.slug AS workspace_slug,
               documents.slug,
+              document_versions.title,
               document_versions.content,
               document_versions.version,
               document_versions.published_at
@@ -1048,6 +1079,16 @@ function migrateDatabase(database: Database.Database): void {
 
   if (schemaVersion < 6) {
     migrateToOpaqueStateToken(database);
+    schemaVersion = 6;
+  }
+
+  if (schemaVersion < 7) {
+    migrateToDocumentTitles(database);
+    schemaVersion = 7;
+  }
+
+  if (schemaVersion < 8) {
+    migrateLegacyTitlesOutOfContent(database);
   }
 }
 
@@ -1291,6 +1332,90 @@ function migrateToOpaqueStateToken(database: Database.Database): void {
   })();
 }
 
+function migrateToDocumentTitles(database: Database.Database): void {
+  database.transaction(() => {
+    database.exec(`
+      ALTER TABLE document_versions
+        ADD COLUMN title TEXT NOT NULL DEFAULT '';
+    `);
+
+    const documents = database
+      .prepare<[], { id: number; slug: string }>(
+        "SELECT id, slug FROM documents",
+      )
+      .all();
+    const updateTitle = database.prepare<[string, number]>(
+      "UPDATE document_versions SET title = ? WHERE document_id = ?",
+    );
+
+    for (const document of documents) {
+      updateTitle.run(formatDocumentSlug(document.slug), document.id);
+    }
+
+    database.pragma("user_version = 7");
+  })();
+}
+
+function migrateLegacyTitlesOutOfContent(database: Database.Database): void {
+  database.transaction(() => {
+    const versions = database
+      .prepare<
+        [],
+        {
+          id: number;
+          document_id: number;
+          content: string;
+        }
+      >(
+        `
+          SELECT id, document_id, content
+          FROM document_versions
+        `,
+      )
+      .all();
+    const updateVersion = database.prepare<[string, string, number]>(
+      `
+        UPDATE document_versions
+        SET title = ?, content = ?
+        WHERE id = ?
+      `,
+    );
+    const changedDocumentIds = new Set<number>();
+
+    for (const version of versions) {
+      const extracted = extractLeadingDocumentTitle(version.content);
+
+      if (extracted.title === null) {
+        continue;
+      }
+
+      updateVersion.run(extracted.title, extracted.content, version.id);
+      changedDocumentIds.add(version.document_id);
+    }
+
+    const rotateStateToken = database.prepare<[number]>(
+      `
+        UPDATE documents
+        SET state_token = lower(hex(randomblob(16)))
+        WHERE id = ?
+      `,
+    );
+
+    for (const documentId of changedDocumentIds) {
+      rotateStateToken.run(documentId);
+    }
+
+    database.pragma("user_version = 8");
+  })();
+}
+
+function formatDocumentSlug(slug: string): string {
+  return slug
+    .split("-")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
 function slugifyWorkspaceName(name: string): string {
   return name
     .normalize("NFKD")
@@ -1322,6 +1447,7 @@ function toDocument(row: DocumentRow): PenaDocument {
   return DocumentSchema.parse({
     workspaceSlug: row.workspace_slug,
     slug: row.slug,
+    title: row.title,
     content: row.content,
     version: row.version,
     updatedAt: row.updated_at,
@@ -1333,6 +1459,7 @@ function toDocumentVersion(row: DocumentVersionRow): DocumentVersion {
   return DocumentVersionSchema.parse({
     workspaceSlug: row.workspace_slug,
     slug: row.slug,
+    title: row.title,
     content: row.content,
     version: row.version,
     updatedAt: row.published_at,
@@ -1345,6 +1472,7 @@ function toDocumentVersionSummary(
   return DocumentVersionSummarySchema.parse({
     workspaceSlug: row.workspace_slug,
     slug: row.slug,
+    title: row.title,
     version: row.version,
     updatedAt: row.published_at,
   });
@@ -1358,11 +1486,11 @@ function toDocumentSummary(row: DocumentSummaryRow): DocumentSummary {
   return DocumentSummarySchema.parse({
     workspaceSlug: row.workspace_slug,
     slug: row.slug,
+    title: row.title,
     version: row.version,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
     // The body stays on the server; only what a listing can show leaves it.
-    heading: readDocumentHeading(row.content),
     excerpt: readDocumentExcerpt(row.content),
   });
 }

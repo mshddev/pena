@@ -9,8 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Explicit document titles versioned together with Markdown content
+- A compact document metadata header, one explicit title inside the document
+  surface, and historical title comparison
 - Local image uploads with content-addressed filesystem storage and safe Markdown rendering
 - Asset storage configuration via `PENA_ASSETS_DIR`
+
+### Changed
+
+- Document publishing now requires a JSON `{ title, content }` representation
+- Document lists and archive entries use explicit titles instead of deriving
+  identity from the first Markdown heading
+- Existing databases receive visible legacy titles from stable document slugs
+  when no leading H1 exists; otherwise each version's leading H1 becomes its
+  explicit title and is removed from the Markdown body
 
 ## [0.0.1] - 2026-07-24
 

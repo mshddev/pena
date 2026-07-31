@@ -90,7 +90,8 @@ Publishing a replacement document continues to clear all feedback, so its decisi
 
 The following behavior does not change:
 
-- Raw Markdown publishing through `PUT /api/documents/:slug`
+- Explicit title-and-Markdown publishing through the workspace-scoped document
+  `PUT`
 - Direct document URLs
 - GitHub-Flavored Markdown rendering
 - Text-selection comments

@@ -7,22 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-08-02
+
 ### Added
 
-- Explicit document titles versioned together with Markdown content
-- A compact document metadata header, one explicit title inside the document
-  surface, and historical title comparison
-- Local image uploads with content-addressed filesystem storage and safe Markdown rendering
-- Asset storage configuration via `PENA_ASSETS_DIR`
+- Immutable document version history with inline diffs and version restore
+- Automatic feedback delivery to the Claude Code session via a watch script
+- Submission-level feedback instructions alongside (or instead of) inline comments
+- Pending feedback panel with navigation between draft comments
+- Explicit document titles, versioned together with Markdown content
+- Local image uploads with content-addressed storage and lightbox previews (`PENA_ASSETS_DIR`)
+- Mermaid diagrams, callouts, and safe embedded HTML in Markdown
+- Markdown document downloads
+- Foldable wide document view
+- Resizable, hierarchy-indented document outline
+- Compact document metadata header with historical title comparison
 
 ### Changed
 
-- Document publishing now requires a JSON `{ title, content }` representation
-- Document lists and archive entries use explicit titles instead of deriving
-  identity from the first Markdown heading
-- Existing databases receive visible legacy titles from stable document slugs
-  when no leading H1 exists; otherwise each version's leading H1 becomes its
-  explicit title and is removed from the Markdown body
+- Publishing requires a JSON `{ title, content }` body and uses ETag preconditions; responses return metadata only
+- Feedback reads and submissions are revision-safe, guarded by document and feedback preconditions
+- Existing databases migrate titles from each version's leading H1, falling back to the document slug
+
+### Fixed
+
+- Document scroll restoration
+- Markdown table overflow
+- Minimized feedback color alignment
 
 ## [0.0.1] - 2026-07-24
 
@@ -38,4 +49,5 @@ Initial release.
 - Fastify API server and React web interface in a pnpm monorepo with shared Zod contracts
 - Claude Code skill (`resources/skills/pena`) to publish documents and pull feedback back into the session
 
+[0.0.2]: https://github.com/mshddev/pena/releases/tag/v0.0.2
 [0.0.1]: https://github.com/mshddev/pena/releases/tag/v0.0.1

@@ -1,6 +1,6 @@
 {
   "name": "pena",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Local Markdown document review interface for Claude Code sessions — publish drafts, collect inline feedback in the browser, and pull it back into the session.",
   "license": "MIT",
   "author": "mshddev <mshddev@gmail.com>",

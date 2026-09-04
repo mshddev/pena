@@ -66,7 +66,7 @@ export function VersionHistory({
     setIsLoading(true);
     setError(null);
 
-    void fetchDocumentVersions(currentDocument.workspaceSlug, currentDocument.slug)
+    void fetchDocumentVersions(currentDocument.slug)
       .then((response) => {
         if (!cancelled) {
           setVersions(response.versions);
@@ -90,7 +90,7 @@ export function VersionHistory({
     return () => {
       cancelled = true;
     };
-  }, [currentDocument.slug, currentDocument.workspaceSlug, reportError]);
+  }, [currentDocument.slug, reportError]);
 
   useEffect(() => {
     const needed =
@@ -107,8 +107,8 @@ export function VersionHistory({
         setDocuments((current) => ({
           ...current,
           [version]: {
-            workspaceSlug: currentDocument.workspaceSlug,
             slug: currentDocument.slug,
+            collectionSlug: currentDocument.collectionSlug,
             title: currentDocument.title,
             content: currentDocument.content,
             version: currentDocument.version,
@@ -118,11 +118,7 @@ export function VersionHistory({
         continue;
       }
 
-      void fetchDocumentVersion(
-        currentDocument.workspaceSlug,
-        currentDocument.slug,
-        version,
-      )
+      void fetchDocumentVersion(currentDocument.slug, version)
         .then((document) =>
           setDocuments((current) => ({ ...current, [version]: document })),
         )
@@ -164,7 +160,6 @@ export function VersionHistory({
 
     try {
       const resource = await restoreDocumentVersion(
-        currentDocument.workspaceSlug,
         currentDocument.slug,
         selectedVersion,
         currentEtag,
@@ -180,7 +175,7 @@ export function VersionHistory({
   }
 
   return (
-    <div className="version-workspace">
+    <div className="version-layout">
       <section className="version-history" aria-label="Version history">
         <header className="version-history-heading">
           <div>

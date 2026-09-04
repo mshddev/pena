@@ -1,4 +1,7 @@
 import type {
+  Collection,
+  CollectionListResponse,
+  CollectionUpdateRequest,
   DocumentListResponse,
   DocumentSummary,
   DocumentStatus,
@@ -8,8 +11,6 @@ import type {
   FeedbackResponse,
   FeedbackSubmission,
   PenaDocument,
-  Workspace,
-  WorkspaceListResponse,
 } from "@pena/contracts";
 
 interface ApiErrorBody {
@@ -21,6 +22,9 @@ export interface DocumentResource {
   etag: string;
 }
 
+/** Lists documents at the root (`null`), in one collection, or everywhere. */
+export type DocumentListScope = string | null | undefined;
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
@@ -30,60 +34,61 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function documentsUrl(workspaceSlug: string): string {
-  return `/api/workspaces/${encodeURIComponent(workspaceSlug)}/documents`;
-}
-
-function documentUrl(workspaceSlug: string, documentSlug: string): string {
-  return `${documentsUrl(workspaceSlug)}/${encodeURIComponent(documentSlug)}`;
-}
-
-export async function fetchWorkspaces(): Promise<WorkspaceListResponse> {
-  const response = await fetch("/api/workspaces");
-  return parseResponse<WorkspaceListResponse>(response);
-}
-
-export async function createWorkspace(name: string): Promise<Workspace> {
-  const response = await fetch("/api/workspaces", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name }),
-  });
-  return parseResponse<Workspace>(response);
-}
-
-export async function renameWorkspace(
-  workspaceSlug: string,
-  name: string,
-): Promise<Workspace> {
-  const response = await fetch(
-    `/api/workspaces/${encodeURIComponent(workspaceSlug)}`,
-    {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name }),
-    },
-  );
-  return parseResponse<Workspace>(response);
-}
-
-export async function deleteWorkspace(workspaceSlug: string): Promise<void> {
-  const response = await fetch(
-    `/api/workspaces/${encodeURIComponent(workspaceSlug)}`,
-    { method: "DELETE" },
-  );
-
+async function assertOk(response: Response): Promise<void> {
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
     throw new Error(body.error ?? `Pena returned HTTP ${response.status}.`);
   }
 }
 
+function documentUrl(documentSlug: string): string {
+  return `/api/docs/${encodeURIComponent(documentSlug)}`;
+}
+
+function collectionUrl(collectionSlug: string): string {
+  return `/api/collections/${encodeURIComponent(collectionSlug)}`;
+}
+
+export async function fetchCollections(): Promise<CollectionListResponse> {
+  const response = await fetch("/api/collections");
+  return parseResponse<CollectionListResponse>(response);
+}
+
+export async function createCollection(
+  name: string,
+  parentSlug: string | null = null,
+): Promise<Collection> {
+  const response = await fetch("/api/collections", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, parentSlug }),
+  });
+  return parseResponse<Collection>(response);
+}
+
+export async function updateCollection(
+  collectionSlug: string,
+  update: CollectionUpdateRequest,
+): Promise<Collection> {
+  const response = await fetch(collectionUrl(collectionSlug), {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(update),
+  });
+  return parseResponse<Collection>(response);
+}
+
+export async function deleteCollection(collectionSlug: string): Promise<void> {
+  const response = await fetch(collectionUrl(collectionSlug), {
+    method: "DELETE",
+  });
+  await assertOk(response);
+}
+
 export async function fetchDocument(
-  workspaceSlug: string,
   documentSlug: string,
 ): Promise<DocumentResource | null> {
-  const response = await fetch(documentUrl(workspaceSlug, documentSlug));
+  const response = await fetch(documentUrl(documentSlug));
 
   if (response.status === 404) {
     return null;
@@ -100,34 +105,29 @@ export async function fetchDocument(
 }
 
 export async function fetchDocumentVersions(
-  workspaceSlug: string,
   documentSlug: string,
 ): Promise<DocumentVersionListResponse> {
-  const response = await fetch(
-    `${documentUrl(workspaceSlug, documentSlug)}/versions`,
-  );
+  const response = await fetch(`${documentUrl(documentSlug)}/versions`);
   return parseResponse<DocumentVersionListResponse>(response);
 }
 
 export async function fetchDocumentVersion(
-  workspaceSlug: string,
   documentSlug: string,
   version: number,
 ): Promise<DocumentVersion> {
   const response = await fetch(
-    `${documentUrl(workspaceSlug, documentSlug)}/versions/${version}`,
+    `${documentUrl(documentSlug)}/versions/${version}`,
   );
   return parseResponse<DocumentVersion>(response);
 }
 
 export async function restoreDocumentVersion(
-  workspaceSlug: string,
   documentSlug: string,
   version: number,
   etag: string,
 ): Promise<DocumentResource> {
   const response = await fetch(
-    `${documentUrl(workspaceSlug, documentSlug)}/versions/${version}/restore`,
+    `${documentUrl(documentSlug)}/versions/${version}/restore`,
     {
       method: "POST",
       headers: { "if-match": etag },
@@ -144,31 +144,42 @@ export async function restoreDocumentVersion(
 }
 
 export async function fetchDocuments(
-  workspaceSlug: string,
+  scope: DocumentListScope = undefined,
   status: DocumentStatus = "active",
 ): Promise<DocumentListResponse> {
-  const query = status === "archived" ? "?status=archived" : "";
-  const response = await fetch(`${documentsUrl(workspaceSlug)}${query}`);
+  const query = new URLSearchParams();
+
+  if (status === "archived") {
+    query.set("status", "archived");
+  }
+
+  if (scope === null) {
+    query.set("collection", "root");
+  } else if (scope !== undefined) {
+    query.set("collection", scope);
+  }
+
+  const search = query.toString();
+  const response = await fetch(`/api/docs${search ? `?${search}` : ""}`);
   return parseResponse<DocumentListResponse>(response);
 }
 
 export async function fetchArchive(
-  workspaceSlug: string | null = null,
+  collectionSlug: string | null = null,
 ): Promise<DocumentListResponse> {
-  const query = workspaceSlug
-    ? `?workspace=${encodeURIComponent(workspaceSlug)}`
+  const query = collectionSlug
+    ? `?collection=${encodeURIComponent(collectionSlug)}`
     : "";
   const response = await fetch(`/api/archive${query}`);
   return parseResponse<DocumentListResponse>(response);
 }
 
 async function updateDocumentStatus(
-  workspaceSlug: string,
   documentSlug: string,
   status: DocumentStatus,
   etag: string,
 ): Promise<DocumentSummary> {
-  const response = await fetch(documentUrl(workspaceSlug, documentSlug), {
+  const response = await fetch(documentUrl(documentSlug), {
     method: "PATCH",
     headers: {
       "content-type": "application/json",
@@ -180,85 +191,69 @@ async function updateDocumentStatus(
 }
 
 export async function archiveDocument(
-  workspaceSlug: string,
   documentSlug: string,
   etag: string,
 ): Promise<DocumentSummary> {
-  return updateDocumentStatus(workspaceSlug, documentSlug, "archived", etag);
+  return updateDocumentStatus(documentSlug, "archived", etag);
 }
 
 export async function unarchiveDocument(
-  workspaceSlug: string,
   documentSlug: string,
   etag: string,
 ): Promise<DocumentSummary> {
-  return updateDocumentStatus(workspaceSlug, documentSlug, "active", etag);
+  return updateDocumentStatus(documentSlug, "active", etag);
 }
 
 export async function moveDocument(
-  workspaceSlug: string,
   documentSlug: string,
-  destinationWorkspaceSlug: string,
+  collectionSlug: string | null,
   etag: string,
 ): Promise<DocumentSummary> {
-  const response = await fetch(
-    `${documentUrl(workspaceSlug, documentSlug)}/move`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "if-match": etag,
-      },
-      body: JSON.stringify({ workspaceSlug: destinationWorkspaceSlug }),
+  const response = await fetch(`${documentUrl(documentSlug)}/move`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "if-match": etag,
     },
-  );
+    body: JSON.stringify({ collectionSlug }),
+  });
   return parseResponse<DocumentSummary>(response);
 }
 
 export async function deleteDocument(
-  workspaceSlug: string,
   documentSlug: string,
   etag: string,
 ): Promise<void> {
-  const response = await fetch(documentUrl(workspaceSlug, documentSlug), {
+  const response = await fetch(documentUrl(documentSlug), {
     method: "DELETE",
     headers: { "if-match": etag },
   });
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
-    throw new Error(body.error ?? `Pena returned HTTP ${response.status}.`);
-  }
+  await assertOk(response);
 }
 
 export async function submitFeedback(
-  workspaceSlug: string,
   documentSlug: string,
   submission: FeedbackSubmission,
   etag: string,
 ): Promise<FeedbackReceipt> {
-  const response = await fetch(
-    `${documentUrl(workspaceSlug, documentSlug)}/feedback`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "if-match": etag,
-      },
-      body: JSON.stringify(submission),
+  const response = await fetch(`${documentUrl(documentSlug)}/feedback`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "if-match": etag,
     },
-  );
+    body: JSON.stringify(submission),
+  });
 
   return parseResponse<FeedbackReceipt>(response);
 }
 
 export async function fetchFeedback(
-  workspaceSlug: string,
   documentSlug: string,
   etag?: string,
 ): Promise<FeedbackResponse> {
   const response = await fetch(
-    `${documentUrl(workspaceSlug, documentSlug)}/feedback`,
+    `${documentUrl(documentSlug)}/feedback`,
     etag ? { headers: { "if-match": etag } } : undefined,
   );
   return parseResponse<FeedbackResponse>(response);

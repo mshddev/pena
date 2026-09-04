@@ -159,7 +159,7 @@ button:disabled {
   stroke-width: 1.5;
 }
 
-.workspace {
+.review-layout {
   position: relative;
   display: grid;
   grid-template-columns: var(--outline-width) minmax(0, 1fr);
@@ -167,11 +167,11 @@ button:disabled {
   transition: grid-template-columns 180ms ease;
 }
 
-.workspace.outline-collapsed {
+.review-layout.outline-collapsed {
   grid-template-columns: 0 minmax(0, 1fr);
 }
 
-.workspace > .document-pane {
+.review-layout > .document-pane {
   grid-column: 2;
 }
 
@@ -202,7 +202,7 @@ button:disabled {
 
 .outline-resizer:hover::after,
 .outline-resizer:focus-visible::after,
-.workspace.resizing-outline .outline-resizer::after {
+.review-layout.resizing-outline .outline-resizer::after {
   background: rgb(111 140 255 / 55%);
 }
 
@@ -210,8 +210,8 @@ button:disabled {
   outline: none;
 }
 
-.workspace.resizing-outline,
-.workspace.resizing-outline * {
+.review-layout.resizing-outline,
+.review-layout.resizing-outline * {
   cursor: col-resize;
   user-select: none;
 }
@@ -232,7 +232,7 @@ button:disabled {
     padding 180ms ease;
 }
 
-.workspace.outline-collapsed .document-index {
+.review-layout.outline-collapsed .document-index {
   overflow: hidden;
   padding-right: 0;
   padding-left: 0;
@@ -395,7 +395,7 @@ button:disabled {
   margin: 0;
 }
 
-.document-breadcrumb-workspace {
+.document-breadcrumb-collection {
   padding: 3px 9px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -406,8 +406,8 @@ button:disabled {
     color 150ms ease;
 }
 
-.document-breadcrumb-workspace:hover,
-.document-breadcrumb-workspace:focus-visible {
+.document-breadcrumb-collection:hover,
+.document-breadcrumb-collection:focus-visible {
   border-color: var(--line-strong);
   color: var(--text);
 }
@@ -993,7 +993,7 @@ button:disabled {
   font-size: 10px;
 }
 
-.archive-workspace-link {
+.archive-collection-link {
   display: inline-flex;
   height: 20px;
   align-items: center;
@@ -1007,8 +1007,8 @@ button:disabled {
   transition: background 150ms ease;
 }
 
-.archive-workspace-link:hover,
-.archive-workspace-link:focus-visible {
+.archive-collection-link:hover,
+.archive-collection-link:focus-visible {
   background: rgb(158 164 179 / 22%);
 }
 
@@ -2237,8 +2237,8 @@ button:disabled {
   line-height: 1.6;
 }
 
-/* Workspaces index — card library matching the dashboard */
-.workspace-admin-shell {
+/* Collections index — card library matching the dashboard */
+.collection-admin-shell {
   display: flex;
   min-height: 100vh;
   flex-direction: column;
@@ -2247,18 +2247,18 @@ button:disabled {
     var(--bg);
 }
 
-.workspace-admin,
-.workspace-admin-footer {
+.collection-admin,
+.collection-admin-footer {
   width: min(1080px, calc(100% - 48px));
   margin: 0 auto;
 }
 
-.workspace-admin {
+.collection-admin {
   flex: 1;
   padding: 38px 0 90px;
 }
 
-.workspace-admin-heading {
+.collection-admin-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -2266,7 +2266,7 @@ button:disabled {
   margin-bottom: 26px;
 }
 
-.workspace-admin-heading h1 {
+.collection-admin-heading h1 {
   margin: 0;
   font-size: clamp(28px, 4vw, 34px);
   font-weight: 700;
@@ -2274,24 +2274,24 @@ button:disabled {
   line-height: 1.08;
 }
 
-.workspace-admin-copy > p {
+.collection-admin-copy > p {
   margin: 11px 0 0;
   color: var(--text-soft);
   font-size: 14px;
 }
 
-.workspace-admin-copy > .workspace-admin-count {
+.collection-admin-copy > .collection-admin-count {
   margin-top: 5px;
   color: var(--text-faint);
   font-size: 13px;
 }
 
-.workspace-create {
+.collection-create {
   position: relative;
   flex: 0 0 auto;
 }
 
-.workspace-create-trigger {
+.collection-create-trigger {
   display: inline-flex;
   height: 40px;
   align-items: center;
@@ -2307,17 +2307,17 @@ button:disabled {
   transition: background 160ms ease;
 }
 
-.workspace-create-trigger:hover {
+.collection-create-trigger:hover {
   background: var(--accent-bright);
 }
 
-.workspace-create-trigger span {
+.collection-create-trigger span {
   font-size: 16px;
   line-height: 1;
 }
 
 /* Anchored under the button that opens it, rather than spanning the page. */
-.workspace-create-form {
+.collection-create-form {
   position: absolute;
   z-index: 20;
   top: calc(100% + 8px);
@@ -2332,8 +2332,8 @@ button:disabled {
   animation: home-menu-enter 140ms ease-out both;
 }
 
-.workspace-create-form label,
-.workspace-inline-editor label {
+.collection-create-form label,
+.collection-inline-editor label {
   display: block;
   color: var(--text-faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -2343,22 +2343,22 @@ button:disabled {
   text-transform: uppercase;
 }
 
-.workspace-create-form > p {
+.collection-create-form > p {
   margin: 6px 0 14px;
   color: var(--text-soft);
   font-size: 12.5px;
 }
 
-.workspace-create-form > div {
+.collection-create-form > div {
   display: flex;
   gap: 7px;
   justify-content: flex-end;
   margin-top: 11px;
 }
 
-.workspace-create-form input,
-.workspace-inline-editor input,
-.workspace-delete-confirmation input {
+.collection-create-form input,
+.collection-inline-editor input,
+.collection-delete-confirmation input {
   min-width: 0;
   height: 38px;
   border: 1px solid var(--line);
@@ -2370,18 +2370,18 @@ button:disabled {
   transition: border-color 160ms ease;
 }
 
-.workspace-create-form input:focus,
-.workspace-inline-editor input:focus,
-.workspace-delete-confirmation input:focus {
+.collection-create-form input:focus,
+.collection-inline-editor input:focus,
+.collection-delete-confirmation input:focus {
   border-color: rgb(111 140 255 / 45%);
 }
 
-.workspace-create-form input {
+.collection-create-form input {
   width: 100%;
 }
 
-.workspace-create-form button[type="submit"],
-.workspace-inline-editor button[type="submit"] {
+.collection-create-form button[type="submit"],
+.collection-inline-editor button[type="submit"] {
   height: 38px;
   border: 0;
   border-radius: 8px;
@@ -2394,12 +2394,12 @@ button:disabled {
   transition: background 160ms ease;
 }
 
-.workspace-create-form button[type="submit"]:hover:not(:disabled),
-.workspace-inline-editor button[type="submit"]:hover:not(:disabled) {
+.collection-create-form button[type="submit"]:hover:not(:disabled),
+.collection-inline-editor button[type="submit"]:hover:not(:disabled) {
   background: var(--accent-bright);
 }
 
-.workspace-filter {
+.collection-filter {
   position: relative;
   display: flex;
   width: min(420px, 100%);
@@ -2407,7 +2407,7 @@ button:disabled {
   margin-bottom: 26px;
 }
 
-.workspace-filter-icon {
+.collection-filter-icon {
   position: absolute;
   left: 14px;
   width: 15px;
@@ -2419,7 +2419,7 @@ button:disabled {
   stroke-width: 1.4;
 }
 
-.workspace-filter input {
+.collection-filter input {
   width: 100%;
   height: 44px;
   border: 1px solid var(--line);
@@ -2431,19 +2431,19 @@ button:disabled {
   transition: border-color 160ms ease;
 }
 
-.workspace-filter input::placeholder {
+.collection-filter input::placeholder {
   color: var(--text-faint);
 }
 
-.workspace-filter input:focus {
+.collection-filter input:focus {
   border-color: rgb(111 140 255 / 45%);
 }
 
-.workspace-filter input::-webkit-search-cancel-button {
+.collection-filter input::-webkit-search-cancel-button {
   filter: grayscale(1);
 }
 
-.workspace-filter-hint {
+.collection-filter-hint {
   position: absolute;
   right: 12px;
   display: grid;
@@ -2460,18 +2460,18 @@ button:disabled {
   white-space: nowrap;
 }
 
-.workspace-admin > .archive-notice {
+.collection-admin > .archive-notice {
   margin: 0 0 20px;
 }
 
-.workspace-no-matches {
+.collection-no-matches {
   margin: 0;
   color: var(--text-faint);
   font-size: 13px;
 }
 
-.workspace-card-grid,
-.workspace-admin-loading {
+.collection-card-grid,
+.collection-admin-loading {
   display: grid;
   gap: 15px;
   grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr));
@@ -2480,7 +2480,7 @@ button:disabled {
   align-items: start;
 }
 
-.workspace-admin-loading span {
+.collection-admin-loading span {
   height: 178px;
   border-radius: 12px;
   background: linear-gradient(
@@ -2493,7 +2493,7 @@ button:disabled {
   animation: loading 1.4s infinite linear;
 }
 
-.workspace-card {
+.collection-card {
   display: flex;
   min-height: 178px;
   flex-direction: column;
@@ -2509,15 +2509,15 @@ button:disabled {
     box-shadow 160ms ease;
 }
 
-.workspace-card:hover,
-.workspace-card:focus-within {
+.collection-card:hover,
+.collection-card:focus-within {
   border-color: rgb(111 140 255 / 34%);
   background: var(--surface-raised);
   box-shadow: 0 16px 38px rgb(0 0 0 / 30%);
   transform: translateY(-2px);
 }
 
-.workspace-card-top {
+.collection-card-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -2525,7 +2525,7 @@ button:disabled {
   margin-bottom: 15px;
 }
 
-.workspace-monogram {
+.collection-monogram {
   display: grid;
   width: 38px;
   height: 38px;
@@ -2536,12 +2536,12 @@ button:disabled {
   font-weight: 650;
 }
 
-.workspace-card-menu {
+.collection-card-menu {
   position: relative;
   flex: 0 0 auto;
 }
 
-.workspace-menu-trigger {
+.collection-menu-trigger {
   display: grid;
   width: 28px;
   height: 28px;
@@ -2556,18 +2556,18 @@ button:disabled {
     color 140ms ease;
 }
 
-.workspace-menu-trigger:hover,
-.workspace-menu-trigger[aria-expanded="true"] {
+.collection-menu-trigger:hover,
+.collection-menu-trigger[aria-expanded="true"] {
   border-color: var(--line-strong);
   color: var(--text);
 }
 
-.workspace-menu-trigger svg {
+.collection-menu-trigger svg {
   width: 15px;
   fill: currentColor;
 }
 
-.workspace-menu {
+.collection-menu {
   position: absolute;
   z-index: 20;
   top: calc(100% + 6px);
@@ -2586,7 +2586,7 @@ button:disabled {
   animation: home-menu-enter 140ms ease-out both;
 }
 
-.workspace-menu button {
+.collection-menu button {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2604,22 +2604,22 @@ button:disabled {
     color 140ms ease;
 }
 
-.workspace-menu button:hover:not(:disabled) {
+.collection-menu button:hover:not(:disabled) {
   background: var(--surface-raised);
   color: var(--text);
 }
 
-.workspace-menu .workspace-delete-trigger:hover:not(:disabled) {
+.collection-menu .collection-delete-trigger:hover:not(:disabled) {
   color: var(--danger);
 }
 
 /* Disabled Delete states *why* inline — a title tooltip hides the reason
    behind a hover and gets clipped by the card. */
-.workspace-menu button:disabled {
+.collection-menu button:disabled {
   opacity: 0.62;
 }
 
-.workspace-menu-info {
+.collection-menu-info {
   width: 13px;
   flex: 0 0 auto;
   fill: none;
@@ -2628,21 +2628,21 @@ button:disabled {
   stroke-width: 1.4;
 }
 
-.workspace-menu-note {
+.collection-menu-note {
   margin: 1px 6px 3px;
   color: var(--text-faint);
   font-size: 11px;
   line-height: 1.45;
 }
 
-.workspace-card-name {
+.collection-card-name {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 8px;
 }
 
-.workspace-card-name h2 {
+.collection-card-name h2 {
   overflow: hidden;
   margin: 0;
   font-size: 16px;
@@ -2664,14 +2664,14 @@ button:disabled {
   text-transform: uppercase;
 }
 
-.workspace-card-slug,
-.workspace-delete-confirmation code {
+.collection-card-slug,
+.collection-delete-confirmation code {
   color: var(--text-faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
 }
 
-.workspace-card-slug {
+.collection-card-slug {
   display: block;
   overflow: hidden;
   margin-top: 5px;
@@ -2679,13 +2679,13 @@ button:disabled {
   white-space: nowrap;
 }
 
-.workspace-card-time {
+.collection-card-time {
   margin: 5px 0 0;
   color: var(--text-faint);
   font-size: 11px;
 }
 
-.workspace-card-foot {
+.collection-card-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2694,28 +2694,28 @@ button:disabled {
   padding-top: 16px;
 }
 
-.workspace-document-count {
+.collection-document-count {
   display: flex;
   align-items: baseline;
   gap: 6px;
 }
 
-.workspace-document-count strong {
+.collection-document-count strong {
   font-size: 16px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
-.workspace-document-count span {
+.collection-document-count span {
   color: var(--text-faint);
   font-size: 12px;
 }
 
-.workspace-document-count.empty strong {
+.collection-document-count.empty strong {
   color: var(--text-faint);
 }
 
-.workspace-open-link {
+.collection-open-link {
   display: inline-flex;
   height: 32px;
   flex: 0 0 auto;
@@ -2732,14 +2732,14 @@ button:disabled {
     background 160ms ease;
 }
 
-.workspace-open-link:hover,
-.workspace-open-link:focus-visible {
+.collection-open-link:hover,
+.collection-open-link:focus-visible {
   border-color: rgb(111 140 255 / 45%);
   background: rgb(111 140 255 / 12%);
 }
 
-.workspace-inline-editor,
-.workspace-delete-confirmation {
+.collection-inline-editor,
+.collection-delete-confirmation {
   display: flex;
   flex-direction: column;
   gap: 9px;
@@ -2749,29 +2749,29 @@ button:disabled {
   animation: delete-confirmation-enter 180ms ease-out both;
 }
 
-.workspace-inline-editor > div,
-.workspace-delete-confirmation > div:last-child {
+.collection-inline-editor > div,
+.collection-delete-confirmation > div:last-child {
   display: flex;
   gap: 7px;
   justify-content: flex-end;
 }
 
-.workspace-delete-confirmation strong {
+.collection-delete-confirmation strong {
   font-size: 13px;
 }
 
-.workspace-delete-confirmation p {
+.collection-delete-confirmation p {
   margin: 5px 0 0;
   color: var(--text-soft);
   font-size: 12px;
 }
 
-.workspace-delete-confirmation .confirm-delete-button {
+.collection-delete-confirmation .confirm-delete-button {
   min-height: 34px;
   border-radius: 8px;
 }
 
-.workspace-admin-footer {
+.collection-admin-footer {
   display: flex;
   align-items: baseline;
   gap: 12px;
@@ -2779,7 +2779,7 @@ button:disabled {
   border-top: 1px solid var(--line);
 }
 
-.workspace-admin-footer > span {
+.collection-admin-footer > span {
   color: var(--text-faint);
   font-size: 11px;
 }
@@ -2816,7 +2816,7 @@ button:disabled {
   font-size: 11px;
 }
 
-.workspace {
+.review-layout {
   grid-template-columns: var(--outline-width) minmax(0, 1fr);
 }
 
@@ -2870,24 +2870,24 @@ button:disabled {
  * measure stays in place while either rail is useful, but tables and other
  * dense content can use the full pane once both are out of the way.
  */
-.workspace.outline-collapsed
+.review-layout.outline-collapsed
   .document-pane:not(.has-pending-feedback)
   .document-meta,
-.workspace.outline-collapsed
+.review-layout.outline-collapsed
   .document-review-layout:not(.with-pending-feedback),
-.workspace.outline-collapsed
+.review-layout.outline-collapsed
   .document-review-layout:not(.with-pending-feedback)
   .document-stage,
-.workspace.outline-collapsed
+.review-layout.outline-collapsed
   .document-review-layout:not(.with-pending-feedback)
   .document-page-title,
-.workspace.outline-collapsed
+.review-layout.outline-collapsed
   .document-review-layout:not(.with-pending-feedback)
   .markdown-body {
   max-width: none;
 }
 
-.workspace.outline-collapsed .feedback-bar {
+.review-layout.outline-collapsed .feedback-bar {
   left: 0;
 }
 
@@ -3207,8 +3207,8 @@ button:disabled {
 .primary-button,
 .submit-button,
 .confirm-move-button,
-.workspace-create-form button,
-.workspace-inline-editor button[type="submit"] {
+.collection-create-form button,
+.collection-inline-editor button[type="submit"] {
   border-radius: 8px;
 }
 
@@ -3303,11 +3303,11 @@ button:disabled {
 }
 
 @media (max-width: 900px) {
-  .workspace {
+  .review-layout {
     display: block;
   }
 
-  .workspace > .document-pane {
+  .review-layout > .document-pane {
     grid-column: auto;
   }
 
@@ -3329,13 +3329,13 @@ button:disabled {
     padding: 0 0 13px;
   }
 
-  .workspace.outline-collapsed .document-index {
+  .review-layout.outline-collapsed .document-index {
     height: 0;
     padding: 0;
     border-bottom-width: 0;
   }
 
-  .workspace.outline-collapsed .document-pane {
+  .review-layout.outline-collapsed .document-pane {
     padding-top: 68px;
   }
 
@@ -3394,13 +3394,13 @@ button:disabled {
     left: 0;
   }
 
-  .workspace-admin-heading {
+  .collection-admin-heading {
     flex-direction: column;
     align-items: stretch;
     gap: 20px;
   }
 
-  .workspace-create-trigger {
+  .collection-create-trigger {
     justify-content: center;
   }
 }
@@ -3543,44 +3543,44 @@ button:disabled {
     flex-wrap: wrap;
   }
 
-  .workspace-admin {
+  .collection-admin {
     width: min(100% - 36px, 1120px);
     padding: 46px 0 80px;
   }
 
-  .workspace-admin-heading h1 {
+  .collection-admin-heading h1 {
     font-size: 50px;
   }
 
-  .workspace-admin-heading {
+  .collection-admin-heading {
     min-height: 0;
   }
 
-  .workspace-admin-intro {
+  .collection-admin-intro {
     min-height: 210px;
     padding-left: 0;
   }
 
-  .workspace-create-form {
+  .collection-create-form {
     min-height: 0;
     padding: 22px;
   }
 
-  .workspace-record-main {
+  .collection-record-main {
     display: block;
     padding: 21px 0;
   }
 
-  .workspace-document-count {
+  .collection-document-count {
     margin: 16px 0;
   }
 
-  .workspace-record-actions {
+  .collection-record-actions {
     justify-content: flex-start;
   }
 
-  .workspace-inline-editor,
-  .workspace-delete-confirmation {
+  .collection-inline-editor,
+  .collection-delete-confirmation {
     padding: 20px 0 24px;
   }
 
@@ -3631,7 +3631,7 @@ button:disabled {
   }
 }
 
-/* Workspace home — document library landing view */
+/* Collection home — document library landing view */
 .home-shell {
   min-height: 100vh;
   background:
@@ -4203,18 +4203,18 @@ button:disabled {
 @media (max-width: 600px) {
   .home-main,
   .home-footer,
-  .workspace-admin,
-  .workspace-admin-footer {
+  .collection-admin,
+  .collection-admin-footer {
     width: calc(100% - 32px);
   }
 
   .home-main,
-  .workspace-admin {
+  .collection-admin {
     padding: 26px 0 60px;
   }
 
   .home-footer,
-  .workspace-admin-footer {
+  .collection-admin-footer {
     align-items: flex-start;
     flex-direction: column;
     gap: 6px;
@@ -4262,7 +4262,7 @@ button:disabled {
   opacity: 0.72;
 }
 
-.version-workspace {
+.version-layout {
   display: grid;
   max-width: 1180px;
   min-height: 620px;
@@ -4547,7 +4547,7 @@ button:disabled {
 }
 
 @media (max-width: 900px) {
-  .version-workspace {
+  .version-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -4593,4 +4593,154 @@ button:disabled {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Collections — folder navigation on the dashboard and document pages */
+.home-breadcrumb,
+.home-breadcrumb-step,
+.document-breadcrumb-step {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.home-breadcrumb {
+  margin: 0 0 0.35rem;
+  font-size: 0.82rem;
+  color: var(--text-muted, #8a8f98);
+}
+
+.home-breadcrumb a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.home-breadcrumb a:hover,
+.home-breadcrumb a:focus-visible {
+  text-decoration: underline;
+}
+
+.home-breadcrumb a.active {
+  color: var(--text, inherit);
+}
+
+.home-heading-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.home-manage-link {
+  font-size: 0.82rem;
+  color: var(--text-muted, #8a8f98);
+  text-decoration: none;
+}
+
+.home-manage-link:hover,
+.home-manage-link:focus-visible {
+  text-decoration: underline;
+}
+
+.collection-folder-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.6rem;
+}
+
+.collection-folder {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 0.6rem;
+  align-items: center;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  border-radius: 0.6rem;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.collection-folder:hover,
+.collection-folder:focus-visible {
+  border-color: var(--accent, #7c9cff);
+  background: rgba(127, 127, 127, 0.06);
+}
+
+.collection-folder-icon {
+  grid-row: 1 / span 2;
+  width: 1.4rem;
+  height: 1.4rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  opacity: 0.75;
+}
+
+.collection-folder-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-folder-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted, #8a8f98);
+}
+
+.document-chip.collection {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.collection-card-path {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  color: var(--text-muted, #8a8f98);
+}
+
+.collection-child-count {
+  margin-left: 0.3rem;
+}
+
+.collection-create-form select,
+.collection-inline-editor select {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.35));
+  border-radius: 0.45rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.collection-create-form select option,
+.collection-inline-editor select option,
+.move-document-panel select option {
+  white-space: pre;
+}
+
+/* Stacked cards each form a stacking context (the enter animation applies a
+   transform), so an open menu would paint beneath the next card. Lift the
+   card whose menu is open above its siblings. */
+.collection-card {
+  position: relative;
+}
+
+.collection-card:has(.collection-menu),
+.collection-card:has(.collection-inline-editor),
+.collection-card:has(.collection-delete-confirmation) {
+  z-index: 5;
 }

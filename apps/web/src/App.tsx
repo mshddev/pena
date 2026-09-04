@@ -1,34 +1,27 @@
 import { UtilityBar } from "./components/UtilityBar";
 import { ArchivePage } from "./features/archive/ArchivePage";
+import { CollectionsPage } from "./features/collections/CollectionsPage";
 import { DocumentReviewPage } from "./features/document-review/DocumentReviewPage";
 import { readAppRoute } from "./features/document-review/routing";
 import { HomePage } from "./features/home/HomePage";
-import { WorkspacesPage } from "./features/workspaces/WorkspacesPage";
 
 export function App() {
   const route = readAppRoute(window.location.pathname, window.location.search);
 
   if (route.kind === "home") {
-    return <HomePage workspaceSlug={null} />;
+    return <HomePage collectionSlug={route.collectionSlug} />;
   }
 
-  if (route.kind === "workspaces") {
-    return <WorkspacesPage />;
+  if (route.kind === "collections") {
+    return <CollectionsPage />;
   }
 
   if (route.kind === "archive") {
-    return <ArchivePage workspaceSlug={route.workspaceSlug} />;
+    return <ArchivePage collectionSlug={route.collectionSlug} />;
   }
 
-  if (route.kind === "documents") {
-    return route.documentSlug === null ? (
-      <HomePage workspaceSlug={route.workspaceSlug} />
-    ) : (
-      <DocumentReviewPage
-        workspaceSlug={route.workspaceSlug}
-        documentSlug={route.documentSlug}
-      />
-    );
+  if (route.kind === "document") {
+    return <DocumentReviewPage documentSlug={route.documentSlug} />;
   }
 
   return (

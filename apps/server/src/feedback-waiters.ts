@@ -73,9 +73,6 @@ export class FeedbackWaiters {
   }
 }
 
-export function feedbackWaitKey(
-  workspaceSlug: string,
-  documentSlug: string,
-): string {
-  return `${workspaceSlug}\0${documentSlug}`;
+export function feedbackWaitKey(documentSlug: string): string {
+  return documentSlug;
 }

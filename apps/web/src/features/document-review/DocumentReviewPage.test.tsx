@@ -19,14 +19,36 @@ const DECISION_DOCUMENT = [
   ":::",
 ].join("\n");
 
+const DOCUMENT_URL = "/api/docs/review";
+
 const documentResponse = {
-  workspaceSlug: "default",
   slug: "review",
+  collectionSlug: null as string | null,
   title: "Review",
   content: DECISION_DOCUMENT,
   version: 1,
   updatedAt: "2026-07-18T10:00:00.000Z",
   archivedAt: null,
+};
+
+const researchCollection = {
+  slug: "research",
+  name: "Research",
+  parentSlug: null,
+  createdAt: "2026-07-18T10:00:00.000Z",
+  updatedAt: "2026-07-18T10:00:00.000Z",
+  documentCount: 0,
+  childCount: 0,
+};
+
+const writingCollection = {
+  slug: "writing",
+  name: "Writing",
+  parentSlug: null,
+  createdAt: "2026-07-18T10:00:00.000Z",
+  updatedAt: "2026-07-18T10:00:00.000Z",
+  documentCount: 0,
+  childCount: 0,
 };
 
 beforeEach(() => {
@@ -62,8 +84,8 @@ describe("interactive decision review", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
 
-      if (url === "/api/workspaces/default/documents") {
-        return documentListResponse();
+      if (url === "/api/collections") {
+        return collectionListResponse();
       }
 
       if (init?.method === "POST") {
@@ -83,7 +105,7 @@ describe("interactive decision review", () => {
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
 
-    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+    render(<DocumentReviewPage documentSlug="review" />);
 
     const apply = await screen.findByRole("button", { name: "Apply" });
     const skip = screen.getByRole("button", { name: "Skip" });
@@ -152,18 +174,17 @@ describe("interactive decision review", () => {
     expect((apply as HTMLButtonElement).disabled).toBe(true);
     expect((skip as HTMLButtonElement).disabled).toBe(true);
     expect(skip.getAttribute("aria-pressed")).toBe("true");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/workspaces/default/documents/review/feedback",
-      { headers: { "if-match": '"pena-test-1"' } },
-    );
+    expect(fetchMock).toHaveBeenCalledWith(`${DOCUMENT_URL}/feedback`, {
+      headers: { "if-match": '"pena-test-1"' },
+    });
   });
 
   it("restores submitted decisions as disabled choices", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) =>
-        String(input) === "/api/workspaces/default/documents"
-          ? documentListResponse()
+        String(input) === "/api/collections"
+          ? collectionListResponse()
           : String(input).endsWith("/feedback")
           ? jsonResponse({
               latestBatchId: 1,
@@ -186,7 +207,7 @@ describe("interactive decision review", () => {
       ),
     );
 
-    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+    render(<DocumentReviewPage documentSlug="review" />);
 
     const apply = await screen.findByRole("button", { name: "Apply" });
     const skip = screen.getByRole("button", { name: "Skip" });
@@ -218,8 +239,8 @@ describe("interactive decision review", () => {
           return jsonResponse({ latestBatchId: null, batches: [] });
         }
 
-        if (url === "/api/workspaces/default/documents") {
-          return documentListResponse();
+        if (url === "/api/collections") {
+          return collectionListResponse();
         }
 
         return jsonResponse(documentResponse);
@@ -228,7 +249,7 @@ describe("interactive decision review", () => {
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
 
-    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+    render(<DocumentReviewPage documentSlug="review" />);
 
     expect(screen.queryByRole("button", { name: "Instruction" })).toBeNull();
     await user.click(await screen.findByRole("button", { name: "Apply" }));
@@ -258,8 +279,8 @@ describe("interactive decision review", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
-        if (String(input) === "/api/workspaces/default/documents") {
-          return documentListResponse();
+        if (String(input) === "/api/collections") {
+          return collectionListResponse();
         }
 
         if (String(input).endsWith("/feedback")) {
@@ -270,7 +291,7 @@ describe("interactive decision review", () => {
       }),
     );
 
-    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+    render(<DocumentReviewPage documentSlug="review" />);
 
     expect(
       await screen.findByRole("heading", {
@@ -283,8 +304,8 @@ describe("interactive decision review", () => {
 
   it("keeps Markdown-only loading behavior unchanged", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
-      String(input) === "/api/workspaces/default/documents"
-        ? documentListResponse()
+      String(input) === "/api/collections"
+        ? collectionListResponse()
         : jsonResponse({
             ...documentResponse,
             content: "## Markdown only\n\nSelect this passage.",
@@ -292,7 +313,7 @@ describe("interactive decision review", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+    render(<DocumentReviewPage documentSlug="review" />);
 
     expect(
       await screen.findByRole("heading", { name: "Markdown only" }),
@@ -303,8 +324,10 @@ describe("interactive decision review", () => {
         name: "Submit feedback",
       }) as HTMLButtonElement).disabled,
     ).toBe(true);
-    // The document and the move destinations — the rail no longer needs a list.
+    // The document and the collection list — nothing else is fetched.
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock).toHaveBeenCalledWith(DOCUMENT_URL);
+    expect(fetchMock).toHaveBeenCalledWith("/api/collections");
   });
 });
 
@@ -328,8 +351,8 @@ describe("version history", () => {
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
 
-        if (url === "/api/workspaces") {
-          return jsonResponse({ workspaces: [] });
+        if (url === "/api/collections") {
+          return collectionListResponse();
         }
 
         if (url.endsWith("/feedback")) {
@@ -342,8 +365,8 @@ describe("version history", () => {
 
         if (url.endsWith("/versions/1")) {
           return jsonResponse({
-            workspaceSlug: "default",
             slug: "review",
+            collectionSlug: null,
             title: "First draft",
             content: "Original line.",
             version: 1,
@@ -355,15 +378,15 @@ describe("version history", () => {
           return jsonResponse({
             versions: [
               {
-                workspaceSlug: "default",
                 slug: "review",
+                collectionSlug: null,
                 title: "Second draft",
                 version: 2,
                 updatedAt: "2026-07-18T11:00:00.000Z",
               },
               {
-                workspaceSlug: "default",
                 slug: "review",
+                collectionSlug: null,
                 title: "First draft",
                 version: 1,
                 updatedAt: "2026-07-18T10:00:00.000Z",
@@ -378,7 +401,7 @@ describe("version history", () => {
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
 
-    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+    render(<DocumentReviewPage documentSlug="review" />);
 
     await user.click(
       await screen.findByRole("button", { name: "Version 2" }),
@@ -428,12 +451,14 @@ describe("version history", () => {
       await screen.findByText("Version 3 is now current."),
     ).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/workspaces/default/documents/review/versions/1/restore",
+      `${DOCUMENT_URL}/versions/1/restore`,
       {
         method: "POST",
         headers: { "if-match": '"pena-test-1"' },
       },
     );
+    expect(fetchMock).toHaveBeenCalledWith(`${DOCUMENT_URL}/versions`);
+    expect(fetchMock).toHaveBeenCalledWith(`${DOCUMENT_URL}/versions/1`);
   });
 });
 
@@ -449,13 +474,15 @@ describe("saved document index", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) =>
-        String(input).endsWith("/feedback")
+        String(input) === "/api/collections"
+          ? collectionListResponse()
+          : String(input).endsWith("/feedback")
           ? jsonResponse({ latestBatchId: null, batches: [] })
           : jsonResponse(documentResponse),
       ),
     );
 
-    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+    render(<DocumentReviewPage documentSlug="review" />);
 
     const target = await screen.findByRole("heading", {
       name: "Add request caching",
@@ -479,18 +506,18 @@ describe("saved document index", () => {
         return jsonResponse({ latestBatchId: null, batches: [] });
       }
 
-      if (url.endsWith("/documents/review")) {
+      if (url === DOCUMENT_URL) {
         documentFetchCount += 1;
         return documentFetchCount === 1
           ? jsonResponse(documentResponse)
           : refreshResponse;
       }
 
-      return documentListResponse();
+      return collectionListResponse();
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+    render(<DocumentReviewPage documentSlug="review" />);
 
     await screen.findByRole("heading", { name: "Review" });
     window.dispatchEvent(new Event("focus"));
@@ -522,14 +549,16 @@ describe("saved document index", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) =>
-        String(input).endsWith("/feedback")
+        String(input) === "/api/collections"
+          ? collectionListResponse()
+          : String(input).endsWith("/feedback")
           ? jsonResponse({ latestBatchId: null, batches: [] })
           : jsonResponse(documentResponse),
       ),
     );
     const user = userEvent.setup();
 
-    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+    render(<DocumentReviewPage documentSlug="review" />);
 
     await user.click(
       await screen.findByRole("button", { name: "Download" }),
@@ -547,50 +576,147 @@ describe("saved document index", () => {
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:pena-markdown");
   });
 
-  it("moves an active document to another workspace", async () => {
+  it("moves a root document into a collection", async () => {
+    let currentDocument = documentResponse;
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
 
-        if (url === "/api/workspaces") {
-          return jsonResponse({
-            workspaces: [
-              {
-                slug: "default",
-                name: "Default",
-                documentCount: 1,
-                createdAt: "2026-07-18T10:00:00.000Z",
-                updatedAt: "2026-07-18T10:00:00.000Z",
-              },
-              {
-                slug: "research",
-                name: "Research",
-                documentCount: 0,
-                createdAt: "2026-07-18T10:00:00.000Z",
-                updatedAt: "2026-07-18T10:00:00.000Z",
-              },
-            ],
-          });
-        }
-
-        if (url === "/api/workspaces/default/documents") {
-          return documentListResponse();
+        if (url === "/api/collections") {
+          return collectionListResponse([researchCollection]);
         }
 
         if (url.endsWith("/feedback")) {
           return jsonResponse({ latestBatchId: null, batches: [] });
         }
 
-        if (
-          url === "/api/workspaces/default/documents/review/move" &&
-          init?.method === "POST"
-        ) {
+        if (url === `${DOCUMENT_URL}/move` && init?.method === "POST") {
+          currentDocument = { ...documentResponse, collectionSlug: "research" };
           return jsonResponse(
-            {
-              error:
-                'A document with slug "review" already exists in workspace "research".',
-            },
-            409,
+            { ...currentDocument, excerpt: "" },
+            200,
+            '"pena-test-2"',
+          );
+        }
+
+        return jsonResponse(currentDocument);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await user.click(await screen.findByRole("button", { name: "Move" }));
+    const destination = screen.getByRole("combobox", {
+      name: "Destination collection",
+    }) as HTMLSelectElement;
+    // The document already sits at the root, so only collections are offered.
+    expect(
+      [...destination.options].map((option) => [option.value, option.text]),
+    ).toEqual([["research", "Research"]]);
+    expect(destination.value).toBe("research");
+    await user.click(screen.getByRole("button", { name: "Move document" }));
+
+    expect(await screen.findByText("Moved to Research.")).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith(`${DOCUMENT_URL}/move`, {
+      method: "POST",
+      // The move is conditional on the exact document state that was loaded.
+      headers: {
+        "content-type": "application/json",
+        "if-match": '"pena-test-1"',
+      },
+      body: JSON.stringify({ collectionSlug: "research" }),
+    });
+    // The URL stays the same, so the page reloads the document in place.
+    expect(
+      screen.getByRole("link", { name: "Research" }).getAttribute("href"),
+    ).toBe("/collections/research");
+    expect(
+      screen.queryByRole("combobox", { name: "Destination collection" }),
+    ).toBeNull();
+  });
+
+  it("moves a filed document back to the root", async () => {
+    let currentDocument = {
+      ...documentResponse,
+      collectionSlug: "research" as string | null,
+    };
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === "/api/collections") {
+          return collectionListResponse([
+            { ...researchCollection, documentCount: 1 },
+            writingCollection,
+          ]);
+        }
+
+        if (url.endsWith("/feedback")) {
+          return jsonResponse({ latestBatchId: null, batches: [] });
+        }
+
+        if (url === `${DOCUMENT_URL}/move` && init?.method === "POST") {
+          currentDocument = { ...documentResponse, collectionSlug: null };
+          return jsonResponse(
+            { ...currentDocument, excerpt: "" },
+            200,
+            '"pena-test-2"',
+          );
+        }
+
+        return jsonResponse(currentDocument);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await user.click(await screen.findByRole("button", { name: "Move" }));
+    const destination = screen.getByRole("combobox", {
+      name: "Destination collection",
+    }) as HTMLSelectElement;
+    // Root comes first; the current collection is not a destination.
+    expect(
+      [...destination.options].map((option) => [option.value, option.text]),
+    ).toEqual([
+      ["", "Root"],
+      ["writing", "Writing"],
+    ]);
+    expect(destination.value).toBe("");
+    await user.click(screen.getByRole("button", { name: "Move document" }));
+
+    expect(await screen.findByText("Moved to the root.")).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith(`${DOCUMENT_URL}/move`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "if-match": '"pena-test-1"',
+      },
+      body: JSON.stringify({ collectionSlug: null }),
+    });
+    expect(screen.queryByRole("link", { name: "Research" })).toBeNull();
+  });
+
+  it("reports a failed move without leaving the page", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === "/api/collections") {
+          return collectionListResponse([researchCollection]);
+        }
+
+        if (url.endsWith("/feedback")) {
+          return jsonResponse({ latestBatchId: null, batches: [] });
+        }
+
+        if (url === `${DOCUMENT_URL}/move` && init?.method === "POST") {
+          return jsonResponse(
+            { error: 'No collection exists with slug "research".' },
+            404,
           );
         }
 
@@ -600,47 +726,146 @@ describe("saved document index", () => {
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
 
-    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+    render(<DocumentReviewPage documentSlug="review" />);
 
-    await screen.findByRole("button", { name: "Move" });
-    await user.click(screen.getByRole("button", { name: "Move" }));
-    expect(
-      (screen.getByRole("combobox", {
-        name: "Destination workspace",
-      }) as HTMLSelectElement).value,
-    ).toBe("research");
+    await user.click(await screen.findByRole("button", { name: "Move" }));
     await user.click(screen.getByRole("button", { name: "Move document" }));
 
     expect(
-      await screen.findByText(
-        'A document with slug "review" already exists in workspace "research".',
-      ),
+      await screen.findByText('No collection exists with slug "research".'),
     ).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/workspaces/default/documents/review/move",
-      {
-        method: "POST",
-        // The move is conditional on the exact document state that was loaded.
-        headers: {
-          "content-type": "application/json",
-          "if-match": '"pena-test-1"',
-        },
-        body: JSON.stringify({ workspaceSlug: "research" }),
-      },
-    );
+    expect(screen.getAllByRole("heading", { name: "Review" })).toHaveLength(1);
   });
 
-  it("outlines the document and links back to the workspace", async () => {
+  it("hides the move action when there is nowhere to move to", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) =>
-        String(input).endsWith("/feedback")
+        String(input) === "/api/collections"
+          ? collectionListResponse()
+          : String(input).endsWith("/feedback")
           ? jsonResponse({ latestBatchId: null, batches: [] })
           : jsonResponse(documentResponse),
       ),
     );
 
-    render(<DocumentReviewPage workspaceSlug="default" documentSlug="review" />);
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await screen.findByRole("button", { name: "Archive" });
+    expect(screen.queryByRole("button", { name: "Move" })).toBeNull();
+  });
+
+  it("archives the document and returns to its collection", async () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...window.location, assign, pathname: "/docs/review" },
+    });
+    const filedDocument = { ...documentResponse, collectionSlug: "research" };
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === "/api/collections") {
+          return collectionListResponse([researchCollection]);
+        }
+
+        if (url.endsWith("/feedback")) {
+          return jsonResponse({ latestBatchId: null, batches: [] });
+        }
+
+        if (url === DOCUMENT_URL && init?.method === "PATCH") {
+          return jsonResponse(
+            {
+              ...filedDocument,
+              archivedAt: "2026-07-19T10:00:00.000Z",
+              excerpt: "",
+            },
+            200,
+            '"pena-test-2"',
+          );
+        }
+
+        return jsonResponse(filedDocument);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await user.click(await screen.findByRole("button", { name: "Archive" }));
+
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith("/collections/research"),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(DOCUMENT_URL, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "if-match": '"pena-test-1"',
+      },
+      body: JSON.stringify({ status: "archived" }),
+    });
+  });
+
+  it("archives a root document and returns to the dashboard", async () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...window.location, assign, pathname: "/docs/review" },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+        String(input) === "/api/collections"
+          ? collectionListResponse()
+          : String(input).endsWith("/feedback")
+          ? jsonResponse({ latestBatchId: null, batches: [] })
+          : init?.method === "PATCH"
+          ? jsonResponse(
+              {
+                ...documentResponse,
+                archivedAt: "2026-07-19T10:00:00.000Z",
+                excerpt: "",
+              },
+              200,
+              '"pena-test-2"',
+            )
+          : jsonResponse(documentResponse),
+      ),
+    );
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await user.click(await screen.findByRole("button", { name: "Archive" }));
+
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+  });
+
+  it("outlines the document and links back through its collections", async () => {
+    const nestedCollection = {
+      ...writingCollection,
+      slug: "payments",
+      name: "Payments",
+      parentSlug: "research",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input) === "/api/collections"
+          ? collectionListResponse([
+              { ...researchCollection, childCount: 1 },
+              nestedCollection,
+            ])
+          : String(input).endsWith("/feedback")
+          ? jsonResponse({ latestBatchId: null, batches: [] })
+          : jsonResponse({ ...documentResponse, collectionSlug: "payments" }),
+      ),
+    );
+
+    render(<DocumentReviewPage documentSlug="review" />);
 
     const outline = await screen.findByRole("complementary", {
       name: "Document outline",
@@ -669,24 +894,54 @@ describe("saved document index", () => {
       "--outline-indent",
     )).toBe("12px");
 
+    // The breadcrumb walks from the root through every ancestor collection.
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+    const crumbs = [...breadcrumb.querySelectorAll("a")].map((link) => [
+      link.textContent,
+      link.getAttribute("href"),
+    ]);
+    expect(crumbs).toEqual([
+      ["All documents", "/"],
+      ["Research", "/collections/research"],
+      ["Payments", "/collections/payments"],
+    ]);
+    // The archive link in the utility bar is scoped to the same collection.
     expect(
-      screen
-        .getByRole("link", { name: "default" })
-        .getAttribute("href"),
-    ).toBe("/workspaces/default");
+      screen.getByRole("link", { name: "Archive" }).getAttribute("href"),
+    ).toBe("/archive?collection=payments");
+  });
+
+  it("links a root document straight back to the dashboard", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input) === "/api/collections"
+          ? collectionListResponse()
+          : String(input).endsWith("/feedback")
+          ? jsonResponse({ latestBatchId: null, batches: [] })
+          : jsonResponse(documentResponse),
+      ),
+    );
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await screen.findByRole("heading", { name: "Review" });
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+    const crumbs = [...breadcrumb.querySelectorAll("a")].map((link) => [
+      link.textContent,
+      link.getAttribute("href"),
+    ]);
+    expect(crumbs).toEqual([["All documents", "/"]]);
+    expect(
+      screen.getByRole("link", { name: "Archive" }).getAttribute("href"),
+    ).toBe("/archive");
   });
 });
 
-function documentListResponse(): Response {
-  return jsonResponse({
-    documents: [
-      {
-        slug: "review",
-        version: 1,
-        updatedAt: "2026-07-18T10:00:00.000Z",
-      },
-    ],
-  });
+function collectionListResponse(
+  collections: unknown[] = [],
+): Response {
+  return jsonResponse({ collections });
 }
 
 function jsonResponse(

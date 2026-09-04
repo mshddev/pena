@@ -1,34 +1,45 @@
-import type { DocumentSummary, WorkspaceSummary } from "@pena/contracts";
+import type { CollectionSummary, DocumentSummary } from "@pena/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   deleteDocument,
   fetchArchive,
+  fetchCollections,
   fetchDocument,
-  fetchWorkspaces,
   unarchiveDocument,
 } from "../../api";
+import {
+  buildCollectionTree,
+  findCollection,
+  flattenCollectionTree,
+  formatCollectionPath,
+} from "../../collections";
 import { UtilityBar } from "../../components/UtilityBar";
 import { formatRelativeTime } from "../../format";
 import { isSearchShortcut, searchShortcutLabel } from "../../shortcuts";
+import {
+  archiveHref,
+  collectionHref,
+  documentHref,
+} from "../document-review/routing";
 import type { Notice } from "../document-review/types";
 
 interface ArchivePageProps {
-  workspaceSlug: string | null;
+  collectionSlug: string | null;
 }
 
-export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
+export function ArchivePage({ collectionSlug }: ArchivePageProps) {
   const [archivedDocuments, setArchivedDocuments] = useState<
     DocumentSummary[]
   >([]);
-  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+  const [collections, setCollections] = useState<CollectionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [query, setQuery] = useState("");
   const [isScopeOpen, setIsScopeOpen] = useState(false);
-  const [restoringKey, setRestoringKey] = useState<string | null>(null);
-  const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [restoringSlug, setRestoringSlug] = useState<string | null>(null);
+  const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const scopeRef = useRef<HTMLDivElement>(null);
@@ -38,12 +49,12 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
     setError(null);
 
     try {
-      const [archiveResponse, workspaceResponse] = await Promise.all([
-        fetchArchive(workspaceSlug),
-        fetchWorkspaces(),
+      const [archiveResponse, collectionResponse] = await Promise.all([
+        fetchArchive(collectionSlug),
+        fetchCollections(),
       ]);
       setArchivedDocuments(archiveResponse.documents);
-      setWorkspaces(workspaceResponse.workspaces);
+      setCollections(collectionResponse.collections);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -53,14 +64,14 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [workspaceSlug]);
+  }, [collectionSlug]);
 
   useEffect(() => {
-    window.document.title = workspaceSlug
-      ? `Archive · ${workspaceSlug} · Pena`
+    window.document.title = collectionSlug
+      ? `Archive · ${collectionSlug} · Pena`
       : "Archive · Pena";
     void loadDocuments();
-  }, [loadDocuments]);
+  }, [collectionSlug, loadDocuments]);
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent): void {
@@ -102,11 +113,17 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
     };
   }, [isScopeOpen]);
 
-  function workspaceName(slug: string): string {
-    return (
-      workspaces.find((workspace) => workspace.slug === slug)?.name ??
-      formatSlug(slug)
-    );
+  const scopeOptions = useMemo(
+    () => flattenCollectionTree(buildCollectionTree(collections)),
+    [collections],
+  );
+
+  function collectionName(slug: string | null): string {
+    if (slug === null) {
+      return "Root";
+    }
+
+    return findCollection(collections, slug)?.name ?? formatSlug(slug);
   }
 
   const matches = useMemo(() => {
@@ -117,45 +134,39 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
     }
 
     return archivedDocuments.filter((document) => {
-      const workspace =
-        workspaces.find((entry) => entry.slug === document.workspaceSlug)
-          ?.name ?? document.workspaceSlug;
+      const path = formatCollectionPath(collections, document.collectionSlug);
 
       return (
         document.slug.toLowerCase().includes(search) ||
         formatSlug(document.slug).toLowerCase().includes(search) ||
         document.title.toLowerCase().includes(search) ||
-        document.workspaceSlug.toLowerCase().includes(search) ||
-        workspace.toLowerCase().includes(search)
+        (document.collectionSlug ?? "").toLowerCase().includes(search) ||
+        path.toLowerCase().includes(search)
       );
     });
-  }, [archivedDocuments, query, workspaces]);
+  }, [archivedDocuments, collections, query]);
 
-  async function handleRestore(
-    documentWorkspaceSlug: string,
-    slug: string,
-  ): Promise<void> {
-    const key = documentKey(documentWorkspaceSlug, slug);
-    setRestoringKey(key);
+  async function handleRestore(document: DocumentSummary): Promise<void> {
+    setRestoringSlug(document.slug);
     setNotice(null);
 
     try {
-      const resource = await fetchDocument(documentWorkspaceSlug, slug);
+      const resource = await fetchDocument(document.slug);
 
       if (!resource) {
         throw new Error("The archived document no longer exists.");
       }
 
-      await unarchiveDocument(documentWorkspaceSlug, slug, resource.etag);
+      await unarchiveDocument(document.slug, resource.etag);
       setArchivedDocuments((current) =>
-        current.filter(
-          (document) =>
-            documentKey(document.workspaceSlug, document.slug) !== key,
-        ),
+        current.filter((entry) => entry.slug !== document.slug),
       );
       setNotice({
         kind: "success",
-        message: `${formatSlug(slug)} unarchived in ${workspaceName(documentWorkspaceSlug)}.`,
+        message:
+          document.collectionSlug === null
+            ? `${document.title} unarchived at the root.`
+            : `${document.title} unarchived in ${collectionName(document.collectionSlug)}.`,
       });
     } catch (restoreError) {
       setNotice({
@@ -166,12 +177,12 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
             : "Could not unarchive the document.",
       });
     } finally {
-      setRestoringKey(null);
+      setRestoringSlug(null);
     }
   }
 
-  function beginDelete(workspace: string, slug: string): void {
-    setDeleteCandidate(documentKey(workspace, slug));
+  function beginDelete(slug: string): void {
+    setDeleteCandidate(slug);
     setNotice(null);
   }
 
@@ -179,32 +190,25 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
     setDeleteCandidate(null);
   }
 
-  async function handleDelete(
-    documentWorkspaceSlug: string,
-    slug: string,
-  ): Promise<void> {
-    const key = documentKey(documentWorkspaceSlug, slug);
-    setDeletingKey(key);
+  async function handleDelete(document: DocumentSummary): Promise<void> {
+    setDeletingSlug(document.slug);
     setNotice(null);
 
     try {
-      const resource = await fetchDocument(documentWorkspaceSlug, slug);
+      const resource = await fetchDocument(document.slug);
 
       if (!resource) {
         throw new Error("The archived document no longer exists.");
       }
 
-      await deleteDocument(documentWorkspaceSlug, slug, resource.etag);
+      await deleteDocument(document.slug, resource.etag);
       setArchivedDocuments((current) =>
-        current.filter(
-          (document) =>
-            documentKey(document.workspaceSlug, document.slug) !== key,
-        ),
+        current.filter((entry) => entry.slug !== document.slug),
       );
       cancelDelete();
       setNotice({
         kind: "success",
-        message: `${formatSlug(slug)} permanently deleted.`,
+        message: `${document.title} permanently deleted.`,
       });
     } catch (deleteError) {
       setNotice({
@@ -215,22 +219,22 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
             : "Could not delete the document.",
       });
     } finally {
-      setDeletingKey(null);
+      setDeletingSlug(null);
     }
   }
 
-  const scopeName = workspaceSlug
-    ? workspaceName(workspaceSlug)
-    : "All workspaces";
+  const scopeName = collectionSlug
+    ? collectionName(collectionSlug)
+    : "All documents";
   const hasDocuments = archivedDocuments.length > 0;
 
   return (
     <div className="archive-shell">
-      <UtilityBar current="archive" workspaceSlug={workspaceSlug} />
+      <UtilityBar current="archive" collectionSlug={collectionSlug} />
 
       <p className="archive-banner">
         <ArchiveGlyph />
-        Archived documents keep their feedback and go back to their workspace
+        Archived documents keep their feedback and go back to their collection
         when you unarchive them.
       </p>
 
@@ -257,19 +261,19 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
             {isScopeOpen ? (
               <nav
                 className="archive-scope-menu"
-                aria-label="Filter the archive by workspace"
+                aria-label="Filter the archive by collection"
               >
                 <ScopeOption
-                  href="/archive"
-                  isActive={workspaceSlug === null}
-                  label="All workspaces"
+                  href={archiveHref(null)}
+                  isActive={collectionSlug === null}
+                  label="All documents"
                 />
-                {workspaces.map((workspace) => (
+                {scopeOptions.map(({ collection, depth }) => (
                   <ScopeOption
-                    href={`/archive?workspace=${encodeURIComponent(workspace.slug)}`}
-                    isActive={workspaceSlug === workspace.slug}
-                    key={workspace.slug}
-                    label={workspace.name}
+                    href={archiveHref(collection.slug)}
+                    isActive={collectionSlug === collection.slug}
+                    key={collection.slug}
+                    label={`${"\u00a0\u00a0".repeat(depth)}${collection.name}`}
                   />
                 ))}
               </nav>
@@ -330,15 +334,15 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
             </span>
             <h2>Nothing archived yet</h2>
             <p>
-              {workspaceSlug
-                ? `Documents you archive from ${workspaceName(workspaceSlug)} land here.`
-                : "Documents you archive from any workspace land here."}{" "}
-              They keep their feedback, and go back to their original workspace
-              when you unarchive them.
+              {collectionSlug
+                ? `Documents you archive from ${collectionName(collectionSlug)} land here.`
+                : "Documents you archive land here."}{" "}
+              They keep their feedback, and go back to their collection when
+              you unarchive them.
             </p>
-            <a href={workspaceSlug ? `/workspaces/${workspaceSlug}` : "/"}>
-              {workspaceSlug
-                ? `Back to ${workspaceName(workspaceSlug)}`
+            <a href={collectionHref(collectionSlug)}>
+              {collectionSlug
+                ? `Back to ${collectionName(collectionSlug)}`
                 : "Back to the dashboard"}
             </a>
           </div>
@@ -356,13 +360,16 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
             </div>
 
             {matches.map((document) => {
-              const key = documentKey(document.workspaceSlug, document.slug);
-              const isConfirmingDelete = deleteCandidate === key;
-              const isRestoring = restoringKey === key;
-              const isDeleting = deletingKey === key;
+              const isConfirmingDelete = deleteCandidate === document.slug;
+              const isRestoring = restoringSlug === document.slug;
+              const isDeleting = deletingSlug === document.slug;
+              const pathLabel = formatCollectionPath(
+                collections,
+                document.collectionSlug,
+              );
 
               return (
-                <article className="archive-row" key={key}>
+                <article className="archive-row" key={document.slug}>
                   <div className="archive-record">
                     <div className="archive-date">
                       <span>Archived</span>
@@ -377,20 +384,18 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
 
                     <div className="archive-document-name">
                       <h2>
-                        <a
-                          href={`/workspaces/${document.workspaceSlug}/documents/${document.slug}`}
-                        >
+                        <a href={documentHref(document.slug)}>
                           {document.title}
                         </a>
                       </h2>
                       <div className="archive-document-meta">
                         <a
-                          className="archive-workspace-link"
-                          href={`/workspaces/${document.workspaceSlug}`}
+                          className="archive-collection-link"
+                          href={collectionHref(document.collectionSlug)}
                         >
-                          {workspaceName(document.workspaceSlug)}
+                          {pathLabel || "Root"}
                         </a>
-                        <code>{document.workspaceSlug}/{document.slug}</code>
+                        <code>{document.slug}</code>
                       </div>
                     </div>
 
@@ -405,12 +410,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                       <button
                         className="restore-button"
                         type="button"
-                        onClick={() =>
-                          void handleRestore(
-                            document.workspaceSlug,
-                            document.slug,
-                          )
-                        }
+                        onClick={() => void handleRestore(document)}
                         disabled={isRestoring || isDeleting}
                       >
                         <RestoreIcon />
@@ -419,9 +419,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                       <button
                         className="permanent-delete-button"
                         type="button"
-                        onClick={() =>
-                          beginDelete(document.workspaceSlug, document.slug)
-                        }
+                        onClick={() => beginDelete(document.slug)}
                         disabled={isRestoring || isDeleting}
                       >
                         Delete permanently
@@ -452,12 +450,7 @@ export function ArchivePage({ workspaceSlug }: ArchivePageProps) {
                         <button
                           className="confirm-delete-button"
                           type="button"
-                          onClick={() =>
-                            void handleDelete(
-                              document.workspaceSlug,
-                              document.slug,
-                            )
-                          }
+                          onClick={() => void handleDelete(document)}
                           disabled={isDeleting}
                         >
                           {isDeleting ? "Deleting" : "Yes, delete permanently"}
@@ -491,10 +484,6 @@ function ScopeOption({ href, isActive, label }: ScopeOptionProps) {
       {label}
     </a>
   );
-}
-
-function documentKey(workspaceSlug: string, documentSlug: string): string {
-  return `${workspaceSlug}/${documentSlug}`;
 }
 
 function formatSlug(slug: string): string {

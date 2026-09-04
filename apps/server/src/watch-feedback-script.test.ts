@@ -49,7 +49,6 @@ describe("Pena feedback watcher", () => {
         .writeHead(200, { "content-type": "application/json" })
         .end(
           JSON.stringify({
-            workspaceSlug: "default",
             documentSlug: "initial-spec",
             documentVersion: 3,
             latestBatchId: 8,
@@ -66,7 +65,6 @@ describe("Pena feedback watcher", () => {
 
     expect(JSON.parse(line)).toEqual({
       type: "pena_feedback_submitted",
-      workspaceSlug: "default",
       documentSlug: "initial-spec",
       documentVersion: 3,
       latestBatchId: 8,
@@ -114,8 +112,6 @@ async function startServer(
 function startWatcher(baseUrl: string): ChildProcessWithoutNullStreams {
   const child = spawn(process.execPath, [
     watcherPath,
-    "--workspace",
-    "default",
     "--document",
     "initial-spec",
     "--base-url",

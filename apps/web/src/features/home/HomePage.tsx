@@ -1,24 +1,24 @@
-import type { FeedbackBatch, WorkspaceSummary } from "@pena/contracts";
+import type { CollectionSummary, FeedbackBatch } from "@pena/contracts";
 import { useCallback, useEffect, useState } from "react";
 
-import { fetchDocuments, fetchFeedback, fetchWorkspaces } from "../../api";
+import { fetchCollections, fetchDocuments, fetchFeedback } from "../../api";
+import { collectionPath } from "../../collections";
 
 import {
-  WorkspaceHome,
-  documentKey,
+  CollectionHome,
   type FeedbackStat,
   type LibraryDocument,
-} from "./WorkspaceHome";
+} from "./CollectionHome";
 
 interface HomePageProps {
-  /** `null` shows every workspace; a slug scopes the library to one. */
-  workspaceSlug: string | null;
+  /** `null` shows the root; a slug opens that collection like a folder. */
+  collectionSlug: string | null;
 }
 
 const RECENT_FEEDBACK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function HomePage({ workspaceSlug }: HomePageProps) {
-  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+export function HomePage({ collectionSlug }: HomePageProps) {
+  const [collections, setCollections] = useState<CollectionSummary[]>([]);
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
   const [feedbackStats, setFeedbackStats] = useState<
     Record<string, FeedbackStat>
@@ -31,34 +31,14 @@ export function HomePage({ workspaceSlug }: HomePageProps) {
     setError(null);
 
     try {
-      const response = await fetchWorkspaces();
-      const allWorkspaces = response.workspaces ?? [];
-      const scoped =
-        workspaceSlug === null
-          ? allWorkspaces
-          : allWorkspaces.filter(
-              (workspace) => workspace.slug === workspaceSlug,
-            );
-      // A scoped route stays readable even when the workspace index is empty.
-      const slugs =
-        scoped.length > 0
-          ? scoped.map((workspace) => workspace.slug)
-          : workspaceSlug
-            ? [workspaceSlug]
-            : [];
-
-      const lists = await Promise.all(
-        slugs.map(async (slug) => {
-          const documentList = await fetchDocuments(slug);
-          return (documentList.documents ?? []).map((summary) => ({
-            ...summary,
-            workspaceSlug: slug,
-          }));
-        }),
-      );
-
-      setWorkspaces(allWorkspaces);
-      setDocuments(lists.flat());
+      // The whole library is small enough to hold at once, and having every
+      // document lets a folder search reach into its subfolders.
+      const [collectionResponse, documentResponse] = await Promise.all([
+        fetchCollections(),
+        fetchDocuments(),
+      ]);
+      setCollections(collectionResponse.collections ?? []);
+      setDocuments(documentResponse.documents ?? []);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -68,12 +48,16 @@ export function HomePage({ workspaceSlug }: HomePageProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [workspaceSlug]);
+  }, []);
 
   useEffect(() => {
+    const path = collectionPath(collections, collectionSlug);
+    const current = path.at(-1);
     window.document.title =
-      workspaceSlug === null ? "Pena" : `${workspaceSlug} · Pena`;
-  }, [workspaceSlug]);
+      collectionSlug === null
+        ? "Pena"
+        : `${current?.name ?? collectionSlug} · Pena`;
+  }, [collectionSlug, collections]);
 
   useEffect(() => {
     void loadLibrary();
@@ -102,19 +86,10 @@ export function HomePage({ workspaceSlug }: HomePageProps) {
     void Promise.all(
       documents.map(async (summary) => {
         try {
-          const response = await fetchFeedback(
-            summary.workspaceSlug,
-            summary.slug,
-          );
-          return [
-            documentKey(summary),
-            summarizeFeedback(response.batches),
-          ] as const;
+          const response = await fetchFeedback(summary.slug);
+          return [summary.slug, summarizeFeedback(response.batches)] as const;
         } catch {
-          return [
-            documentKey(summary),
-            { total: 0, hasRecent: false },
-          ] as const;
+          return [summary.slug, { total: 0, hasRecent: false }] as const;
         }
       }),
     ).then((entries) => {
@@ -129,13 +104,13 @@ export function HomePage({ workspaceSlug }: HomePageProps) {
   }, [documents]);
 
   return (
-    <WorkspaceHome
+    <CollectionHome
+      collections={collections}
+      collectionSlug={collectionSlug}
       documents={documents}
       error={error}
       feedbackStats={feedbackStats}
       isLoading={isLoading}
-      workspaces={workspaces}
-      workspaceSlug={workspaceSlug}
     />
   );
 }

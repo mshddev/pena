@@ -23,14 +23,14 @@ interface PenaLayoutProps {
   activeSectionId: string | null;
   children: ReactNode;
   sections: OutlineSection[];
-  workspaceSlug: string | null;
+  collectionSlug: string | null;
 }
 
 export function PenaLayout({
   activeSectionId,
   children,
   sections,
-  workspaceSlug,
+  collectionSlug,
 }: PenaLayoutProps) {
   const [outlineWidth, setOutlineWidth] = useState<number | null>(
     readSavedOutlineWidth,
@@ -39,7 +39,7 @@ export function PenaLayout({
     readSavedOutlineVisibility,
   );
   const [isResizingOutline, setIsResizingOutline] = useState(false);
-  const workspaceRef = useRef<HTMLElement>(null);
+  const layoutRef = useRef<HTMLElement>(null);
   const dragRef = useRef<{
     pointerId: number;
     startWidth: number;
@@ -47,7 +47,7 @@ export function PenaLayout({
   } | null>(null);
   const renderedOutlineWidth =
     outlineWidth ?? readResponsiveOutlineWidth();
-  const workspaceStyle = outlineWidth === null
+  const layoutStyle = outlineWidth === null
     ? undefined
     : ({
         "--outline-width": `${outlineWidth}px`,
@@ -85,7 +85,7 @@ export function PenaLayout({
     }
 
     const currentWidth =
-      workspaceRef.current
+      layoutRef.current
         ?.querySelector<HTMLElement>(".document-index")
         ?.getBoundingClientRect().width ?? renderedOutlineWidth;
 
@@ -147,14 +147,14 @@ export function PenaLayout({
 
   return (
     <div className="app-shell">
-      <UtilityBar current={null} workspaceSlug={workspaceSlug} />
+      <UtilityBar current={null} collectionSlug={collectionSlug} />
 
       <main
-        className={`workspace${isResizingOutline ? " resizing-outline" : ""}${
+        className={`review-layout${isResizingOutline ? " resizing-outline" : ""}${
           isOutlineOpen ? "" : " outline-collapsed"
         }`}
-        ref={workspaceRef}
-        style={workspaceStyle}
+        ref={layoutRef}
+        style={layoutStyle}
       >
         <DocumentOutline
           activeSectionId={activeSectionId}

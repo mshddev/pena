@@ -1,45 +1,59 @@
 import { describe, expect, it } from "vitest";
 
-import { readAppRoute } from "./routing";
+import {
+  archiveHref,
+  collectionHref,
+  documentHref,
+  readAppRoute,
+} from "./routing";
 
-describe("workspace routing", () => {
-  it("reads home, workspace, document, archive, and management routes", () => {
-    expect(readAppRoute("/")).toEqual({ kind: "home" });
-    expect(readAppRoute("/workspaces")).toEqual({ kind: "workspaces" });
-    expect(readAppRoute("/workspaces/default")).toEqual({
-      kind: "documents",
-      workspaceSlug: "default",
-      documentSlug: null,
+describe("routing", () => {
+  it("reads home, collection, document, archive, and management routes", () => {
+    expect(readAppRoute("/")).toEqual({ kind: "home", collectionSlug: null });
+    expect(readAppRoute("/collections")).toEqual({ kind: "collections" });
+    expect(readAppRoute("/collections/research")).toEqual({
+      kind: "home",
+      collectionSlug: "research",
     });
-    expect(
-      readAppRoute("/workspaces/research/documents/initial-spec"),
-    ).toEqual({
-      kind: "documents",
-      workspaceSlug: "research",
+    expect(readAppRoute("/docs/initial-spec")).toEqual({
+      kind: "document",
       documentSlug: "initial-spec",
     });
     expect(readAppRoute("/archive")).toEqual({
       kind: "archive",
-      workspaceSlug: null,
+      collectionSlug: null,
     });
-    expect(readAppRoute("/archive", "?workspace=research")).toEqual({
+    expect(readAppRoute("/archive", "?collection=research")).toEqual({
       kind: "archive",
-      workspaceSlug: "research",
+      collectionSlug: "research",
     });
   });
 
-  it("rejects incomplete or invalid workspace routes", () => {
+  it("rejects retired workspace routes and invalid slugs", () => {
+    expect(readAppRoute("/workspaces")).toEqual({ kind: "not-found" });
+    expect(readAppRoute("/workspaces/default/documents/initial-spec")).toEqual(
+      { kind: "not-found" },
+    );
     expect(readAppRoute("/documents/initial-spec")).toEqual({
       kind: "not-found",
     });
-    expect(readAppRoute("/workspaces/Invalid_Name")).toEqual({
+    expect(readAppRoute("/docs/Invalid_Name")).toEqual({ kind: "not-found" });
+    expect(readAppRoute("/collections/Invalid_Name")).toEqual({
       kind: "not-found",
     });
-    expect(readAppRoute("/archive", "?workspace=Invalid_Name")).toEqual({
+    expect(readAppRoute("/archive", "?collection=Invalid_Name")).toEqual({
       kind: "not-found",
     });
-    expect(readAppRoute("/workspaces/research/archive")).toEqual({
+    expect(readAppRoute("/collections/research/docs/spec")).toEqual({
       kind: "not-found",
     });
+  });
+
+  it("builds hrefs that the router reads back", () => {
+    expect(documentHref("initial-spec")).toBe("/docs/initial-spec");
+    expect(collectionHref(null)).toBe("/");
+    expect(collectionHref("research")).toBe("/collections/research");
+    expect(archiveHref(null)).toBe("/archive");
+    expect(archiveHref("research")).toBe("/archive?collection=research");
   });
 });

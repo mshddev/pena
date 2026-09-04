@@ -3,6 +3,9 @@ import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import {
+  CollectionNameSchema,
+  CollectionSchema,
+  CollectionSummarySchema,
   DocumentSchema,
   DocumentSummarySchema,
   DocumentVersionSchema,
@@ -11,11 +14,9 @@ import {
   FeedbackReceiptSchema,
   FeedbackResponseSchema,
   FeedbackSubmissionSchema,
-  WorkspaceNameSchema,
-  WorkspaceSchema,
-  WorkspaceSummarySchema,
+  type Collection,
+  type CollectionSummary,
   type DocumentSummary,
-  type DocumentStatus,
   type DocumentVersion,
   type DocumentVersionSummary,
   type FeedbackBatch,
@@ -23,8 +24,6 @@ import {
   type FeedbackResponse,
   type FeedbackSubmission,
   type PenaDocument,
-  type Workspace,
-  type WorkspaceSummary,
 } from "@pena/contracts";
 import Database from "better-sqlite3";
 
@@ -33,51 +32,56 @@ import {
   readDocumentExcerpt,
 } from "./document-preview.js";
 import {
-  DefaultWorkspaceProtectedError,
+  CollectionCycleError,
+  CollectionNameConflictError,
+  CollectionNameInvalidError,
+  CollectionNotEmptyError,
+  CollectionNotFoundError,
+  CollectionSlugConflictError,
   DocumentArchivedError,
   DocumentNotArchivedError,
   DocumentNotFoundError,
   DocumentPreconditionFailedError,
-  DocumentSlugConflictError,
+  DocumentSlugConflictMigrationError,
+  ReservedCollectionSlugMigrationError,
   DocumentVersionNotFoundError,
   FeedbackPreconditionFailedError,
   PersistedDataError,
   UnsupportedSchemaVersionError,
-  WorkspaceNameConflictError,
-  WorkspaceNameInvalidError,
-  WorkspaceNotEmptyError,
-  WorkspaceNotFoundError,
-  WorkspaceSlugConflictError,
+  type CollectionUpdate,
+  type DocumentListFilter,
+  type DocumentPublishOptions,
   type DocumentResource,
-  type DocumentWriteCondition,
   type PenaStore,
 } from "./pena-store.js";
 
-export const DEFAULT_WORKSPACE_SLUG = "default";
-
-const CURRENT_SCHEMA_VERSION = 9;
+const CURRENT_SCHEMA_VERSION = 10;
+const RESERVED_COLLECTION_SLUG = "root";
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
 
 interface SqlitePenaStoreOptions {
   clock?: () => Date;
 }
 
-interface WorkspaceRow {
+interface CollectionRow {
   id: number;
   slug: string;
   name: string;
+  parent_id: number | null;
+  parent_slug: string | null;
   created_at: string;
   updated_at: string;
 }
 
-interface WorkspaceSummaryRow extends WorkspaceRow {
+interface CollectionSummaryRow extends CollectionRow {
   document_count: number;
+  child_count: number;
 }
 
 interface DocumentRow {
   id: number;
-  workspace_id: number;
-  workspace_slug: string;
+  collection_id: number | null;
+  collection_slug: string | null;
   slug: string;
   version_id: number;
   title: string;
@@ -90,11 +94,11 @@ interface DocumentRow {
 
 type DocumentSummaryRow = Omit<
   DocumentRow,
-  "id" | "workspace_id" | "version_id" | "state_token"
+  "id" | "collection_id" | "version_id" | "state_token"
 >;
 
 interface DocumentVersionRow {
-  workspace_slug: string;
+  collection_slug: string | null;
   slug: string;
   title: string;
   content: string;
@@ -111,16 +115,50 @@ interface FeedbackBatchRow {
 
 type FeedbackReceiptRow = Pick<FeedbackBatchRow, "id" | "submitted_at">;
 
+/** A resolved publish destination: `undefined` keeps the current one. */
+type CollectionTarget = CollectionRow | null | undefined;
+
+const DOCUMENT_ROW_SELECT = `
+  SELECT
+    documents.id,
+    documents.collection_id,
+    collections.slug AS collection_slug,
+    documents.slug,
+    current_version.id AS version_id,
+    current_version.title,
+    current_version.content,
+    current_version.version,
+    current_version.published_at AS updated_at,
+    documents.archived_at,
+    documents.state_token
+  FROM documents
+  LEFT JOIN collections ON collections.id = documents.collection_id
+  JOIN document_versions AS current_version
+    ON current_version.document_id = documents.id
+   AND current_version.version = documents.current_version
+`;
+
+const COLLECTION_ROW_SELECT = `
+  SELECT
+    collections.id,
+    collections.slug,
+    collections.name,
+    collections.parent_id,
+    parent.slug AS parent_slug,
+    collections.created_at,
+    collections.updated_at
+  FROM collections
+  LEFT JOIN collections AS parent ON parent.id = collections.parent_id
+`;
+
 export class SqlitePenaStore implements PenaStore {
   private readonly database: Database.Database;
   private readonly clock: () => Date;
   private readonly publishDocumentTransaction: (
-    workspaceSlug: string,
     slug: string,
     title: string,
     content: string,
-    condition?: DocumentWriteCondition,
-    expectedLatestFeedbackBatchId?: number,
+    options: DocumentPublishOptions,
   ) => PenaDocument;
 
   constructor(
@@ -146,27 +184,30 @@ export class SqlitePenaStore implements PenaStore {
 
     this.publishDocumentTransaction = this.database.transaction(
       (
-        workspaceSlug: string,
         slug: string,
         title: string,
         content: string,
-        condition?: DocumentWriteCondition,
-        expectedLatestFeedbackBatchId?: number,
+        {
+          condition,
+          expectedLatestFeedbackBatchId,
+          collectionSlug,
+        }: DocumentPublishOptions,
       ): PenaDocument => {
-        const workspace = this.requireWorkspaceRow(workspaceSlug);
-        const currentDocument = this.getDocumentRow(workspace.id, slug);
+        const target = this.resolveCollectionTarget(collectionSlug);
+        const currentDocument = this.getDocumentRow(slug);
 
         if (!currentDocument) {
           if (condition?.kind === "match") {
             throw new DocumentPreconditionFailedError(0);
           }
 
+          const collection = target ?? null;
           const updatedAt = this.clock().toISOString();
           const result = this.database
-            .prepare<[number, string, string]>(
+            .prepare<[number | null, string, string]>(
               `
                 INSERT INTO documents (
-                  workspace_id,
+                  collection_id,
                   slug,
                   current_version,
                   state_token
@@ -174,7 +215,7 @@ export class SqlitePenaStore implements PenaStore {
                 VALUES (?, ?, 1, ?)
               `,
             )
-            .run(workspace.id, slug, randomUUID());
+            .run(collection?.id ?? null, slug, randomUUID());
           const documentId = Number(result.lastInsertRowid);
           this.database
             .prepare<[number, string, string, string]>(
@@ -192,8 +233,8 @@ export class SqlitePenaStore implements PenaStore {
             .run(documentId, title, content, updatedAt);
 
           return DocumentSchema.parse({
-            workspaceSlug,
             slug,
+            collectionSlug: collection?.slug ?? null,
             title,
             content,
             version: 1,
@@ -209,7 +250,7 @@ export class SqlitePenaStore implements PenaStore {
         this.assertEtag(currentDocument, condition?.etag);
 
         if (currentDocument.archived_at !== null) {
-          throw new DocumentArchivedError(workspaceSlug, slug);
+          throw new DocumentArchivedError(slug);
         }
 
         this.assertLatestFeedbackBatchId(
@@ -217,44 +258,55 @@ export class SqlitePenaStore implements PenaStore {
           expectedLatestFeedbackBatchId,
         );
 
-        if (
-          currentDocument.title === title &&
-          currentDocument.content === content
-        ) {
+        const contentChanged =
+          currentDocument.title !== title ||
+          currentDocument.content !== content;
+        const nextCollectionId =
+          target === undefined
+            ? currentDocument.collection_id
+            : (target?.id ?? null);
+        const collectionChanged =
+          nextCollectionId !== currentDocument.collection_id;
+
+        if (!contentChanged && !collectionChanged) {
           return toDocument(currentDocument);
         }
 
-        const updatedAt = this.clock().toISOString();
-        this.database
-          .prepare<[number, number, string, string, string]>(
-            `
-              INSERT INTO document_versions (
-                document_id,
-                version,
-                title,
-                content,
-                published_at
-              )
-              VALUES (?, ?, ?, ?, ?)
-            `,
-          )
-          .run(
-            currentDocument.id,
-            currentDocument.version + 1,
-            title,
-            content,
-            updatedAt,
-          );
+        const nextVersion = contentChanged
+          ? currentDocument.version + 1
+          : currentDocument.version;
+        const updatedAt = contentChanged
+          ? this.clock().toISOString()
+          : currentDocument.updated_at;
+
+        if (contentChanged) {
+          this.database
+            .prepare<[number, number, string, string, string]>(
+              `
+                INSERT INTO document_versions (
+                  document_id,
+                  version,
+                  title,
+                  content,
+                  published_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+              `,
+            )
+            .run(currentDocument.id, nextVersion, title, content, updatedAt);
+        }
+
         const update = this.database
-          .prepare<[number, string, number, string]>(
+          .prepare<[number, number | null, string, number, string]>(
             `
               UPDATE documents
-              SET current_version = ?, state_token = ?
+              SET current_version = ?, collection_id = ?, state_token = ?
               WHERE id = ? AND state_token = ?
             `,
           )
           .run(
-            currentDocument.version + 1,
+            nextVersion,
+            nextCollectionId,
             randomUUID(),
             currentDocument.id,
             currentDocument.state_token,
@@ -265,11 +317,14 @@ export class SqlitePenaStore implements PenaStore {
         }
 
         return DocumentSchema.parse({
-          workspaceSlug,
           slug,
+          collectionSlug:
+            target === undefined
+              ? currentDocument.collection_slug
+              : (target?.slug ?? null),
           title,
           content,
-          version: currentDocument.version + 1,
+          version: nextVersion,
           updatedAt,
           archivedAt: null,
         });
@@ -277,163 +332,180 @@ export class SqlitePenaStore implements PenaStore {
     );
   }
 
-  listWorkspaces(): WorkspaceSummary[] {
+  listCollections(): CollectionSummary[] {
     const rows = this.database
-      .prepare<[], WorkspaceSummaryRow>(
+      .prepare<[], CollectionSummaryRow>(
         `
           SELECT
-            workspaces.id,
-            workspaces.slug,
-            workspaces.name,
-            workspaces.created_at,
-            workspaces.updated_at,
-            COUNT(documents.id) AS document_count
-          FROM workspaces
-          LEFT JOIN documents ON documents.workspace_id = workspaces.id
-          GROUP BY workspaces.id
-          ORDER BY
-            CASE WHEN workspaces.slug = 'default' THEN 0 ELSE 1 END,
-            workspaces.name COLLATE NOCASE,
-            workspaces.id
+            collections.id,
+            collections.slug,
+            collections.name,
+            collections.parent_id,
+            parent.slug AS parent_slug,
+            collections.created_at,
+            collections.updated_at,
+            (
+              SELECT COUNT(*)
+              FROM documents
+              WHERE documents.collection_id = collections.id
+            ) AS document_count,
+            (
+              SELECT COUNT(*)
+              FROM collections AS child
+              WHERE child.parent_id = collections.id
+            ) AS child_count
+          FROM collections
+          LEFT JOIN collections AS parent ON parent.id = collections.parent_id
+          ORDER BY collections.name COLLATE NOCASE, collections.id
         `,
       )
       .all();
 
-    return rows.map(toWorkspaceSummary);
+    return rows.map(toCollectionSummary);
   }
 
-  createWorkspace(name: string): Workspace {
-    const parsedName = WorkspaceNameSchema.parse(name);
-    const slug = slugifyWorkspaceName(parsedName);
+  createCollection(name: string, parentSlug: string | null = null): Collection {
+    const parsedName = CollectionNameSchema.parse(name);
+    const slug = slugifyCollectionName(parsedName);
 
-    if (!slug) {
-      throw new WorkspaceNameInvalidError();
+    // "root" is how the document list filter names documents outside every
+    // collection, so no collection may claim that slug.
+    if (!slug || slug === RESERVED_COLLECTION_SLUG) {
+      throw new CollectionNameInvalidError();
     }
 
-    if (this.getWorkspaceRow(slug)) {
-      throw new WorkspaceSlugConflictError(slug);
+    const parent = parentSlug === null ? null : this.requireCollectionRow(parentSlug);
+
+    if (this.getCollectionRow(slug)) {
+      throw new CollectionSlugConflictError(slug);
     }
 
-    if (this.getWorkspaceRowByName(parsedName)) {
-      throw new WorkspaceNameConflictError(parsedName);
+    if (this.getCollectionRowByName(parsedName)) {
+      throw new CollectionNameConflictError(parsedName);
     }
 
     const timestamp = this.clock().toISOString();
     this.database
-      .prepare<[string, string, string, string]>(
+      .prepare<[string, string, number | null, string, string]>(
         `
-          INSERT INTO workspaces (slug, name, created_at, updated_at)
-          VALUES (?, ?, ?, ?)
+          INSERT INTO collections (slug, name, parent_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?)
         `,
       )
-      .run(slug, parsedName, timestamp, timestamp);
+      .run(slug, parsedName, parent?.id ?? null, timestamp, timestamp);
 
-    return WorkspaceSchema.parse({
+    return CollectionSchema.parse({
       slug,
       name: parsedName,
+      parentSlug: parent?.slug ?? null,
       createdAt: timestamp,
       updatedAt: timestamp,
     });
   }
 
-  renameWorkspace(slug: string, name: string): Workspace {
-    const workspace = this.requireWorkspaceRow(slug);
+  updateCollection(slug: string, update: CollectionUpdate): Collection {
+    return this.database.transaction(() => {
+      const collection = this.requireCollectionRow(slug);
+      let nextName = collection.name;
+      let nextParent: CollectionRow | null = collection.parent_id === null
+        ? null
+        : this.requireCollectionRowById(collection.parent_id);
 
-    if (slug === DEFAULT_WORKSPACE_SLUG) {
-      throw new DefaultWorkspaceProtectedError("rename");
-    }
+      if (update.name !== undefined) {
+        nextName = CollectionNameSchema.parse(update.name);
+        const conflicting = this.getCollectionRowByName(nextName);
 
-    const parsedName = WorkspaceNameSchema.parse(name);
-    const conflictingWorkspace = this.getWorkspaceRowByName(parsedName);
+        if (conflicting && conflicting.id !== collection.id) {
+          throw new CollectionNameConflictError(nextName);
+        }
+      }
 
-    if (conflictingWorkspace && conflictingWorkspace.id !== workspace.id) {
-      throw new WorkspaceNameConflictError(parsedName);
-    }
+      if (update.parentSlug !== undefined) {
+        nextParent =
+          update.parentSlug === null
+            ? null
+            : this.requireCollectionRow(update.parentSlug);
+        this.assertNoCycle(collection, nextParent);
+      }
 
-    if (workspace.name === parsedName) {
-      return toWorkspace(workspace);
-    }
+      const nextParentId = nextParent?.id ?? null;
 
-    const updatedAt = this.clock().toISOString();
-    this.database
-      .prepare<[string, string, number]>(
-        "UPDATE workspaces SET name = ?, updated_at = ? WHERE id = ?",
-      )
-      .run(parsedName, updatedAt, workspace.id);
+      if (
+        nextName === collection.name &&
+        nextParentId === collection.parent_id
+      ) {
+        return toCollection(collection);
+      }
 
-    return WorkspaceSchema.parse({
-      slug,
-      name: parsedName,
-      createdAt: workspace.created_at,
-      updatedAt,
-    });
+      const updatedAt = this.clock().toISOString();
+      this.database
+        .prepare<[string, number | null, string, number]>(
+          `
+            UPDATE collections
+            SET name = ?, parent_id = ?, updated_at = ?
+            WHERE id = ?
+          `,
+        )
+        .run(nextName, nextParentId, updatedAt, collection.id);
+
+      return CollectionSchema.parse({
+        slug,
+        name: nextName,
+        parentSlug: nextParent?.slug ?? null,
+        createdAt: collection.created_at,
+        updatedAt,
+      });
+    })();
   }
 
-  deleteWorkspace(slug: string): void {
-    const workspace = this.requireWorkspaceRow(slug);
-
-    if (slug === DEFAULT_WORKSPACE_SLUG) {
-      throw new DefaultWorkspaceProtectedError("delete");
-    }
-
-    const document = this.database
-      .prepare<[number], { id: number }>(
-        "SELECT id FROM documents WHERE workspace_id = ? LIMIT 1",
+  deleteCollection(slug: string): void {
+    const collection = this.requireCollectionRow(slug);
+    const occupant = this.database
+      .prepare<[number, number], { id: number }>(
+        `
+          SELECT id FROM documents WHERE collection_id = ?
+          UNION ALL
+          SELECT id FROM collections WHERE parent_id = ?
+          LIMIT 1
+        `,
       )
-      .get(workspace.id);
+      .get(collection.id, collection.id);
 
-    if (document) {
-      throw new WorkspaceNotEmptyError(slug);
+    if (occupant) {
+      throw new CollectionNotEmptyError(slug);
     }
 
     this.database
-      .prepare<[number]>("DELETE FROM workspaces WHERE id = ?")
-      .run(workspace.id);
+      .prepare<[number]>("DELETE FROM collections WHERE id = ?")
+      .run(collection.id);
   }
 
   publishDocument(
-    workspaceSlug: string,
     slug: string,
     title: string,
     content: string,
-    condition?: DocumentWriteCondition,
-    expectedLatestFeedbackBatchId?: number,
+    options: DocumentPublishOptions = {},
   ): PenaDocument {
-    return this.publishDocumentTransaction(
-      workspaceSlug,
-      slug,
-      title,
-      content,
-      condition,
-      expectedLatestFeedbackBatchId,
-    );
+    return this.publishDocumentTransaction(slug, title, content, options);
   }
 
-  getDocument(workspaceSlug: string, slug: string): PenaDocument | null {
-    const workspace = this.requireWorkspaceRow(workspaceSlug);
-    const row = this.getDocumentRow(workspace.id, slug);
+  getDocument(slug: string): PenaDocument | null {
+    const row = this.getDocumentRow(slug);
     return row ? toDocument(row) : null;
   }
 
-  getDocumentResource(
-    workspaceSlug: string,
-    slug: string,
-  ): DocumentResource<PenaDocument> | null {
-    const workspace = this.requireWorkspaceRow(workspaceSlug);
-    const row = this.getDocumentRow(workspace.id, slug);
+  getDocumentResource(slug: string): DocumentResource<PenaDocument> | null {
+    const row = this.getDocumentRow(slug);
     return row ? { value: toDocument(row), etag: documentEtag(row) } : null;
   }
 
-  listDocumentVersions(
-    workspaceSlug: string,
-    slug: string,
-  ): DocumentVersionSummary[] {
-    const document = this.requireDocumentRow(workspaceSlug, slug);
+  listDocumentVersions(slug: string): DocumentVersionSummary[] {
+    const document = this.requireDocumentRow(slug);
     const rows = this.database
       .prepare<[number], DocumentVersionRow>(
         `
           SELECT
-            workspaces.slug AS workspace_slug,
+            collections.slug AS collection_slug,
             documents.slug,
             document_versions.title,
             document_versions.content,
@@ -441,7 +513,7 @@ export class SqlitePenaStore implements PenaStore {
             document_versions.published_at
           FROM document_versions
           JOIN documents ON documents.id = document_versions.document_id
-          JOIN workspaces ON workspaces.id = documents.workspace_id
+          LEFT JOIN collections ON collections.id = documents.collection_id
           WHERE document_versions.document_id = ?
           ORDER BY document_versions.version DESC
         `,
@@ -451,34 +523,29 @@ export class SqlitePenaStore implements PenaStore {
     return rows.map(toDocumentVersionSummary);
   }
 
-  getDocumentVersion(
-    workspaceSlug: string,
-    slug: string,
-    version: number,
-  ): DocumentVersion | null {
-    const document = this.requireDocumentRow(workspaceSlug, slug);
+  getDocumentVersion(slug: string, version: number): DocumentVersion | null {
+    const document = this.requireDocumentRow(slug);
     const row = this.getDocumentVersionRow(document.id, version);
     return row ? toDocumentVersion(row) : null;
   }
 
   restoreDocumentVersion(
-    workspaceSlug: string,
     slug: string,
     version: number,
     expectedEtag?: string,
   ): PenaDocument {
     return this.database.transaction(() => {
-      const current = this.requireDocumentRow(workspaceSlug, slug);
+      const current = this.requireDocumentRow(slug);
       this.assertEtag(current, expectedEtag);
 
       if (current.archived_at !== null) {
-        throw new DocumentArchivedError(workspaceSlug, slug);
+        throw new DocumentArchivedError(slug);
       }
 
       const historical = this.getDocumentVersionRow(current.id, version);
 
       if (!historical) {
-        throw new DocumentVersionNotFoundError(workspaceSlug, slug, version);
+        throw new DocumentVersionNotFoundError(slug, version);
       }
 
       if (
@@ -525,8 +592,8 @@ export class SqlitePenaStore implements PenaStore {
       }
 
       return DocumentSchema.parse({
-        workspaceSlug,
         slug,
+        collectionSlug: current.collection_slug,
         title: historical.title,
         content: historical.content,
         version: nextVersion,
@@ -536,24 +603,33 @@ export class SqlitePenaStore implements PenaStore {
     })();
   }
 
-  listDocuments(
-    workspaceSlug: string,
-    status: DocumentStatus = "active",
-  ): DocumentSummary[] {
-    const workspace = this.requireWorkspaceRow(workspaceSlug);
-    const statusFilter =
+  listDocuments({
+    status = "active",
+    collectionSlug,
+  }: DocumentListFilter = {}): DocumentSummary[] {
+    const conditions = [
       status === "archived"
         ? "documents.archived_at IS NOT NULL"
-        : "documents.archived_at IS NULL";
+        : "documents.archived_at IS NULL",
+    ];
+    const parameters: number[] = [];
+
+    if (collectionSlug === null) {
+      conditions.push("documents.collection_id IS NULL");
+    } else if (collectionSlug !== undefined) {
+      conditions.push("documents.collection_id = ?");
+      parameters.push(this.requireCollectionRow(collectionSlug).id);
+    }
+
     const orderColumn =
       status === "archived"
         ? "documents.archived_at"
         : "current_version.published_at";
     const rows = this.database
-      .prepare<[number], DocumentSummaryRow>(
+      .prepare<number[], DocumentSummaryRow>(
         `
           SELECT
-            workspaces.slug AS workspace_slug,
+            collections.slug AS collection_slug,
             documents.slug,
             current_version.title,
             current_version.content,
@@ -561,106 +637,57 @@ export class SqlitePenaStore implements PenaStore {
             current_version.published_at AS updated_at,
             documents.archived_at
           FROM documents
-          JOIN workspaces ON workspaces.id = documents.workspace_id
+          LEFT JOIN collections ON collections.id = documents.collection_id
           JOIN document_versions AS current_version
             ON current_version.document_id = documents.id
            AND current_version.version = documents.current_version
-          WHERE documents.workspace_id = ? AND ${statusFilter}
+          WHERE ${conditions.join(" AND ")}
           ORDER BY ${orderColumn} DESC, documents.id DESC
         `,
       )
-      .all(workspace.id);
+      .all(...parameters);
 
     return rows.map(toDocumentSummary);
   }
 
-  listArchivedDocuments(workspaceSlug?: string): DocumentSummary[] {
-    const workspace = workspaceSlug
-      ? this.requireWorkspaceRow(workspaceSlug)
-      : null;
-    const rows = workspace
-      ? this.database
-          .prepare<[number], DocumentSummaryRow>(
-            `
-              SELECT
-                workspaces.slug AS workspace_slug,
-                documents.slug,
-                current_version.title,
-                current_version.content,
-                current_version.version,
-                current_version.published_at AS updated_at,
-                documents.archived_at
-              FROM documents
-              JOIN workspaces ON workspaces.id = documents.workspace_id
-              JOIN document_versions AS current_version
-                ON current_version.document_id = documents.id
-               AND current_version.version = documents.current_version
-              WHERE documents.workspace_id = ?
-                AND documents.archived_at IS NOT NULL
-              ORDER BY documents.archived_at DESC, documents.id DESC
-            `,
-          )
-          .all(workspace.id)
-      : this.database
-          .prepare<[], DocumentSummaryRow>(
-            `
-              SELECT
-                workspaces.slug AS workspace_slug,
-                documents.slug,
-                current_version.title,
-                current_version.content,
-                current_version.version,
-                current_version.published_at AS updated_at,
-                documents.archived_at
-              FROM documents
-              JOIN workspaces ON workspaces.id = documents.workspace_id
-              JOIN document_versions AS current_version
-                ON current_version.document_id = documents.id
-               AND current_version.version = documents.current_version
-              WHERE documents.archived_at IS NOT NULL
-              ORDER BY documents.archived_at DESC, documents.id DESC
-            `,
-          )
-          .all();
-
-    return rows.map(toDocumentSummary);
+  listArchivedDocuments(collectionSlug?: string | null): DocumentSummary[] {
+    return this.listDocuments({
+      status: "archived",
+      ...(collectionSlug === undefined ? {} : { collectionSlug }),
+    });
   }
 
   moveDocument(
-    workspaceSlug: string,
     slug: string,
-    destinationWorkspaceSlug: string,
+    collectionSlug: string | null,
     expectedEtag?: string,
   ): DocumentSummary {
-    const document = this.requireDocumentRow(workspaceSlug, slug);
+    const document = this.requireDocumentRow(slug);
     this.assertEtag(document, expectedEtag);
 
     if (document.archived_at !== null) {
-      throw new DocumentArchivedError(workspaceSlug, slug);
+      throw new DocumentArchivedError(slug);
     }
 
-    const destinationWorkspace = this.requireWorkspaceRow(
-      destinationWorkspaceSlug,
-    );
+    const destination =
+      collectionSlug === null
+        ? null
+        : this.requireCollectionRow(collectionSlug);
 
-    if (workspaceSlug === destinationWorkspaceSlug) {
+    if ((destination?.id ?? null) === document.collection_id) {
       return toDocumentSummary(document);
     }
 
-    if (this.getDocumentRow(destinationWorkspace.id, slug)) {
-      throw new DocumentSlugConflictError(destinationWorkspaceSlug, slug);
-    }
-
     const update = this.database
-      .prepare<[number, string, number, string]>(
+      .prepare<[number | null, string, number, string]>(
         `
           UPDATE documents
-          SET workspace_id = ?, state_token = ?
+          SET collection_id = ?, state_token = ?
           WHERE id = ? AND state_token = ?
         `,
       )
       .run(
-        destinationWorkspace.id,
+        destination?.id ?? null,
         randomUUID(),
         document.id,
         document.state_token,
@@ -672,16 +699,12 @@ export class SqlitePenaStore implements PenaStore {
 
     return toDocumentSummary({
       ...document,
-      workspace_slug: destinationWorkspaceSlug,
+      collection_slug: destination?.slug ?? null,
     });
   }
 
-  archiveDocument(
-    workspaceSlug: string,
-    slug: string,
-    expectedEtag?: string,
-  ): DocumentSummary {
-    const document = this.requireDocumentRow(workspaceSlug, slug);
+  archiveDocument(slug: string, expectedEtag?: string): DocumentSummary {
+    const document = this.requireDocumentRow(slug);
     this.assertEtag(document, expectedEtag);
 
     if (document.archived_at !== null) {
@@ -706,12 +729,8 @@ export class SqlitePenaStore implements PenaStore {
     return toDocumentSummary({ ...document, archived_at: archivedAt });
   }
 
-  unarchiveDocument(
-    workspaceSlug: string,
-    slug: string,
-    expectedEtag?: string,
-  ): DocumentSummary {
-    const document = this.requireDocumentRow(workspaceSlug, slug);
+  unarchiveDocument(slug: string, expectedEtag?: string): DocumentSummary {
+    const document = this.requireDocumentRow(slug);
     this.assertEtag(document, expectedEtag);
 
     if (document.archived_at === null) {
@@ -735,16 +754,12 @@ export class SqlitePenaStore implements PenaStore {
     return toDocumentSummary({ ...document, archived_at: null });
   }
 
-  deleteArchivedDocument(
-    workspaceSlug: string,
-    slug: string,
-    expectedEtag?: string,
-  ): void {
-    const document = this.requireDocumentRow(workspaceSlug, slug);
+  deleteArchivedDocument(slug: string, expectedEtag?: string): void {
+    const document = this.requireDocumentRow(slug);
     this.assertEtag(document, expectedEtag);
 
     if (document.archived_at === null) {
-      throw new DocumentNotArchivedError(workspaceSlug, slug);
+      throw new DocumentNotArchivedError(slug);
     }
 
     const deletion = this.database
@@ -759,16 +774,15 @@ export class SqlitePenaStore implements PenaStore {
   }
 
   addFeedback(
-    workspaceSlug: string,
     slug: string,
     submission: FeedbackSubmission,
     expectedEtag?: string,
   ): FeedbackBatch {
-    const document = this.requireDocumentRow(workspaceSlug, slug);
+    const document = this.requireDocumentRow(slug);
     this.assertEtag(document, expectedEtag);
 
     if (document.archived_at !== null) {
-      throw new DocumentArchivedError(workspaceSlug, slug);
+      throw new DocumentArchivedError(slug);
     }
 
     const validatedSubmission = FeedbackSubmissionSchema.parse(submission);
@@ -810,8 +824,8 @@ export class SqlitePenaStore implements PenaStore {
     });
   }
 
-  getFeedback(workspaceSlug: string, slug: string): FeedbackResponse {
-    const document = this.requireDocumentRow(workspaceSlug, slug);
+  getFeedback(slug: string): FeedbackResponse {
+    const document = this.requireDocumentRow(slug);
     const rows = this.database
       .prepare<[number], FeedbackBatchRow>(
         `
@@ -830,12 +844,8 @@ export class SqlitePenaStore implements PenaStore {
     });
   }
 
-  listFeedbackReceiptsAfter(
-    workspaceSlug: string,
-    slug: string,
-    after: number,
-  ): FeedbackReceipt[] {
-    const document = this.requireDocumentRow(workspaceSlug, slug);
+  listFeedbackReceiptsAfter(slug: string, after: number): FeedbackReceipt[] {
+    const document = this.requireDocumentRow(slug);
     const rows = this.database
       .prepare<[number, number], FeedbackReceiptRow>(
         `
@@ -856,82 +866,98 @@ export class SqlitePenaStore implements PenaStore {
     }
   }
 
-  private getWorkspaceRow(slug: string): WorkspaceRow | null {
+  private resolveCollectionTarget(
+    collectionSlug: string | null | undefined,
+  ): CollectionTarget {
+    if (collectionSlug === undefined) {
+      return undefined;
+    }
+
+    return collectionSlug === null
+      ? null
+      : this.requireCollectionRow(collectionSlug);
+  }
+
+  private getCollectionRow(slug: string): CollectionRow | null {
     return (
       this.database
-        .prepare<[string], WorkspaceRow>(
-          `
-            SELECT id, slug, name, created_at, updated_at
-            FROM workspaces
-            WHERE slug = ?
-          `,
+        .prepare<[string], CollectionRow>(
+          `${COLLECTION_ROW_SELECT} WHERE collections.slug = ?`,
         )
         .get(slug) ?? null
     );
   }
 
-  private getWorkspaceRowByName(name: string): WorkspaceRow | null {
+  private getCollectionRowByName(name: string): CollectionRow | null {
     return (
       this.database
-        .prepare<[string], WorkspaceRow>(
-          `
-            SELECT id, slug, name, created_at, updated_at
-            FROM workspaces
-            WHERE name = ? COLLATE NOCASE
-          `,
+        .prepare<[string], CollectionRow>(
+          `${COLLECTION_ROW_SELECT} WHERE collections.name = ? COLLATE NOCASE`,
         )
         .get(name) ?? null
     );
   }
 
-  private requireWorkspaceRow(slug: string): WorkspaceRow {
-    const workspace = this.getWorkspaceRow(slug);
+  private requireCollectionRow(slug: string): CollectionRow {
+    const collection = this.getCollectionRow(slug);
 
-    if (!workspace) {
-      throw new WorkspaceNotFoundError(slug);
+    if (!collection) {
+      throw new CollectionNotFoundError(slug);
     }
 
-    return workspace;
+    return collection;
   }
 
-  private getDocumentRow(workspaceId: number, slug: string): DocumentRow | null {
+  private requireCollectionRowById(id: number): CollectionRow {
+    const collection = this.database
+      .prepare<[number], CollectionRow>(
+        `${COLLECTION_ROW_SELECT} WHERE collections.id = ?`,
+      )
+      .get(id);
+
+    if (!collection) {
+      throw new PersistedDataError(
+        `Collection ${id} is referenced but does not exist.`,
+      );
+    }
+
+    return collection;
+  }
+
+  /** Walks up from the proposed parent to make sure it is not the collection itself or one of its descendants. */
+  private assertNoCycle(
+    collection: CollectionRow,
+    proposedParent: CollectionRow | null,
+  ): void {
+    let cursor = proposedParent;
+
+    while (cursor) {
+      if (cursor.id === collection.id) {
+        throw new CollectionCycleError(collection.slug);
+      }
+
+      cursor =
+        cursor.parent_id === null
+          ? null
+          : this.requireCollectionRowById(cursor.parent_id);
+    }
+  }
+
+  private getDocumentRow(slug: string): DocumentRow | null {
     return (
       this.database
-        .prepare<[number, string], DocumentRow>(
-          `
-            SELECT
-              documents.id,
-              documents.workspace_id,
-              workspaces.slug AS workspace_slug,
-              documents.slug,
-              current_version.id AS version_id,
-              current_version.title,
-              current_version.content,
-              current_version.version,
-              current_version.published_at AS updated_at,
-              documents.archived_at,
-              documents.state_token
-            FROM documents
-            JOIN workspaces ON workspaces.id = documents.workspace_id
-            JOIN document_versions AS current_version
-              ON current_version.document_id = documents.id
-             AND current_version.version = documents.current_version
-            WHERE documents.workspace_id = ? AND documents.slug = ?
-          `,
+        .prepare<[string], DocumentRow>(
+          `${DOCUMENT_ROW_SELECT} WHERE documents.slug = ?`,
         )
-        .get(workspaceId, slug) ?? null
+        .get(slug) ?? null
     );
   }
 
-  private requireDocumentRow(
-    workspaceSlug: string,
-    slug: string,
-  ): DocumentRow {
-    const workspace = this.requireWorkspaceRow(workspaceSlug);
-    const document = this.getDocumentRow(workspace.id, slug);
+  private requireDocumentRow(slug: string): DocumentRow {
+    const document = this.getDocumentRow(slug);
 
     if (!document) {
-      throw new DocumentNotFoundError(workspaceSlug, slug);
+      throw new DocumentNotFoundError(slug);
     }
 
     return document;
@@ -946,7 +972,7 @@ export class SqlitePenaStore implements PenaStore {
         .prepare<[number, number], DocumentVersionRow>(
           `
             SELECT
-              workspaces.slug AS workspace_slug,
+              collections.slug AS collection_slug,
               documents.slug,
               document_versions.title,
               document_versions.content,
@@ -954,7 +980,7 @@ export class SqlitePenaStore implements PenaStore {
               document_versions.published_at
             FROM document_versions
             JOIN documents ON documents.id = document_versions.document_id
-            JOIN workspaces ON workspaces.id = documents.workspace_id
+            LEFT JOIN collections ON collections.id = documents.collection_id
             WHERE document_versions.document_id = ?
               AND document_versions.version = ?
           `,
@@ -1100,6 +1126,11 @@ function migrateDatabase(database: Database.Database): void {
 
   if (schemaVersion < 9) {
     migrateToFeedbackInstructions(database);
+    schemaVersion = 9;
+  }
+
+  if (schemaVersion < 10) {
+    migrateToCollections(database);
   }
 }
 
@@ -1443,10 +1474,117 @@ function formatDocumentSlug(slug: string): string {
     .join(" ");
 }
 
-function slugifyWorkspaceName(name: string): string {
+
+function migrateToCollections(database: Database.Database): void {
+  const duplicateSlugs = database
+    .prepare<[], { slug: string }>(
+      `
+        SELECT slug
+        FROM documents
+        GROUP BY slug
+        HAVING COUNT(*) > 1
+        ORDER BY slug
+      `,
+    )
+    .all()
+    .map((row) => row.slug);
+
+  if (duplicateSlugs.length > 0) {
+    throw new DocumentSlugConflictMigrationError(duplicateSlugs);
+  }
+
+  // The old workspace layer accepted any non-empty slug, but "root" is how
+  // the document list names documents outside every collection.
+  const reservedWorkspace = database
+    .prepare<[string], { slug: string }>(
+      "SELECT slug FROM workspaces WHERE slug = ?",
+    )
+    .get(RESERVED_COLLECTION_SLUG);
+
+  if (reservedWorkspace) {
+    throw new ReservedCollectionSlugMigrationError(RESERVED_COLLECTION_SLUG);
+  }
+
+  database.pragma("foreign_keys = OFF");
+
+  try {
+    database.transaction(() => {
+      // Every workspace except "default" becomes a root collection with the
+      // same identity. Documents from "default" move to the root, which is
+      // where a document without a collection lives.
+      database.exec(`
+        CREATE TABLE collections (
+          id         INTEGER PRIMARY KEY,
+          slug       TEXT NOT NULL UNIQUE,
+          name       TEXT NOT NULL COLLATE NOCASE UNIQUE,
+          parent_id  INTEGER REFERENCES collections(id) ON DELETE RESTRICT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        ) STRICT;
+
+        INSERT INTO collections (id, slug, name, parent_id, created_at, updated_at)
+        SELECT id, slug, name, NULL, created_at, updated_at
+        FROM workspaces
+        WHERE slug <> 'default';
+
+        CREATE INDEX collections_parent_id ON collections(parent_id);
+
+        CREATE TABLE documents_with_collections (
+          id               INTEGER PRIMARY KEY,
+          collection_id    INTEGER
+                           REFERENCES collections(id) ON DELETE RESTRICT,
+          slug             TEXT NOT NULL UNIQUE,
+          current_version  INTEGER NOT NULL CHECK (current_version >= 1),
+          archived_at      TEXT,
+          state_token      TEXT NOT NULL
+        ) STRICT;
+
+        INSERT INTO documents_with_collections (
+          id,
+          collection_id,
+          slug,
+          current_version,
+          archived_at,
+          state_token
+        )
+        SELECT
+          documents.id,
+          collections.id,
+          documents.slug,
+          documents.current_version,
+          documents.archived_at,
+          CASE
+            WHEN collections.id IS NULL THEN lower(hex(randomblob(16)))
+            ELSE documents.state_token
+          END
+        FROM documents
+        LEFT JOIN collections ON collections.id = documents.workspace_id;
+
+        DROP TABLE documents;
+        ALTER TABLE documents_with_collections RENAME TO documents;
+        DROP TABLE workspaces;
+
+        CREATE INDEX documents_collection_id_archived_at
+          ON documents(collection_id, archived_at);
+
+        PRAGMA user_version = 10;
+      `);
+    })();
+  } finally {
+    database.pragma("foreign_keys = ON");
+  }
+
+  const foreignKeyViolations = database.pragma("foreign_key_check") as unknown[];
+
+  if (foreignKeyViolations.length > 0) {
+    throw new Error("The collections migration produced invalid foreign keys.");
+  }
+}
+
+function slugifyCollectionName(name: string): string {
   return name
     .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
@@ -1454,26 +1592,28 @@ function slugifyWorkspaceName(name: string): string {
     .replace(/-+$/g, "");
 }
 
-function toWorkspace(row: WorkspaceRow): Workspace {
-  return WorkspaceSchema.parse({
+function toCollection(row: CollectionRow): Collection {
+  return CollectionSchema.parse({
     slug: row.slug,
     name: row.name,
+    parentSlug: row.parent_slug,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
 }
 
-function toWorkspaceSummary(row: WorkspaceSummaryRow): WorkspaceSummary {
-  return WorkspaceSummarySchema.parse({
-    ...toWorkspace(row),
+function toCollectionSummary(row: CollectionSummaryRow): CollectionSummary {
+  return CollectionSummarySchema.parse({
+    ...toCollection(row),
     documentCount: row.document_count,
+    childCount: row.child_count,
   });
 }
 
 function toDocument(row: DocumentRow): PenaDocument {
   return DocumentSchema.parse({
-    workspaceSlug: row.workspace_slug,
     slug: row.slug,
+    collectionSlug: row.collection_slug,
     title: row.title,
     content: row.content,
     version: row.version,
@@ -1484,8 +1624,8 @@ function toDocument(row: DocumentRow): PenaDocument {
 
 function toDocumentVersion(row: DocumentVersionRow): DocumentVersion {
   return DocumentVersionSchema.parse({
-    workspaceSlug: row.workspace_slug,
     slug: row.slug,
+    collectionSlug: row.collection_slug,
     title: row.title,
     content: row.content,
     version: row.version,
@@ -1497,8 +1637,8 @@ function toDocumentVersionSummary(
   row: DocumentVersionRow,
 ): DocumentVersionSummary {
   return DocumentVersionSummarySchema.parse({
-    workspaceSlug: row.workspace_slug,
     slug: row.slug,
+    collectionSlug: row.collection_slug,
     title: row.title,
     version: row.version,
     updatedAt: row.published_at,
@@ -1511,8 +1651,8 @@ function documentEtag(row: Pick<DocumentRow, "state_token">): string {
 
 function toDocumentSummary(row: DocumentSummaryRow): DocumentSummary {
   return DocumentSummarySchema.parse({
-    workspaceSlug: row.workspace_slug,
     slug: row.slug,
+    collectionSlug: row.collection_slug,
     title: row.title,
     version: row.version,
     updatedAt: row.updated_at,

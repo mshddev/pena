@@ -1,27 +1,31 @@
-export type UtilityBarPage = "dashboard" | "workspaces" | "archive" | null;
+import { archiveHref } from "../features/document-review/routing";
+
+export type UtilityBarPage = "dashboard" | "collections" | "archive" | null;
 
 interface UtilityBarProps {
   current: UtilityBarPage;
-  /** Scopes the Archive link to a workspace when one is in view. */
-  workspaceSlug?: string | null;
+  /** Scopes the Archive link to a collection when one is in view. */
+  collectionSlug?: string | null;
 }
 
-export function UtilityBar({ current, workspaceSlug = null }: UtilityBarProps) {
+export function UtilityBar({
+  current,
+  collectionSlug = null,
+}: UtilityBarProps) {
   return (
     <header className="utility-bar">
       <nav className="utility-links" aria-label="Global navigation">
         <UtilityLink href="/" isCurrent={current === "dashboard"}>
           Dashboard
         </UtilityLink>
-        <UtilityLink href="/workspaces" isCurrent={current === "workspaces"}>
-          Workspaces
+        <UtilityLink
+          href="/collections"
+          isCurrent={current === "collections"}
+        >
+          Collections
         </UtilityLink>
         <UtilityLink
-          href={
-            workspaceSlug
-              ? `/archive?workspace=${encodeURIComponent(workspaceSlug)}`
-              : "/archive"
-          }
+          href={archiveHref(collectionSlug)}
           isCurrent={current === "archive"}
         >
           Archive

@@ -7,11 +7,14 @@ description: Use Pena to upload local images; publish, rename, and move explicit
 
 Pena is a Markdown document review interface running at `http://127.0.0.1:8788`.
 
-Every document belongs to one Pena workspace. Choose one stable lowercase,
-kebab-case document slug for the work, such as `initial-spec`. Reuse the same
-workspace and document slug when publishing the document and reading its
-feedback. Together, the workspace slug and document slug identify the
-document; Pena does not track the agent session.
+Choose one stable lowercase, kebab-case document slug for the work, such as
+`initial-spec`. Document slugs are global: reuse the same slug when publishing
+the document and reading its feedback. The slug alone identifies the document;
+Pena does not track the agent session.
+
+A document lives either at the root or inside one collection. Collections are
+optional folders that nest: each has a `slug`, a `name`, and a `parentSlug`
+that is `null` at the top level.
 
 Every document version contains an explicit title and Markdown content. Choose
 a concise title deliberately; never derive it from the first Markdown heading.
@@ -28,22 +31,40 @@ document before changing existing state. Keep the retained title and ETag
 associated with the local content they describe; never use them to publish a
 different document base.
 
-## Select a workspace
+## Select a collection
 
-1. If the user does not specify a workspace, use the `default` workspace. Always put `default` explicitly in Pena API and browser URLs.
-2. If the user specifies a workspace, retrieve the available workspaces:
+1. If the user does not name a collection, publish at the root. Do not send a
+   `collectionSlug` and do not pass `--collection` or `--root`.
+2. If the user names a collection, retrieve the available collections:
 
    ```bash
    curl --fail --silent --show-error \
-     http://127.0.0.1:8788/api/workspaces
+     http://127.0.0.1:8788/api/collections
    ```
 
-3. Resolve the user's workspace first by exact slug, then by a case-insensitive exact name match. Use the resolved workspace's `slug` in every later request.
-4. If no workspace matches, report that it does not exist. Do not create a workspace unless the user explicitly asks.
+   Each entry has `slug`, `name`, `parentSlug`, `documentCount`, and
+   `childCount`.
+3. Resolve the user's collection first by exact slug, then by a
+   case-insensitive exact name match. Use the resolved collection's `slug` in
+   every later request. When reporting, name the collection with its
+   `parentSlug` chain so nested folders are unambiguous.
+4. If no collection matches, report that it does not exist. Do not create a
+   collection unless the user explicitly asks. To create one:
+
+   ```bash
+   curl --fail --silent --show-error \
+     --request POST \
+     --header "Content-Type: application/json" \
+     --data '{"name":"<collection-name>","parentSlug":"<parent-slug-or-null>"}' \
+     http://127.0.0.1:8788/api/collections
+   ```
+
+   Omit `parentSlug`, or pass `null`, for a top-level collection.
 
 ## Publish a document
 
-1. Choose and state the document title, workspace, and stable document slug.
+1. Choose and state the document title, collection (or root), and stable
+   document slug.
    If the user did not provide a title, choose a concise title from the task
    context. Supply it explicitly to Pena and remove any matching leading H1
    from the staged Markdown. Do not infer API metadata from an existing
@@ -117,18 +138,19 @@ different document base.
 
    ```bash
    node "${CLAUDE_SKILL_DIR}/scripts/publish-document.mjs" \
-     --workspace <workspace-slug> \
      --document <document-slug> \
      --title "<explicit-title>" \
      --file <absolute-markdown-file-path> \
-     --create
+     --create \
+     --collection <collection-slug>
    ```
 
-   The script safely serializes the title and Markdown as JSON. On status
-   `201`, retain the response body's exact title and the top-level `etag`. On
-   `412`, the document already exists; fetch its current title, content, and
-   ETag, then stop to reconcile it. On `404`, report that the workspace does
-   not exist. Never convert a failed create into a blind overwrite.
+   Drop `--collection` to create the document at the root. The script safely
+   serializes the title and Markdown as JSON. On status `201`, retain the
+   response body's exact title and the top-level `etag`. On `412`, the
+   document already exists; fetch its current title, content, and ETag, then
+   stop to reconcile it. On `404`, report that the collection does not exist.
+   Never convert a failed create into a blind overwrite.
 7. For an existing document, use the retained current title and ETag
    immediately. If either is unavailable, fetch the document and retain its
    exact title and response ETag before publishing:
@@ -136,7 +158,7 @@ different document base.
    ```bash
    curl --fail --silent --show-error \
      --dump-header <headers-file> \
-     http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>
+     http://127.0.0.1:8788/api/docs/<document-slug>
    ```
 
    Then publish the complete next version. Preserve the retained title unless
@@ -144,13 +166,14 @@ different document base.
 
    ```bash
    node "${CLAUDE_SKILL_DIR}/scripts/publish-document.mjs" \
-     --workspace <workspace-slug> \
      --document <document-slug> \
      --title "<retained-or-intentionally-changed-title>" \
      --file <absolute-markdown-file-path> \
      --etag '<exact-etag>'
    ```
 
+   Without `--collection` or `--root`, the document stays where it is. Pass
+   one of them only when the user asked to move it as part of the publish.
    On status `200`, replace the retained title and ETag with the returned
    values. On `412`, fetch the newer document and stop to reconcile it; never
    retry the old title or content blindly. If the current document has a
@@ -161,7 +184,6 @@ different document base.
 
    ```bash
    node "${CLAUDE_SKILL_DIR}/scripts/watch-feedback.mjs" \
-     --workspace <workspace-slug> \
      --document <document-slug>
    ```
 
@@ -170,8 +192,8 @@ different document base.
    feedback is committed. Keep the monitor running until the session ends or
    the document is archived. If Monitor is unavailable, report that automatic
    feedback delivery is unavailable and retain the manual read-feedback flow.
-9. Report the published title, version, workspace, slug, and browser URL:
-   `http://127.0.0.1:5173/workspaces/<workspace-slug>/documents/<document-slug>`.
+9. Report the published title, version, collection (or "root"), slug, and
+   browser URL: `http://127.0.0.1:5173/docs/<document-slug>`.
 
 ## Handle automatic feedback
 
@@ -204,7 +226,7 @@ reports a `pena_feedback_submitted` event.
      --header 'If-Match: <exact-etag>' \
      --dump-header <headers-file> \
      --output <feedback-file> \
-     http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>/feedback
+     http://127.0.0.1:8788/api/docs/<document-slug>/feedback
    ```
 
    On HTTP `200`, retain the response ETag and `latestBatchId`. On `412`, fetch
@@ -223,7 +245,6 @@ reports a `pena_feedback_submitted` event.
 
    ```bash
    node "${CLAUDE_SKILL_DIR}/scripts/publish-document.mjs" \
-     --workspace <workspace-slug> \
      --document <document-slug> \
      --title "<retained-title>" \
      --file <absolute-markdown-file-path> \
@@ -251,8 +272,9 @@ returned title and ETag, then report the new title and version.
 ## Move a document
 
 Move a document only when the user explicitly asks. Resolve the destination
-workspace. Use the retained current ETag, or fetch the active document when no
-ETag is available, then move it:
+collection, or use `null` to move the document to the root. Use the retained
+current ETag, or fetch the active document when no ETag is available, then
+move it:
 
 ```bash
 curl --fail --silent --show-error \
@@ -260,14 +282,15 @@ curl --fail --silent --show-error \
   --header "Content-Type: application/json" \
   --header 'If-Match: <exact-etag>' \
   --dump-header <headers-file> \
-  --data '{"workspaceSlug":"<destination-workspace-slug>"}' \
-  http://127.0.0.1:8788/api/workspaces/<source-workspace-slug>/documents/<document-slug>/move
+  --data '{"collectionSlug":"<destination-collection-slug>"}' \
+  http://127.0.0.1:8788/api/docs/<document-slug>/move
 ```
 
-The document's feedback, complete version history, and timestamps move with it.
-Never overwrite a destination document with the same slug. Unarchive an
-archived document before moving it. Retain the response ETag under the
-destination workspace and document slug.
+The document's slug, feedback, complete version history, and timestamps stay
+the same; only its collection changes. Unarchive an archived document before
+moving it. Retain the response ETag. Republishing identical content with a
+different `collectionSlug` also moves the document without creating a version,
+and the ETag still changes.
 
 ## Inspect or restore versions
 
@@ -275,7 +298,7 @@ List immutable versions:
 
 ```bash
 curl --fail --silent --show-error \
-  http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>/versions
+  http://127.0.0.1:8788/api/docs/<document-slug>/versions
 ```
 
 Read one version by appending `/versions/<version>`. Restore a historical
@@ -287,7 +310,7 @@ curl --fail --silent --show-error \
   --request POST \
   --header 'If-Match: <exact-etag>' \
   --dump-header <headers-file> \
-  http://127.0.0.1:8788/api/workspaces/<workspace-slug>/documents/<document-slug>/versions/<version>/restore
+  http://127.0.0.1:8788/api/docs/<document-slug>/versions/<version>/restore
 ```
 
 Restoring a differing title or content creates the next version without
@@ -295,13 +318,32 @@ copying the old version's feedback. Restoring a version already current is a
 no-op. Archived documents must be unarchived first. Retain the response title
 and ETag.
 
+## List documents
+
+List active documents, optionally scoped to one collection:
+
+```bash
+curl --fail --silent --show-error \
+  'http://127.0.0.1:8788/api/docs?collection=<collection-slug>'
+```
+
+Omit `collection` to list every document, or pass `collection=root` for
+documents outside any collection. Add `status=archived` to list archived
+documents instead. Each result carries its `collectionSlug` (`null` at the
+root).
+
 ## Browse archived documents
 
-Retrieve the global archive when the user does not specify a workspace:
+Retrieve the global archive when the user does not specify a collection:
 
 ```bash
 curl --fail --silent --show-error \
   http://127.0.0.1:8788/api/archive
 ```
 
-To filter the archive to one resolved workspace, add `?workspace=<workspace-slug>`. Each result retains its `workspaceSlug`; use that workspace in any later document request. The browser archive is available at `http://127.0.0.1:5173/archive` and accepts the same optional workspace filter.
+To filter the archive to one resolved collection, add
+`?collection=<collection-slug>`, or `?collection=root` for archived documents
+outside every collection. Each result carries its `collectionSlug`. The
+browser archive is available at `http://127.0.0.1:5173/archive` and accepts
+the same optional collection filter. Collections can be browsed at
+`http://127.0.0.1:5173/collections` and `http://127.0.0.1:5173/collections/<collection-slug>`.

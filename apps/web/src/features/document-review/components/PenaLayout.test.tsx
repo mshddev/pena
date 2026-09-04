@@ -24,33 +24,33 @@ describe("PenaLayout", () => {
       <PenaLayout
         activeSectionId={null}
         sections={[]}
-        workspaceSlug="default"
+        collectionSlug={null}
       >
         <div>Document</div>
       </PenaLayout>,
     );
 
-    const workspace = screen.getByRole("main");
+    const layout = screen.getByRole("main");
     const resizer = screen.getByRole("separator", {
       name: "Resize document outline",
     });
 
-    expect(workspace.style.getPropertyValue("--outline-width")).toBe("280px");
+    expect(layout.style.getPropertyValue("--outline-width")).toBe("280px");
     expect(resizer.getAttribute("aria-valuenow")).toBe("280");
 
     resizer.focus();
     await user.keyboard("{ArrowRight}");
 
-    expect(workspace.style.getPropertyValue("--outline-width")).toBe("292px");
+    expect(layout.style.getPropertyValue("--outline-width")).toBe("292px");
     expect(window.localStorage.getItem("pena:outline-width")).toBe("292");
 
     await user.keyboard("{End}");
 
-    expect(workspace.style.getPropertyValue("--outline-width")).toBe("420px");
+    expect(layout.style.getPropertyValue("--outline-width")).toBe("420px");
 
     await user.dblClick(resizer);
 
-    expect(workspace.style.getPropertyValue("--outline-width")).toBe("");
+    expect(layout.style.getPropertyValue("--outline-width")).toBe("");
     expect(window.localStorage.getItem("pena:outline-width")).toBeNull();
   });
 
@@ -61,13 +61,13 @@ describe("PenaLayout", () => {
       <PenaLayout
         activeSectionId={null}
         sections={[]}
-        workspaceSlug="default"
+        collectionSlug={null}
       >
         <section className="document-pane">Document</section>
       </PenaLayout>,
     );
 
-    const workspace = screen.getByRole("main");
+    const layout = screen.getByRole("main");
     const outline = screen.getByRole("complementary", {
       name: "Document outline",
     });
@@ -76,7 +76,7 @@ describe("PenaLayout", () => {
       screen.getByRole("button", { name: "Hide document outline" }),
     );
 
-    expect(workspace.className).toContain("outline-collapsed");
+    expect(layout.className).toContain("outline-collapsed");
     expect(outline.getAttribute("aria-hidden")).toBe("true");
     expect(
       screen.queryByRole("separator", { name: "Resize document outline" }),
@@ -89,7 +89,7 @@ describe("PenaLayout", () => {
       screen.getByRole("button", { name: "Show document outline" }),
     );
 
-    expect(workspace.className).not.toContain("outline-collapsed");
+    expect(layout.className).not.toContain("outline-collapsed");
     expect(outline.getAttribute("aria-hidden")).toBe("false");
     expect(
       screen.getByRole("separator", { name: "Resize document outline" }),
@@ -104,7 +104,7 @@ describe("PenaLayout", () => {
       <PenaLayout
         activeSectionId={null}
         sections={[]}
-        workspaceSlug="default"
+        collectionSlug={null}
       >
         <section className="document-pane">Document</section>
       </PenaLayout>,

@@ -1,4 +1,6 @@
 import type {
+  Collection,
+  CollectionSummary,
   DocumentSummary,
   DocumentStatus,
   DocumentVersion,
@@ -8,8 +10,6 @@ import type {
   FeedbackResponse,
   FeedbackSubmission,
   PenaDocument,
-  Workspace,
-  WorkspaceSummary,
 } from "@pena/contracts";
 
 export type DocumentWriteCondition =
@@ -21,113 +21,92 @@ export interface DocumentResource<T> {
   value: T;
 }
 
+export interface CollectionUpdate {
+  name?: string;
+  parentSlug?: string | null;
+}
+
+export interface DocumentPublishOptions {
+  condition?: DocumentWriteCondition;
+  expectedLatestFeedbackBatchId?: number;
+  /**
+   * Files the document in a collection, or at the root with `null`. Leave it
+   * `undefined` to keep an existing document where it is.
+   */
+  collectionSlug?: string | null;
+}
+
+export interface DocumentListFilter {
+  status?: DocumentStatus;
+  /**
+   * `undefined` lists every document, `null` lists the ones at the root, and a
+   * slug lists the ones filed directly in that collection.
+   */
+  collectionSlug?: string | null;
+}
+
 export interface PenaStore {
-  listWorkspaces(): WorkspaceSummary[];
-  createWorkspace(name: string): Workspace;
-  renameWorkspace(slug: string, name: string): Workspace;
-  deleteWorkspace(slug: string): void;
+  listCollections(): CollectionSummary[];
+  createCollection(name: string, parentSlug?: string | null): Collection;
+  updateCollection(slug: string, update: CollectionUpdate): Collection;
+  deleteCollection(slug: string): void;
   publishDocument(
-    workspaceSlug: string,
     slug: string,
     title: string,
     content: string,
-    condition?: DocumentWriteCondition,
-    expectedLatestFeedbackBatchId?: number,
+    options?: DocumentPublishOptions,
   ): PenaDocument;
-  getDocument(workspaceSlug: string, slug: string): PenaDocument | null;
-  getDocumentResource(
-    workspaceSlug: string,
-    slug: string,
-  ): DocumentResource<PenaDocument> | null;
-  listDocumentVersions(
-    workspaceSlug: string,
-    slug: string,
-  ): DocumentVersionSummary[];
-  getDocumentVersion(
-    workspaceSlug: string,
-    slug: string,
-    version: number,
-  ): DocumentVersion | null;
+  getDocument(slug: string): PenaDocument | null;
+  getDocumentResource(slug: string): DocumentResource<PenaDocument> | null;
+  listDocumentVersions(slug: string): DocumentVersionSummary[];
+  getDocumentVersion(slug: string, version: number): DocumentVersion | null;
   restoreDocumentVersion(
-    workspaceSlug: string,
     slug: string,
     version: number,
     expectedEtag?: string,
   ): PenaDocument;
-  listDocuments(
-    workspaceSlug: string,
-    status?: DocumentStatus,
-  ): DocumentSummary[];
-  listArchivedDocuments(workspaceSlug?: string): DocumentSummary[];
+  listDocuments(filter?: DocumentListFilter): DocumentSummary[];
+  listArchivedDocuments(collectionSlug?: string): DocumentSummary[];
   moveDocument(
-    workspaceSlug: string,
     slug: string,
-    destinationWorkspaceSlug: string,
+    collectionSlug: string | null,
     expectedEtag?: string,
   ): DocumentSummary;
-  archiveDocument(
-    workspaceSlug: string,
-    slug: string,
-    expectedEtag?: string,
-  ): DocumentSummary;
-  unarchiveDocument(
-    workspaceSlug: string,
-    slug: string,
-    expectedEtag?: string,
-  ): DocumentSummary;
-  deleteArchivedDocument(
-    workspaceSlug: string,
-    slug: string,
-    expectedEtag?: string,
-  ): void;
+  archiveDocument(slug: string, expectedEtag?: string): DocumentSummary;
+  unarchiveDocument(slug: string, expectedEtag?: string): DocumentSummary;
+  deleteArchivedDocument(slug: string, expectedEtag?: string): void;
   addFeedback(
-    workspaceSlug: string,
     slug: string,
     submission: FeedbackSubmission,
     expectedEtag?: string,
   ): FeedbackBatch;
-  listFeedbackReceiptsAfter(
-    workspaceSlug: string,
-    slug: string,
-    after: number,
-  ): FeedbackReceipt[];
-  getFeedback(workspaceSlug: string, slug: string): FeedbackResponse;
+  listFeedbackReceiptsAfter(slug: string, after: number): FeedbackReceipt[];
+  getFeedback(slug: string): FeedbackResponse;
   close(): void;
 }
 
 export class DocumentNotFoundError extends Error {
-  constructor(workspaceSlug: string, slug: string) {
-    super(
-      `No document has been published with slug "${slug}" in workspace "${workspaceSlug}".`,
-    );
+  constructor(slug: string) {
+    super(`No document has been published with slug "${slug}".`);
     this.name = "DocumentNotFoundError";
   }
 }
 
 export class DocumentNotArchivedError extends Error {
-  constructor(workspaceSlug: string, slug: string) {
+  constructor(slug: string) {
     super(
-      `The document "${slug}" in workspace "${workspaceSlug}" must be archived before it can be deleted.`,
+      `The document "${slug}" must be archived before it can be deleted.`,
     );
     this.name = "DocumentNotArchivedError";
   }
 }
 
 export class DocumentArchivedError extends Error {
-  constructor(workspaceSlug: string, slug: string) {
+  constructor(slug: string) {
     super(
-      `The document "${slug}" in workspace "${workspaceSlug}" is archived. Unarchive it before changing or reviewing it.`,
+      `The document "${slug}" is archived. Unarchive it before changing or reviewing it.`,
     );
     this.name = "DocumentArchivedError";
-  }
-}
-
-export class DocumentSlugConflictError extends Error {
-  constructor(workspaceSlug: string, slug: string) {
-    super(
-      `A document with slug "${slug}" already exists in workspace "${workspaceSlug}".`,
-    );
-    this.name = "DocumentSlugConflictError";
   }
 }
 
@@ -149,53 +128,57 @@ export class FeedbackPreconditionFailedError extends Error {
 }
 
 export class DocumentVersionNotFoundError extends Error {
-  constructor(workspaceSlug: string, slug: string, version: number) {
-    super(
-      `Version ${version} does not exist for document "${slug}" in workspace "${workspaceSlug}".`,
-    );
+  constructor(slug: string, version: number) {
+    super(`Version ${version} does not exist for document "${slug}".`);
     this.name = "DocumentVersionNotFoundError";
   }
 }
 
-export class WorkspaceNotFoundError extends Error {
+export class CollectionNotFoundError extends Error {
   constructor(slug: string) {
-    super(`No workspace exists with slug "${slug}".`);
-    this.name = "WorkspaceNotFoundError";
+    super(`No collection exists with slug "${slug}".`);
+    this.name = "CollectionNotFoundError";
   }
 }
 
-export class WorkspaceSlugConflictError extends Error {
+export class CollectionSlugConflictError extends Error {
   constructor(slug: string) {
-    super(`A workspace with slug "${slug}" already exists.`);
-    this.name = "WorkspaceSlugConflictError";
+    super(`A collection with slug "${slug}" already exists.`);
+    this.name = "CollectionSlugConflictError";
   }
 }
 
-export class WorkspaceNameInvalidError extends Error {
+export class CollectionNameInvalidError extends Error {
   constructor() {
-    super("The workspace name must contain at least one letter or number.");
-    this.name = "WorkspaceNameInvalidError";
+    super(
+      'The collection name must contain at least one letter or number, and cannot be "root".',
+    );
+    this.name = "CollectionNameInvalidError";
   }
 }
 
-export class WorkspaceNameConflictError extends Error {
+export class CollectionNameConflictError extends Error {
   constructor(name: string) {
-    super(`A workspace named "${name}" already exists.`);
-    this.name = "WorkspaceNameConflictError";
+    super(`A collection named "${name}" already exists.`);
+    this.name = "CollectionNameConflictError";
   }
 }
 
-export class DefaultWorkspaceProtectedError extends Error {
-  constructor(action: "rename" | "delete") {
-    super(`The default workspace cannot be ${action}d.`);
-    this.name = "DefaultWorkspaceProtectedError";
-  }
-}
-
-export class WorkspaceNotEmptyError extends Error {
+export class CollectionNotEmptyError extends Error {
   constructor(slug: string) {
-    super(`The workspace "${slug}" must be empty before it can be deleted.`);
-    this.name = "WorkspaceNotEmptyError";
+    super(
+      `The collection "${slug}" must contain no documents or collections before it can be deleted.`,
+    );
+    this.name = "CollectionNotEmptyError";
+  }
+}
+
+export class CollectionCycleError extends Error {
+  constructor(slug: string) {
+    super(
+      `The collection "${slug}" cannot be moved into itself or one of its descendants.`,
+    );
+    this.name = "CollectionCycleError";
   }
 }
 
@@ -212,5 +195,14 @@ export class UnsupportedSchemaVersionError extends Error {
       `The Pena database uses schema version ${actualVersion}, but this server only supports up to version ${supportedVersion}.`,
     );
     this.name = "UnsupportedSchemaVersionError";
+  }
+}
+
+export class DocumentSlugConflictMigrationError extends Error {
+  constructor(slugs: string[]) {
+    super(
+      `Document slugs must be unique before collections can replace workspaces, but these slugs exist in more than one workspace: ${slugs.join(", ")}.`,
+    );
+    this.name = "DocumentSlugConflictMigrationError";
   }
 }

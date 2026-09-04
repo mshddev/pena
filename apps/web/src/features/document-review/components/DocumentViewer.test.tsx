@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentViewer } from "./DocumentViewer";
 
 const document = {
-  workspaceSlug: "default",
   slug: "highlight-test",
+  collectionSlug: null,
   title: "Highlight Test",
   content: "## Heading\n\nSelected passage.",
   version: 1,

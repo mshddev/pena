@@ -6,10 +6,12 @@ if (args.help) {
   process.stdout.write(
     [
       "Usage:",
-      "  node publish-document.mjs --workspace <slug> --document <slug>",
+      "  node publish-document.mjs --document <slug>",
       "    --title <title> --file <markdown-path> --create",
-      "  node publish-document.mjs --workspace <slug> --document <slug>",
+      "    [--collection <slug> | --root]",
+      "  node publish-document.mjs --document <slug>",
       "    --title <title> --file <markdown-path> --etag <etag>",
+      "    [--collection <slug> | --root]",
       "    [--feedback-match <batch-id>]",
       "    [--base-url <url>]",
       "",
@@ -18,15 +20,21 @@ if (args.help) {
   process.exit(0);
 }
 
-const workspace = requireValue(args, "workspace");
 const document = requireValue(args, "document");
+const collection =
+  typeof args.collection === "string" ? args.collection : null;
+const root = args.root === true;
 const title = requireValue(args, "title").trim();
 const file = requireValue(args, "file");
 const create = args.create === true;
 const etag = typeof args.etag === "string" ? args.etag : null;
 
-if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(workspace)) {
-  fail("The workspace slug is invalid.");
+if (collection !== null && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(collection)) {
+  fail("The collection slug is invalid.");
+}
+
+if (collection !== null && root) {
+  fail("Pass either --collection or --root, not both.");
 }
 
 if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(document)) {
@@ -73,15 +81,20 @@ const baseUrl =
   typeof args["base-url"] === "string"
     ? args["base-url"].replace(/\/+$/, "")
     : "http://127.0.0.1:8788";
-const url =
-  `${baseUrl}/api/workspaces/${encodeURIComponent(workspace)}` +
-  `/documents/${encodeURIComponent(document)}`;
+const url = `${baseUrl}/api/docs/${encodeURIComponent(document)}`;
+const payload = {
+  title,
+  content,
+  // Omitting collectionSlug leaves an existing document where it is.
+  ...(collection !== null ? { collectionSlug: collection } : {}),
+  ...(root ? { collectionSlug: null } : {}),
+};
 
 try {
   const response = await fetch(url, {
     method: "PUT",
     headers,
-    body: JSON.stringify({ title, content }),
+    body: JSON.stringify(payload),
   });
   const responseText = await response.text();
   let body = null;
@@ -126,6 +139,11 @@ function parseArgs(values) {
 
     if (argument === "--create") {
       parsed.create = true;
+      continue;
+    }
+
+    if (argument === "--root") {
+      parsed.root = true;
       continue;
     }
 

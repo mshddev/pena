@@ -1,57 +1,72 @@
-import { DocumentSlugSchema, WorkspaceSlugSchema } from "@pena/contracts";
+import { CollectionSlugSchema, DocumentSlugSchema } from "@pena/contracts";
 
 export type AppRoute =
-  | { kind: "home" }
-  | { kind: "workspaces" }
-  | { kind: "documents"; workspaceSlug: string; documentSlug: string | null }
-  | { kind: "archive"; workspaceSlug: string | null }
+  | { kind: "home"; collectionSlug: string | null }
+  | { kind: "collections" }
+  | { kind: "document"; documentSlug: string }
+  | { kind: "archive"; collectionSlug: string | null }
   | { kind: "not-found" };
 
 export function readAppRoute(pathname: string, search = ""): AppRoute {
   if (pathname === "/") {
-    return { kind: "home" };
+    return { kind: "home", collectionSlug: null };
   }
 
-  if (/^\/workspaces\/?$/.test(pathname)) {
-    return { kind: "workspaces" };
+  if (/^\/collections\/?$/.test(pathname)) {
+    return { kind: "collections" };
   }
 
   if (/^\/archive\/?$/.test(pathname)) {
-    const requestedWorkspace = new URLSearchParams(search).get("workspace");
-    const workspaceSlug = requestedWorkspace
-      ? parseSlug(requestedWorkspace, WorkspaceSlugSchema)
+    const requestedCollection = new URLSearchParams(search).get("collection");
+    const collectionSlug = requestedCollection
+      ? parseSlug(requestedCollection, CollectionSlugSchema)
       : null;
-    return requestedWorkspace && !workspaceSlug
+    return requestedCollection && !collectionSlug
       ? { kind: "not-found" }
-      : { kind: "archive", workspaceSlug };
+      : { kind: "archive", collectionSlug };
   }
 
-  const documentMatch =
-    /^\/workspaces\/([^/]+)\/documents\/([^/]+)\/?$/.exec(pathname);
+  const documentMatch = /^\/docs\/([^/]+)\/?$/.exec(pathname);
 
-  if (documentMatch?.[1] && documentMatch[2]) {
-    const workspaceSlug = parseSlug(documentMatch[1], WorkspaceSlugSchema);
-    const documentSlug = parseSlug(documentMatch[2], DocumentSlugSchema);
-    return workspaceSlug && documentSlug
-      ? { kind: "documents", workspaceSlug, documentSlug }
+  if (documentMatch?.[1]) {
+    const documentSlug = parseSlug(documentMatch[1], DocumentSlugSchema);
+    return documentSlug
+      ? { kind: "document", documentSlug }
       : { kind: "not-found" };
   }
 
-  const workspaceMatch = /^\/workspaces\/([^/]+)\/?$/.exec(pathname);
+  const collectionMatch = /^\/collections\/([^/]+)\/?$/.exec(pathname);
 
-  if (workspaceMatch?.[1]) {
-    const workspaceSlug = parseSlug(workspaceMatch[1], WorkspaceSlugSchema);
-    return workspaceSlug
-      ? { kind: "documents", workspaceSlug, documentSlug: null }
+  if (collectionMatch?.[1]) {
+    const collectionSlug = parseSlug(collectionMatch[1], CollectionSlugSchema);
+    return collectionSlug
+      ? { kind: "home", collectionSlug }
       : { kind: "not-found" };
   }
 
   return { kind: "not-found" };
 }
 
+export function documentHref(documentSlug: string): string {
+  return `/docs/${encodeURIComponent(documentSlug)}`;
+}
+
+/** The folder view for a collection, or the dashboard for the root. */
+export function collectionHref(collectionSlug: string | null): string {
+  return collectionSlug === null
+    ? "/"
+    : `/collections/${encodeURIComponent(collectionSlug)}`;
+}
+
+export function archiveHref(collectionSlug: string | null): string {
+  return collectionSlug === null
+    ? "/archive"
+    : `/archive?collection=${encodeURIComponent(collectionSlug)}`;
+}
+
 function parseSlug(
   value: string,
-  schema: typeof WorkspaceSlugSchema,
+  schema: typeof CollectionSlugSchema,
 ): string | null {
   try {
     const parsed = schema.safeParse(decodeURIComponent(value));

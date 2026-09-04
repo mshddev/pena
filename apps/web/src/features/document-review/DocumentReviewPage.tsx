@@ -1,7 +1,7 @@
 import {
   parseDecisionDocument,
+  type CollectionSummary,
   type PenaDocument,
-  type WorkspaceSummary,
 } from "@pena/contracts";
 import {
   useCallback,
@@ -12,12 +12,18 @@ import {
 
 import {
   archiveDocument,
+  fetchCollections,
   fetchDocument,
   fetchFeedback,
-  fetchWorkspaces,
   moveDocument,
   submitFeedback,
 } from "../../api";
+import {
+  buildCollectionTree,
+  collectionPath,
+  flattenCollectionTree,
+  formatCollectionPath,
+} from "../../collections";
 import { formatClockTime, formatRelativeTime } from "../../format";
 import { isSubmitAllShortcut } from "../../shortcuts";
 import { DocumentViewer } from "./components/DocumentViewer";
@@ -32,6 +38,7 @@ import {
 } from "./decision-feedback";
 import { downloadMarkdown } from "./markdown-download";
 import type { OutlineSection } from "./outline";
+import { collectionHref } from "./routing";
 import type {
   DraftComment,
   DraftDecision,
@@ -41,15 +48,14 @@ import type {
 
 interface DocumentReviewPageProps {
   documentSlug: string;
-  workspaceSlug: string;
 }
 
 const COMPACT_FEEDBACK_BREAKPOINT = 760;
 
-export function DocumentReviewPage({
-  documentSlug,
-  workspaceSlug,
-}: DocumentReviewPageProps) {
+/** Select value that stands for the root, since a slug can never be empty. */
+const ROOT_DESTINATION = "";
+
+export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
   const [currentDocument, setCurrentDocument] = useState<PenaDocument | null>(
     null,
   );
@@ -65,8 +71,8 @@ export function DocumentReviewPage({
   const [isArchiving, setIsArchiving] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
   const [isMoveOpen, setIsMoveOpen] = useState(false);
-  const [moveDestination, setMoveDestination] = useState("");
-  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+  const [moveDestination, setMoveDestination] = useState(ROOT_DESTINATION);
+  const [collections, setCollections] = useState<CollectionSummary[]>([]);
   const [draftFeedback, setDraftFeedback] = useState<DraftFeedback[]>([]);
   const [feedbackInstruction, setFeedbackInstruction] = useState("");
   const [isInstructionComposerOpen, setIsInstructionComposerOpen] =
@@ -88,7 +94,7 @@ export function DocumentReviewPage({
     setNotice(null);
 
     try {
-      const resource = await fetchDocument(workspaceSlug, documentSlug);
+      const resource = await fetchDocument(documentSlug);
 
       if (!resource) {
         setCurrentDocument(null);
@@ -102,11 +108,7 @@ export function DocumentReviewPage({
       const nextSubmittedDecisions =
         parsedDocument.decisions.length > 0
           ? readSubmittedDecisions(
-              await fetchFeedback(
-                workspaceSlug,
-                documentSlug,
-                resource.etag,
-              ),
+              await fetchFeedback(documentSlug, resource.etag),
               parsedDocument.decisions,
             )
           : {};
@@ -126,7 +128,7 @@ export function DocumentReviewPage({
     } finally {
       setIsLoading(false);
     }
-  }, [documentSlug, workspaceSlug]);
+  }, [documentSlug]);
 
   // The rail lists this document's own headings, so the outline is reported
   // back by the viewer that renders them rather than fetched.
@@ -143,26 +145,24 @@ export function DocumentReviewPage({
   }, []);
 
   useEffect(() => {
-    void fetchWorkspaces()
-      .then((response) => setWorkspaces(response.workspaces ?? []))
-      .catch(() => setWorkspaces([]));
+    void fetchCollections()
+      .then((response) => setCollections(response.collections ?? []))
+      .catch(() => setCollections([]));
   }, []);
 
   useEffect(() => {
     if (documentSlug) {
       void loadDocument();
-    } else {
-      window.document.title = `${workspaceSlug} · Pena`;
     }
-  }, [documentSlug, loadDocument, workspaceSlug]);
+  }, [documentSlug, loadDocument]);
 
   useEffect(() => {
     if (currentDocument) {
-      window.document.title = `${currentDocument.title} · ${workspaceSlug} · Pena`;
+      window.document.title = `${currentDocument.title} · Pena`;
     } else if (documentSlug) {
-      window.document.title = `${documentSlug} · ${workspaceSlug} · Pena`;
+      window.document.title = `${documentSlug} · Pena`;
     }
-  }, [currentDocument, documentSlug, workspaceSlug]);
+  }, [currentDocument, documentSlug]);
 
   // Claude republishes while the window sits in the background. Refetching on
   // focus replaces the manual refresh button, but never discards a draft.
@@ -252,7 +252,6 @@ export function DocumentReviewPage({
       }
 
       await submitFeedback(
-        workspaceSlug,
         documentSlug,
         {
           ...(submittedInstruction.trim().length === 0
@@ -331,8 +330,10 @@ export function DocumentReviewPage({
     setNotice(null);
 
     try {
-      await archiveDocument(workspaceSlug, documentSlug, documentEtag);
-      window.location.assign(`/workspaces/${workspaceSlug}`);
+      await archiveDocument(documentSlug, documentEtag);
+      window.location.assign(
+        collectionHref(currentDocument?.collectionSlug ?? null),
+      );
     } catch (error) {
       setNotice({
         kind: "error",
@@ -354,31 +355,24 @@ export function DocumentReviewPage({
       return;
     }
 
-    const firstDestination = workspaces.find(
-      (workspace) => workspace.slug !== workspaceSlug,
-    );
+    const firstDestination = moveDestinations[0];
 
     if (!firstDestination) {
       return;
     }
 
-    setMoveDestination(firstDestination.slug);
+    setMoveDestination(firstDestination.value);
     setIsMoveOpen(true);
     setNotice(null);
   }
 
   function cancelMove(): void {
     setIsMoveOpen(false);
-    setMoveDestination("");
+    setMoveDestination(ROOT_DESTINATION);
   }
 
   async function handleMove(): Promise<void> {
-    if (
-      !documentSlug ||
-      !currentDocument ||
-      !documentEtag ||
-      !moveDestination
-    ) {
+    if (!documentSlug || !currentDocument || !documentEtag) {
       return;
     }
 
@@ -394,34 +388,59 @@ export function DocumentReviewPage({
     setNotice(null);
 
     try {
+      const destination =
+        moveDestination === ROOT_DESTINATION ? null : moveDestination;
       const movedDocument = await moveDocument(
-        workspaceSlug,
         documentSlug,
-        moveDestination,
+        destination,
         documentEtag,
       );
-      window.location.assign(
-        `/workspaces/${movedDocument.workspaceSlug}/documents/${movedDocument.slug}`,
-      );
+      // The URL does not change, so the page reloads its own state.
+      setIsMoveOpen(false);
+      setMoveDestination(ROOT_DESTINATION);
+      await loadDocument();
+      setNotice({
+        kind: "success",
+        message:
+          movedDocument.collectionSlug === null
+            ? "Moved to the root."
+            : `Moved to ${
+                formatCollectionPath(collections, movedDocument.collectionSlug) ||
+                movedDocument.collectionSlug
+              }.`,
+      });
     } catch (error) {
       setNotice({
         kind: "error",
         message:
           error instanceof Error ? error.message : "Could not move the document.",
       });
+    } finally {
       setIsMoving(false);
     }
   }
 
-  const moveDestinations = workspaces.filter(
-    (workspace) => workspace.slug !== workspaceSlug,
-  );
+  const currentCollectionSlug = currentDocument?.collectionSlug ?? null;
+  // Every collection except the current one, plus the root when the document
+  // is not already there. Nested names are indented like a folder tree.
+  const moveDestinations = [
+    ...(currentCollectionSlug === null
+      ? []
+      : [{ value: ROOT_DESTINATION, label: "Root" }]),
+    ...flattenCollectionTree(buildCollectionTree(collections))
+      .filter(({ collection }) => collection.slug !== currentCollectionSlug)
+      .map(({ collection, depth }) => ({
+        value: collection.slug,
+        label: `${"  ".repeat(depth)}${collection.name}`,
+      })),
+  ];
+  const breadcrumbPath = collectionPath(collections, currentCollectionSlug);
 
   return (
     <PenaLayout
       activeSectionId={activeSectionId}
       sections={sections}
-      workspaceSlug={workspaceSlug}
+      collectionSlug={currentCollectionSlug}
     >
       <section
         className={`document-pane${
@@ -434,12 +453,23 @@ export function DocumentReviewPage({
         <header className="document-meta">
           <div className="document-identity">
             <nav className="document-breadcrumb" aria-label="Breadcrumb">
-              <a
-                className="document-breadcrumb-workspace"
-                href={`/workspaces/${workspaceSlug}`}
-              >
-                {workspaceSlug}
+              <a className="document-breadcrumb-collection" href="/">
+                All documents
               </a>
+              {breadcrumbPath.map((collection) => (
+                <span
+                  className="document-breadcrumb-step"
+                  key={collection.slug}
+                >
+                  <span aria-hidden="true">/</span>
+                  <a
+                    className="document-breadcrumb-collection"
+                    href={collectionHref(collection.slug)}
+                  >
+                    {collection.name}
+                  </a>
+                </span>
+              ))}
               <span aria-hidden="true">/</span>
               <span
                 className="document-breadcrumb-current"
@@ -520,17 +550,17 @@ export function DocumentReviewPage({
               <p>Feedback and version history move with it.</p>
             </div>
             <label>
-              <span>Destination workspace</span>
+              <span>Destination collection</span>
               <select
-                aria-label="Destination workspace"
+                aria-label="Destination collection"
                 value={moveDestination}
                 onChange={(event) => setMoveDestination(event.target.value)}
                 disabled={isMoving}
                 autoFocus
               >
-                {moveDestinations.map((workspace) => (
-                  <option value={workspace.slug} key={workspace.slug}>
-                    {workspace.name}
+                {moveDestinations.map((destination) => (
+                  <option value={destination.value} key={destination.value}>
+                    {destination.label}
                   </option>
                 ))}
               </select>
@@ -548,7 +578,7 @@ export function DocumentReviewPage({
                 className="confirm-move-button"
                 type="button"
                 onClick={() => void handleMove()}
-                disabled={!moveDestination || isMoving}
+                disabled={isMoving}
               >
                 {isMoving ? "Moving" : "Move document"}
               </button>

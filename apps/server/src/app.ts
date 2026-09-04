@@ -1,4 +1,7 @@
 import {
+  CollectionCreateRequestSchema,
+  CollectionSlugSchema,
+  CollectionUpdateRequestSchema,
   DecisionBlockSyntaxError,
   DocumentMetadataSchema,
   DocumentMoveRequestSchema,
@@ -9,9 +12,6 @@ import {
   FeedbackReceiptSchema,
   FeedbackSubmissionSchema,
   FeedbackWaitResponseSchema,
-  WorkspaceCreateRequestSchema,
-  WorkspaceSlugSchema,
-  WorkspaceUpdateRequestSchema,
   parseDecisionDocument,
   type FeedbackResponse,
   type FeedbackWaitResponse,
@@ -24,20 +24,19 @@ import Fastify, {
 } from "fastify";
 
 import {
-  DefaultWorkspaceProtectedError,
+  CollectionCycleError,
+  CollectionNameConflictError,
+  CollectionNameInvalidError,
+  CollectionNotEmptyError,
+  CollectionNotFoundError,
+  CollectionSlugConflictError,
   DocumentArchivedError,
   DocumentNotArchivedError,
   DocumentNotFoundError,
   DocumentPreconditionFailedError,
-  DocumentSlugConflictError,
   DocumentVersionNotFoundError,
   FeedbackPreconditionFailedError,
   PersistedDataError,
-  WorkspaceNameConflictError,
-  WorkspaceNameInvalidError,
-  WorkspaceNotEmptyError,
-  WorkspaceNotFoundError,
-  WorkspaceSlugConflictError,
   type DocumentWriteCondition,
   type PenaStore,
 } from "./storage/pena-store.js";
@@ -53,16 +52,21 @@ import {
 } from "./feedback-waiters.js";
 import { extractLeadingDocumentTitle } from "./storage/document-preview.js";
 
-interface WorkspaceParams {
-  workspaceSlug: string;
+interface CollectionParams {
+  collectionSlug: string;
 }
 
-interface DocumentParams extends WorkspaceParams {
+interface DocumentParams {
   documentSlug: string;
 }
 
 interface DocumentVersionParams extends DocumentParams {
   version: string;
+}
+
+interface DocumentListQuery {
+  status?: string;
+  collection?: string;
 }
 
 interface FeedbackWaitQuery {
@@ -76,6 +80,9 @@ interface AssetParams {
 
 const DEFAULT_FEEDBACK_WAIT_TIMEOUT_MS = 25_000;
 const MAX_FEEDBACK_WAIT_TIMEOUT_MS = 30_000;
+
+/** Query value that selects documents at the root, outside every collection. */
+const ROOT_COLLECTION_QUERY = "root";
 
 export function buildApp(
   store: PenaStore,
@@ -175,32 +182,111 @@ export function buildApp(
     },
   );
 
-  app.get("/api/workspaces", async (_request, reply) =>
-    reply.send({ workspaces: store.listWorkspaces() }),
+  app.get("/api/collections", async (_request, reply) =>
+    reply.send({ collections: store.listCollections() }),
   );
 
-  app.get<{ Querystring: { workspace?: string } }>(
+  app.post("/api/collections", async (request, reply) => {
+    const parsedRequest = CollectionCreateRequestSchema.safeParse(
+      request.body,
+    );
+
+    if (!parsedRequest.success) {
+      return reply.code(400).send({
+        error:
+          "The collection name must be between 1 and 80 characters, and the parent slug must be a valid slug or null.",
+      });
+    }
+
+    try {
+      return reply
+        .code(201)
+        .send(
+          store.createCollection(
+            parsedRequest.data.name,
+            parsedRequest.data.parentSlug ?? null,
+          ),
+        );
+    } catch (error) {
+      return sendCollectionMutationError(reply, error);
+    }
+  });
+
+  app.patch<{ Params: CollectionParams }>(
+    "/api/collections/:collectionSlug",
+    async (request, reply) => {
+      const collectionSlug = parseCollectionSlug(
+        request.params.collectionSlug,
+        reply,
+      );
+      const parsedRequest = CollectionUpdateRequestSchema.safeParse(
+        request.body,
+      );
+
+      if (!collectionSlug) {
+        return;
+      }
+
+      if (!parsedRequest.success) {
+        return reply.code(400).send({
+          error:
+            "Provide a collection name of 1 to 80 characters and/or a parent slug (or null for the root).",
+        });
+      }
+
+      try {
+        return reply.send(
+          store.updateCollection(collectionSlug, parsedRequest.data),
+        );
+      } catch (error) {
+        return sendCollectionMutationError(reply, error);
+      }
+    },
+  );
+
+  app.delete<{ Params: CollectionParams }>(
+    "/api/collections/:collectionSlug",
+    async (request, reply) => {
+      const collectionSlug = parseCollectionSlug(
+        request.params.collectionSlug,
+        reply,
+      );
+
+      if (!collectionSlug) {
+        return;
+      }
+
+      try {
+        store.deleteCollection(collectionSlug);
+        return reply.code(204).send();
+      } catch (error) {
+        return sendCollectionMutationError(reply, error);
+      }
+    },
+  );
+
+  app.get<{ Querystring: { collection?: string } }>(
     "/api/archive",
     async (request, reply) => {
-      const requestedWorkspace = request.query.workspace;
-      let workspaceSlug: string | undefined;
+      const requestedCollection = request.query.collection;
+      let collectionSlug: string | undefined;
 
-      if (requestedWorkspace) {
-        const parsedWorkspaceSlug = parseWorkspaceSlug(
-          requestedWorkspace,
+      if (requestedCollection) {
+        const parsedCollectionSlug = parseCollectionSlug(
+          requestedCollection,
           reply,
         );
 
-        if (!parsedWorkspaceSlug) {
+        if (!parsedCollectionSlug) {
           return;
         }
 
-        workspaceSlug = parsedWorkspaceSlug;
+        collectionSlug = parsedCollectionSlug;
       }
 
       try {
         return reply.send({
-          documents: store.listArchivedDocuments(workspaceSlug),
+          documents: store.listArchivedDocuments(collectionSlug),
         });
       } catch (error) {
         return sendDocumentError(reply, error);
@@ -208,89 +294,12 @@ export function buildApp(
     },
   );
 
-  app.post("/api/workspaces", async (request, reply) => {
-    const parsedRequest = WorkspaceCreateRequestSchema.safeParse(request.body);
-
-    if (!parsedRequest.success) {
-      return reply.code(400).send({
-        error: "The workspace name must be between 1 and 80 characters.",
-      });
-    }
-
-    try {
-      return reply.code(201).send(store.createWorkspace(parsedRequest.data.name));
-    } catch (error) {
-      return sendWorkspaceMutationError(reply, error);
-    }
-  });
-
-  app.patch<{ Params: WorkspaceParams }>(
-    "/api/workspaces/:workspaceSlug",
+  app.get<{ Querystring: DocumentListQuery }>(
+    "/api/docs",
     async (request, reply) => {
-      const workspaceSlug = parseWorkspaceSlug(
-        request.params.workspaceSlug,
-        reply,
-      );
-      const parsedRequest = WorkspaceUpdateRequestSchema.safeParse(request.body);
-
-      if (!workspaceSlug) {
-        return;
-      }
-
-      if (!parsedRequest.success) {
-        return reply.code(400).send({
-          error: "The workspace name must be between 1 and 80 characters.",
-        });
-      }
-
-      try {
-        return reply.send(
-          store.renameWorkspace(workspaceSlug, parsedRequest.data.name),
-        );
-      } catch (error) {
-        return sendWorkspaceMutationError(reply, error);
-      }
-    },
-  );
-
-  app.delete<{ Params: WorkspaceParams }>(
-    "/api/workspaces/:workspaceSlug",
-    async (request, reply) => {
-      const workspaceSlug = parseWorkspaceSlug(
-        request.params.workspaceSlug,
-        reply,
-      );
-
-      if (!workspaceSlug) {
-        return;
-      }
-
-      try {
-        store.deleteWorkspace(workspaceSlug);
-        return reply.code(204).send();
-      } catch (error) {
-        return sendWorkspaceMutationError(reply, error);
-      }
-    },
-  );
-
-  app.get<{
-    Params: WorkspaceParams;
-    Querystring: { status?: string };
-  }>(
-    "/api/workspaces/:workspaceSlug/documents",
-    async (request, reply) => {
-      const workspaceSlug = parseWorkspaceSlug(
-        request.params.workspaceSlug,
-        reply,
-      );
       const parsedStatus = DocumentStatusSchema.safeParse(
         request.query.status ?? "active",
       );
-
-      if (!workspaceSlug) {
-        return;
-      }
 
       if (!parsedStatus.success) {
         return reply.code(400).send({
@@ -298,9 +307,29 @@ export function buildApp(
         });
       }
 
+      let collectionSlug: string | null | undefined;
+
+      if (request.query.collection === ROOT_COLLECTION_QUERY) {
+        collectionSlug = null;
+      } else if (request.query.collection) {
+        const parsedCollectionSlug = parseCollectionSlug(
+          request.query.collection,
+          reply,
+        );
+
+        if (!parsedCollectionSlug) {
+          return;
+        }
+
+        collectionSlug = parsedCollectionSlug;
+      }
+
       try {
         return reply.send({
-          documents: store.listDocuments(workspaceSlug, parsedStatus.data),
+          documents: store.listDocuments({
+            status: parsedStatus.data,
+            ...(collectionSlug === undefined ? {} : { collectionSlug }),
+          }),
         });
       } catch (error) {
         return sendDocumentError(reply, error);
@@ -309,7 +338,7 @@ export function buildApp(
   );
 
   app.put<{ Params: DocumentParams }>(
-    "/api/workspaces/:workspaceSlug/documents/:documentSlug",
+    "/api/docs/:documentSlug",
     async (request, reply) => {
       const params = parseDocumentParams(request.params, reply);
 
@@ -322,7 +351,7 @@ export function buildApp(
       if (!parsedRequest.success) {
         return reply.code(400).send({
           error:
-            "The request body must contain a nonblank title of at most 200 characters and Markdown content.",
+            "The request body must contain a nonblank title of at most 200 characters, Markdown content, and optionally a collection slug (or null).",
         });
       }
 
@@ -362,17 +391,18 @@ export function buildApp(
         }
 
         const document = store.publishDocument(
-          params.workspaceSlug,
           params.documentSlug,
           parsedRequest.data.title,
           parsedRequest.data.content,
-          condition,
-          expectedLatestFeedbackBatchId,
+          {
+            condition,
+            expectedLatestFeedbackBatchId,
+            ...(parsedRequest.data.collectionSlug === undefined
+              ? {}
+              : { collectionSlug: parsedRequest.data.collectionSlug }),
+          },
         );
-        const resource = store.getDocumentResource(
-          params.workspaceSlug,
-          params.documentSlug,
-        );
+        const resource = store.getDocumentResource(params.documentSlug);
         return reply
           .header("etag", resource?.etag ?? "")
           .code(condition.kind === "create" ? 201 : 200)
@@ -384,7 +414,7 @@ export function buildApp(
   );
 
   app.get<{ Params: DocumentParams }>(
-    "/api/workspaces/:workspaceSlug/documents/:documentSlug",
+    "/api/docs/:documentSlug",
     async (request, reply) => {
       const params = parseDocumentParams(request.params, reply);
 
@@ -393,14 +423,11 @@ export function buildApp(
       }
 
       try {
-        const resource = store.getDocumentResource(
-          params.workspaceSlug,
-          params.documentSlug,
-        );
+        const resource = store.getDocumentResource(params.documentSlug);
 
         if (!resource) {
           return reply.code(404).send({
-            error: `No document has been published with slug "${params.documentSlug}" in workspace "${params.workspaceSlug}".`,
+            error: `No document has been published with slug "${params.documentSlug}".`,
           });
         }
 
@@ -412,7 +439,7 @@ export function buildApp(
   );
 
   app.get<{ Params: DocumentParams }>(
-    "/api/workspaces/:workspaceSlug/documents/:documentSlug/versions",
+    "/api/docs/:documentSlug/versions",
     async (request, reply) => {
       const params = parseDocumentParams(request.params, reply);
 
@@ -422,10 +449,7 @@ export function buildApp(
 
       try {
         return reply.send({
-          versions: store.listDocumentVersions(
-            params.workspaceSlug,
-            params.documentSlug,
-          ),
+          versions: store.listDocumentVersions(params.documentSlug),
         });
       } catch (error) {
         return sendDocumentError(reply, error);
@@ -434,7 +458,7 @@ export function buildApp(
   );
 
   app.get<{ Params: DocumentVersionParams }>(
-    "/api/workspaces/:workspaceSlug/documents/:documentSlug/versions/:version",
+    "/api/docs/:documentSlug/versions/:version",
     async (request, reply) => {
       const params = parseDocumentVersionParams(request.params, reply);
 
@@ -444,14 +468,12 @@ export function buildApp(
 
       try {
         const version = store.getDocumentVersion(
-          params.workspaceSlug,
           params.documentSlug,
           params.version,
         );
 
         if (!version) {
           throw new DocumentVersionNotFoundError(
-            params.workspaceSlug,
             params.documentSlug,
             params.version,
           );
@@ -465,7 +487,7 @@ export function buildApp(
   );
 
   app.post<{ Params: DocumentVersionParams }>(
-    "/api/workspaces/:workspaceSlug/documents/:documentSlug/versions/:version/restore",
+    "/api/docs/:documentSlug/versions/:version/restore",
     async (request, reply) => {
       const params = parseDocumentVersionParams(request.params, reply);
       const expectedEtag = parseIfMatch(request.headers["if-match"], reply);
@@ -476,15 +498,11 @@ export function buildApp(
 
       try {
         const document = store.restoreDocumentVersion(
-          params.workspaceSlug,
           params.documentSlug,
           params.version,
           expectedEtag,
         );
-        const resource = store.getDocumentResource(
-          params.workspaceSlug,
-          params.documentSlug,
-        );
+        const resource = store.getDocumentResource(params.documentSlug);
         return reply.header("etag", resource?.etag ?? "").send(document);
       } catch (error) {
         return sendDocumentError(reply, error);
@@ -493,7 +511,7 @@ export function buildApp(
   );
 
   app.patch<{ Params: DocumentParams }>(
-    "/api/workspaces/:workspaceSlug/documents/:documentSlug",
+    "/api/docs/:documentSlug",
     async (request, reply) => {
       const params = parseDocumentParams(request.params, reply);
       const parsedRequest = DocumentUpdateRequestSchema.safeParse(request.body);
@@ -520,20 +538,9 @@ export function buildApp(
 
         const document =
           parsedRequest.data.status === "archived"
-            ? store.archiveDocument(
-                params.workspaceSlug,
-                params.documentSlug,
-                expectedEtag,
-              )
-            : store.unarchiveDocument(
-                params.workspaceSlug,
-                params.documentSlug,
-                expectedEtag,
-              );
-        const resource = store.getDocumentResource(
-          params.workspaceSlug,
-          params.documentSlug,
-        );
+            ? store.archiveDocument(params.documentSlug, expectedEtag)
+            : store.unarchiveDocument(params.documentSlug, expectedEtag);
+        const resource = store.getDocumentResource(params.documentSlug);
         return reply.header("etag", resource?.etag ?? "").send(document);
       } catch (error) {
         return sendDocumentError(reply, error);
@@ -542,7 +549,7 @@ export function buildApp(
   );
 
   app.post<{ Params: DocumentParams }>(
-    "/api/workspaces/:workspaceSlug/documents/:documentSlug/move",
+    "/api/docs/:documentSlug/move",
     async (request, reply) => {
       const params = parseDocumentParams(request.params, reply);
       const parsedRequest = DocumentMoveRequestSchema.safeParse(request.body);
@@ -553,7 +560,8 @@ export function buildApp(
 
       if (!parsedRequest.success) {
         return reply.code(400).send({
-          error: "The destination workspace slug is invalid.",
+          error:
+            "The destination must be a collection slug, or null for the root.",
         });
       }
 
@@ -568,22 +576,12 @@ export function buildApp(
         }
 
         const movedDocument = store.moveDocument(
-          params.workspaceSlug,
           params.documentSlug,
-          parsedRequest.data.workspaceSlug,
+          parsedRequest.data.collectionSlug,
           expectedEtag,
         );
-        const resource = store.getDocumentResource(
-          movedDocument.workspaceSlug,
-          movedDocument.slug,
-        );
-        return reply
-          .header("etag", resource?.etag ?? "")
-          .header(
-            "location",
-            `/api/workspaces/${movedDocument.workspaceSlug}/documents/${movedDocument.slug}`,
-          )
-          .send(movedDocument);
+        const resource = store.getDocumentResource(params.documentSlug);
+        return reply.header("etag", resource?.etag ?? "").send(movedDocument);
       } catch (error) {
         return sendDocumentError(reply, error);
       }
@@ -591,7 +589,7 @@ export function buildApp(
   );
 
   app.delete<{ Params: DocumentParams }>(
-    "/api/workspaces/:workspaceSlug/documents/:documentSlug",
+    "/api/docs/:documentSlug",
     async (request, reply) => {
       const params = parseDocumentParams(request.params, reply);
 
@@ -609,11 +607,7 @@ export function buildApp(
           return;
         }
 
-        store.deleteArchivedDocument(
-          params.workspaceSlug,
-          params.documentSlug,
-          expectedEtag,
-        );
+        store.deleteArchivedDocument(params.documentSlug, expectedEtag);
         return reply.code(204).send();
       } catch (error) {
         return sendDocumentError(reply, error);
@@ -622,7 +616,7 @@ export function buildApp(
   );
 
   app.post<{ Params: DocumentParams }>(
-    "/api/workspaces/:workspaceSlug/documents/:documentSlug/feedback",
+    "/api/docs/:documentSlug/feedback",
     async (request, reply) => {
       const params = parseDocumentParams(request.params, reply);
       const parsedSubmission = FeedbackSubmissionSchema.safeParse(request.body);
@@ -648,18 +642,12 @@ export function buildApp(
         }
 
         const batch = store.addFeedback(
-          params.workspaceSlug,
           params.documentSlug,
           parsedSubmission.data,
           expectedEtag,
         );
-        feedbackWaiters.notify(
-          feedbackWaitKey(params.workspaceSlug, params.documentSlug),
-        );
-        const resource = store.getDocumentResource(
-          params.workspaceSlug,
-          params.documentSlug,
-        );
+        feedbackWaiters.notify(feedbackWaitKey(params.documentSlug));
+        const resource = store.getDocumentResource(params.documentSlug);
         return reply
           .header("etag", resource?.etag ?? "")
           .code(201)
@@ -667,7 +655,7 @@ export function buildApp(
       } catch (error) {
         if (error instanceof DocumentNotFoundError) {
           return reply.code(409).send({
-            error: `Publish the "${params.documentSlug}" document in workspace "${params.workspaceSlug}" before submitting feedback.`,
+            error: `Publish the "${params.documentSlug}" document before submitting feedback.`,
           });
         }
 
@@ -680,7 +668,7 @@ export function buildApp(
     Params: DocumentParams;
     Querystring: FeedbackWaitQuery;
   }>(
-    "/api/workspaces/:workspaceSlug/documents/:documentSlug/feedback/wait",
+    "/api/docs/:documentSlug/feedback/wait",
     async (request, reply): Promise<FeedbackWaitResponse | void> => {
       const params = parseDocumentParams(request.params, reply);
       const query = parseFeedbackWaitQuery(request.query, reply);
@@ -690,10 +678,7 @@ export function buildApp(
       }
 
       void reply.header("cache-control", "no-store");
-      const key = feedbackWaitKey(
-        params.workspaceSlug,
-        params.documentSlug,
-      );
+      const key = feedbackWaitKey(params.documentSlug);
 
       try {
         const immediate = getFeedbackWaitResponse(
@@ -773,7 +758,7 @@ export function buildApp(
   );
 
   app.get<{ Params: DocumentParams }>(
-    "/api/workspaces/:workspaceSlug/documents/:documentSlug/feedback",
+    "/api/docs/:documentSlug/feedback",
     async (request, reply): Promise<FeedbackResponse | void> => {
       const params = parseDocumentParams(request.params, reply);
 
@@ -791,16 +776,10 @@ export function buildApp(
           return;
         }
 
-        const resource = store.getDocumentResource(
-          params.workspaceSlug,
-          params.documentSlug,
-        );
+        const resource = store.getDocumentResource(params.documentSlug);
 
         if (!resource) {
-          throw new DocumentNotFoundError(
-            params.workspaceSlug,
-            params.documentSlug,
-          );
+          throw new DocumentNotFoundError(params.documentSlug);
         }
 
         if (expectedEtag && expectedEtag !== resource.etag) {
@@ -809,7 +788,7 @@ export function buildApp(
 
         return reply
           .header("etag", resource.etag)
-          .send(store.getFeedback(params.workspaceSlug, params.documentSlug));
+          .send(store.getFeedback(params.documentSlug));
       } catch (error) {
         if (error instanceof PersistedDataError) {
           await reply.code(500).send({
@@ -826,16 +805,16 @@ export function buildApp(
   return app;
 }
 
-function parseWorkspaceSlug(
+function parseCollectionSlug(
   value: string,
   reply: FastifyReply,
 ): string | null {
-  const parsedSlug = WorkspaceSlugSchema.safeParse(value);
+  const parsedSlug = CollectionSlugSchema.safeParse(value);
 
   if (!parsedSlug.success) {
     void reply.code(400).send({
       error:
-        "The workspace slug must use lowercase letters, numbers, and single hyphens.",
+        "The collection slug must use lowercase letters, numbers, and single hyphens.",
     });
     return null;
   }
@@ -847,12 +826,7 @@ function parseDocumentParams(
   params: DocumentParams,
   reply: FastifyReply,
 ): DocumentParams | null {
-  const workspaceSlug = parseWorkspaceSlug(params.workspaceSlug, reply);
   const documentSlug = DocumentSlugSchema.safeParse(params.documentSlug);
-
-  if (!workspaceSlug) {
-    return null;
-  }
 
   if (!documentSlug.success) {
     void reply.code(400).send({
@@ -862,13 +836,13 @@ function parseDocumentParams(
     return null;
   }
 
-  return { workspaceSlug, documentSlug: documentSlug.data };
+  return { documentSlug: documentSlug.data };
 }
 
 function parseDocumentVersionParams(
   params: DocumentVersionParams,
   reply: FastifyReply,
-): { workspaceSlug: string; documentSlug: string; version: number } | null {
+): { documentSlug: string; version: number } | null {
   const documentParams = parseDocumentParams(params, reply);
   const version = Number(params.version);
 
@@ -928,30 +902,17 @@ function getFeedbackWaitResponse(
   params: DocumentParams,
   after: number,
 ): { response: FeedbackWaitResponse; etag: string } | null {
-  const resource = store.getDocumentResource(
-    params.workspaceSlug,
-    params.documentSlug,
-  );
+  const resource = store.getDocumentResource(params.documentSlug);
 
   if (!resource) {
-    throw new DocumentNotFoundError(
-      params.workspaceSlug,
-      params.documentSlug,
-    );
+    throw new DocumentNotFoundError(params.documentSlug);
   }
 
   if (resource.value.archivedAt !== null) {
-    throw new DocumentArchivedError(
-      params.workspaceSlug,
-      params.documentSlug,
-    );
+    throw new DocumentArchivedError(params.documentSlug);
   }
 
-  const batches = store.listFeedbackReceiptsAfter(
-    params.workspaceSlug,
-    params.documentSlug,
-    after,
-  );
+  const batches = store.listFeedbackReceiptsAfter(params.documentSlug, after);
 
   if (batches.length === 0) {
     return null;
@@ -966,7 +927,6 @@ function getFeedbackWaitResponse(
   return {
     etag: resource.etag,
     response: FeedbackWaitResponseSchema.parse({
-      workspaceSlug: params.workspaceSlug,
       documentSlug: params.documentSlug,
       documentVersion: resource.value.version,
       latestBatchId,
@@ -1079,24 +1039,21 @@ function parseIfFeedbackMatch(
   return batchId;
 }
 
-function sendWorkspaceMutationError(reply: FastifyReply, error: unknown) {
-  if (error instanceof WorkspaceNotFoundError) {
+function sendCollectionMutationError(reply: FastifyReply, error: unknown) {
+  if (error instanceof CollectionNotFoundError) {
     return reply.code(404).send({ error: error.message });
   }
 
-  if (error instanceof DefaultWorkspaceProtectedError) {
-    return reply.code(403).send({ error: error.message });
-  }
-
   if (
-    error instanceof WorkspaceSlugConflictError ||
-    error instanceof WorkspaceNameConflictError ||
-    error instanceof WorkspaceNotEmptyError
+    error instanceof CollectionSlugConflictError ||
+    error instanceof CollectionNameConflictError ||
+    error instanceof CollectionNotEmptyError ||
+    error instanceof CollectionCycleError
   ) {
     return reply.code(409).send({ error: error.message });
   }
 
-  if (error instanceof WorkspaceNameInvalidError) {
+  if (error instanceof CollectionNameInvalidError) {
     return reply.code(400).send({ error: error.message });
   }
 
@@ -1120,7 +1077,7 @@ function sendDocumentError(reply: FastifyReply, error: unknown) {
   }
 
   if (
-    error instanceof WorkspaceNotFoundError ||
+    error instanceof CollectionNotFoundError ||
     error instanceof DocumentNotFoundError ||
     error instanceof DocumentVersionNotFoundError
   ) {
@@ -1129,8 +1086,7 @@ function sendDocumentError(reply: FastifyReply, error: unknown) {
 
   if (
     error instanceof DocumentNotArchivedError ||
-    error instanceof DocumentArchivedError ||
-    error instanceof DocumentSlugConflictError
+    error instanceof DocumentArchivedError
   ) {
     return reply.code(409).send({ error: error.message });
   }

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** workspaces are replaced by collections, optional folders that nest. A document lives at the root or in one collection, and its slug is global
+- **Breaking:** document URLs move to `/docs/<slug>` in the browser and `/api/docs/<slug>` in the API; collections live at `/collections` and `/api/collections`
+- **Breaking:** the skill scripts drop `--workspace`; `publish-document.mjs` gains `--collection <slug>` and `--root`, and the publish body accepts an optional `collectionSlug`
+- The database migrates to schema 10: documents from the `default` workspace move to the root, every other workspace becomes a root collection, and the migration refuses to run if a document slug exists in more than one workspace
+
 ## [0.0.2] - 2026-08-02
 
 ### Added

@@ -30,56 +30,74 @@ export const DocumentTitleSchema = NonBlankStringSchema.max(200).transform(
 
 export type DocumentTitle = z.infer<typeof DocumentTitleSchema>;
 
-export const WorkspaceSlugSchema = DocumentSlugSchema;
+export const CollectionSlugSchema = DocumentSlugSchema;
 
-export type WorkspaceSlug = z.infer<typeof WorkspaceSlugSchema>;
+export type CollectionSlug = z.infer<typeof CollectionSlugSchema>;
 
-export const WorkspaceNameSchema = NonBlankStringSchema.max(80).transform(
+export const CollectionNameSchema = NonBlankStringSchema.max(80).transform(
   (value) => value.trim(),
 );
 
-export type WorkspaceName = z.infer<typeof WorkspaceNameSchema>;
+export type CollectionName = z.infer<typeof CollectionNameSchema>;
 
-export const WorkspaceSchema = z.object({
-  slug: WorkspaceSlugSchema,
-  name: WorkspaceNameSchema,
+/**
+ * A collection is a folder for documents. Collections nest: a collection with
+ * a `parentSlug` sits inside that parent, and one without sits at the root.
+ */
+export const CollectionSchema = z.object({
+  slug: CollectionSlugSchema,
+  name: CollectionNameSchema,
+  parentSlug: CollectionSlugSchema.nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
 
-export type Workspace = z.infer<typeof WorkspaceSchema>;
+export type Collection = z.infer<typeof CollectionSchema>;
 
-export const WorkspaceSummarySchema = WorkspaceSchema.extend({
+export const CollectionSummarySchema = CollectionSchema.extend({
+  /** Documents filed directly in this collection, not in its children. */
   documentCount: z.number().int().nonnegative(),
+  /** Collections filed directly inside this one. */
+  childCount: z.number().int().nonnegative(),
 });
 
-export type WorkspaceSummary = z.infer<typeof WorkspaceSummarySchema>;
+export type CollectionSummary = z.infer<typeof CollectionSummarySchema>;
 
-export const WorkspaceListResponseSchema = z.object({
-  workspaces: z.array(WorkspaceSummarySchema),
+export const CollectionListResponseSchema = z.object({
+  collections: z.array(CollectionSummarySchema),
 });
 
-export type WorkspaceListResponse = z.infer<
-  typeof WorkspaceListResponseSchema
+export type CollectionListResponse = z.infer<
+  typeof CollectionListResponseSchema
 >;
 
-export const WorkspaceCreateRequestSchema = z.object({
-  name: WorkspaceNameSchema,
+export const CollectionCreateRequestSchema = z.object({
+  name: CollectionNameSchema,
+  parentSlug: CollectionSlugSchema.nullable().optional(),
 });
 
-export type WorkspaceCreateRequest = z.infer<
-  typeof WorkspaceCreateRequestSchema
+export type CollectionCreateRequest = z.infer<
+  typeof CollectionCreateRequestSchema
 >;
 
-export const WorkspaceUpdateRequestSchema = WorkspaceCreateRequestSchema;
+export const CollectionUpdateRequestSchema = z
+  .object({
+    name: CollectionNameSchema.optional(),
+    parentSlug: CollectionSlugSchema.nullable().optional(),
+  })
+  .refine(
+    (value) => value.name !== undefined || value.parentSlug !== undefined,
+    { message: "Provide a name or a parentSlug to update" },
+  );
 
-export type WorkspaceUpdateRequest = z.infer<
-  typeof WorkspaceUpdateRequestSchema
+export type CollectionUpdateRequest = z.infer<
+  typeof CollectionUpdateRequestSchema
 >;
 
 export const DocumentSchema = z.object({
-  workspaceSlug: WorkspaceSlugSchema,
   slug: DocumentSlugSchema,
+  /** The collection the document is filed in, or `null` at the root. */
+  collectionSlug: CollectionSlugSchema.nullable(),
   title: DocumentTitleSchema,
   content: z.string(),
   version: z.number().int().positive(),
@@ -98,6 +116,11 @@ export type DocumentMetadata = z.infer<typeof DocumentMetadataSchema>;
 export const DocumentPublishRequestSchema = z.strictObject({
   title: DocumentTitleSchema,
   content: z.string(),
+  /**
+   * Files the document in a collection (or at the root with `null`). Omit it
+   * to leave an existing document where it is.
+   */
+  collectionSlug: CollectionSlugSchema.nullable().optional(),
 });
 
 export type DocumentPublishRequest = z.infer<
@@ -139,7 +162,7 @@ export type DocumentUpdateRequest = z.infer<
 >;
 
 export const DocumentMoveRequestSchema = z.object({
-  workspaceSlug: WorkspaceSlugSchema,
+  collectionSlug: CollectionSlugSchema.nullable(),
 });
 
 export type DocumentMoveRequest = z.infer<typeof DocumentMoveRequestSchema>;
@@ -223,7 +246,6 @@ export const FeedbackResponseSchema = z.object({
 export type FeedbackResponse = z.infer<typeof FeedbackResponseSchema>;
 
 export const FeedbackWaitResponseSchema = z.object({
-  workspaceSlug: WorkspaceSlugSchema,
   documentSlug: DocumentSlugSchema,
   documentVersion: z.number().int().positive(),
   latestBatchId: z.number().int().positive(),

@@ -1,4 +1,4 @@
-/** Relative timestamps shared by the dashboard and the workspaces index. */
+/** Relative timestamps shared by the dashboard and the collections index. */
 export function formatRelativeTime(date: string): string {
   const value = new Date(date);
   const minutes = Math.round((Date.now() - value.getTime()) / 60_000);

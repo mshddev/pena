@@ -17,8 +17,7 @@ process.once("SIGTERM", () => shutdown.abort());
 
 while (!shutdown.signal.aborted) {
   const url = new URL(
-    `/api/workspaces/${encodeURIComponent(options.workspace)}` +
-      `/documents/${encodeURIComponent(options.document)}/feedback/wait`,
+    `/api/docs/${encodeURIComponent(options.document)}/feedback/wait`,
     options.baseUrl,
   );
   url.searchParams.set("after", String(after));
@@ -70,7 +69,6 @@ while (!shutdown.signal.aborted) {
     process.stdout.write(
       `${JSON.stringify({
         type: "pena_feedback_submitted",
-        workspaceSlug: event.workspaceSlug,
         documentSlug: event.documentSlug,
         documentVersion: event.documentVersion,
         latestBatchId: event.latestBatchId,
@@ -110,13 +108,12 @@ function parseOptions(args) {
     values.set(name.slice(2), value);
   }
 
-  const workspace = values.get("workspace");
   const document = values.get("document");
   const baseUrl = values.get("base-url") ?? DEFAULT_BASE_URL;
   const afterValue = values.get("after") ?? "0";
   const after = Number(afterValue);
 
-  if (!workspace || !document) {
+  if (!document) {
     usage();
   }
 
@@ -137,7 +134,6 @@ function parseOptions(args) {
   }
 
   return {
-    workspace,
     document,
     after,
     baseUrl: parsedBaseUrl,
@@ -146,7 +142,7 @@ function parseOptions(args) {
 
 function usage() {
   fail(
-    "Usage: watch-feedback.mjs --workspace <slug> --document <slug> " +
+    "Usage: watch-feedback.mjs --document <slug> " +
       "[--after <batch-id>] [--base-url <url>]",
   );
 }

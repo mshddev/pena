@@ -6,47 +6,56 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { HomePage } from "./HomePage";
 
-const WORKSPACES = [
+const COLLECTIONS = [
   {
-    slug: "default",
-    name: "Default",
+    slug: "research",
+    name: "Research",
+    parentSlug: null,
     documentCount: 1,
+    childCount: 1,
     createdAt: "2026-07-18T10:00:00.000Z",
     updatedAt: "2026-07-18T10:00:00.000Z",
   },
   {
-    slug: "research",
-    name: "Research",
+    slug: "papers",
+    name: "Papers",
+    parentSlug: "research",
     documentCount: 1,
+    childCount: 0,
     createdAt: "2026-07-18T10:00:00.000Z",
     updatedAt: "2026-07-18T10:00:00.000Z",
   },
 ];
 
-const DOCUMENTS: Record<string, unknown[]> = {
-  default: [
-    {
-      workspaceSlug: "default",
-      slug: "review",
-      version: 1,
-      updatedAt: "2026-07-18T10:00:00.000Z",
-      archivedAt: null,
-      title: "Reviewing the release",
-      excerpt: "What has to be true before we ship on Friday.",
-    },
-  ],
-  research: [
-    {
-      workspaceSlug: "research",
-      slug: "architecture-notes",
-      version: 3,
-      updatedAt: "2026-07-17T10:00:00.000Z",
-      archivedAt: null,
-      title: "Architecture Notes",
-      excerpt: "The storage layer owns migrations; nothing above it does.",
-    },
-  ],
-};
+const DOCUMENTS = [
+  {
+    slug: "review",
+    collectionSlug: null,
+    version: 1,
+    updatedAt: "2026-07-18T10:00:00.000Z",
+    archivedAt: null,
+    title: "Reviewing the release",
+    excerpt: "What has to be true before we ship on Friday.",
+  },
+  {
+    slug: "architecture-notes",
+    collectionSlug: "research",
+    version: 3,
+    updatedAt: "2026-07-17T10:00:00.000Z",
+    archivedAt: null,
+    title: "Architecture Notes",
+    excerpt: "The storage layer owns migrations; nothing above it does.",
+  },
+  {
+    slug: "caching-paper",
+    collectionSlug: "papers",
+    version: 2,
+    updatedAt: "2026-07-16T10:00:00.000Z",
+    archivedAt: null,
+    title: "Caching Paper",
+    excerpt: "Request caching with a TTL keeps the tail latency down.",
+  },
+];
 
 afterEach(() => {
   cleanup();
@@ -54,54 +63,91 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("workspace home", () => {
-  it("lists every workspace and its documents", async () => {
+describe("collection home", () => {
+  it("shows root documents and root collections as folders", async () => {
     stubLibrary();
 
-    render(<HomePage workspaceSlug={null} />);
+    render(<HomePage collectionSlug={null} />);
 
     expect(
-      await screen.findByRole("heading", { name: "All workspaces" }),
+      await screen.findByRole("heading", { name: "All documents" }),
     ).toBeTruthy();
     expect(
-      await screen.findByText("2 documents across 2 workspaces"),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("heading", { name: /Default/ }),
+      await screen.findByText("1 document and 1 collection"),
     ).toBeTruthy();
     expect(
       screen.getByRole("link", { name: /Review/ }).getAttribute("href"),
-    ).toBe("/workspaces/default/documents/review");
+    ).toBe("/docs/review");
+    // Documents filed in collections stay behind their folder.
     expect(
-      screen
-        .getByRole("link", { name: /Architecture Notes/ })
-        .getAttribute("href"),
-    ).toBe("/workspaces/research/documents/architecture-notes");
+      screen.queryByRole("link", { name: /Architecture Notes/ }),
+    ).toBeNull();
+    // The folder counts everything nested inside it.
+    expect(
+      screen.getByRole("link", { name: /Research/ }).getAttribute("href"),
+    ).toBe("/collections/research");
+    expect(screen.getByText("2 documents · 1 collection")).toBeTruthy();
   });
 
-  it("scopes the library to one workspace", async () => {
+  it("opens a collection like a folder with its path", async () => {
     stubLibrary();
 
-    render(<HomePage workspaceSlug="research" />);
+    render(<HomePage collectionSlug="papers" />);
 
     expect(
-      await screen.findByRole("heading", { name: "Research" }),
+      await screen.findByRole("heading", { name: "Papers" }),
     ).toBeTruthy();
     expect(await screen.findByText("1 document")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Architecture Notes/ })).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: /Caching Paper/ }).getAttribute("href"),
+    ).toBe("/docs/caching-paper");
     expect(screen.queryByRole("link", { name: /^Review/ })).toBeNull();
+
+    const breadcrumb = screen.getByRole("navigation", {
+      name: "Collection path",
+    });
+    const crumbs = [...breadcrumb.querySelectorAll("a")].map((link) => [
+      link.textContent,
+      link.getAttribute("href"),
+    ]);
+    expect(crumbs).toEqual([
+      ["All documents", "/"],
+      ["Research", "/collections/research"],
+      ["Papers", "/collections/papers"],
+    ]);
   });
 
-  it("filters documents from the search box", async () => {
+  it("searches into nested collections and labels each match", async () => {
     stubLibrary();
     const user = userEvent.setup();
 
-    render(<HomePage workspaceSlug={null} />);
+    render(<HomePage collectionSlug="research" />);
+
+    await screen.findByRole("link", { name: /Architecture Notes/ });
+    await user.type(
+      screen.getByRole("searchbox", { name: "Search documents" }),
+      "caching",
+    );
+
+    expect(screen.getByRole("link", { name: /Caching Paper/ })).toBeTruthy();
+    expect(screen.getByText("Research / Papers")).toBeTruthy();
+    expect(
+      screen.queryByRole("link", { name: /Architecture Notes/ }),
+    ).toBeNull();
+    // Documents outside the folder are not searched.
+    expect(screen.queryByRole("link", { name: /^Review/ })).toBeNull();
+  });
+
+  it("searches every document from the root", async () => {
+    stubLibrary();
+    const user = userEvent.setup();
+
+    render(<HomePage collectionSlug={null} />);
 
     await screen.findByRole("link", { name: /Review/ });
     await user.type(
       screen.getByRole("searchbox", { name: "Search documents" }),
-      "architecture",
+      "migrations",
     );
 
     expect(screen.getByRole("link", { name: /Architecture Notes/ })).toBeTruthy();
@@ -111,7 +157,7 @@ describe("workspace home", () => {
   it("titles entries with explicit document titles", async () => {
     stubLibrary();
 
-    render(<HomePage workspaceSlug={null} />);
+    render(<HomePage collectionSlug={null} />);
 
     expect(await screen.findByText("Reviewing the release")).toBeTruthy();
     expect(
@@ -119,40 +165,20 @@ describe("workspace home", () => {
     ).toBeTruthy();
     // The stable slug remains in the URL rather than replacing the title.
     expect(screen.queryByText("Review")).toBeNull();
-
-    // A title remains explicit even when the Markdown has no heading.
-    expect(screen.getByText("Architecture Notes")).toBeTruthy();
-    expect(screen.queryByText("architecture-notes")).toBeNull();
-  });
-
-  it("finds a document by what it says", async () => {
-    stubLibrary();
-    const user = userEvent.setup();
-
-    render(<HomePage workspaceSlug={null} />);
-
-    await screen.findByText("Reviewing the release");
-    await user.type(
-      screen.getByRole("searchbox", { name: "Search documents" }),
-      "migrations",
-    );
-
-    expect(screen.getByText("Architecture Notes")).toBeTruthy();
-    expect(screen.queryByText("Reviewing the release")).toBeNull();
   });
 
   it("leaves the archive to the utility bar", async () => {
     stubLibrary();
 
-    render(<HomePage workspaceSlug={null} />);
+    render(<HomePage collectionSlug="research" />);
 
-    await screen.findByText("Reviewing the release");
+    await screen.findByText("Architecture Notes");
     expect(
       screen.queryByRole("link", { name: "Archived documents" }),
     ).toBeNull();
     expect(
       screen.getByRole("link", { name: "Archive" }).getAttribute("href"),
-    ).toBe("/archive");
+    ).toBe("/archive?collection=research");
   });
 
   it("counts feedback per document", async () => {
@@ -174,18 +200,20 @@ describe("workspace home", () => {
       ],
     });
 
-    render(<HomePage workspaceSlug={null} />);
+    render(<HomePage collectionSlug={null} />);
 
     expect(
-      await screen.findByText("2 documents across 2 workspaces · 2 with recent feedback"),
+      await screen.findByText(
+        "1 document and 1 collection · 1 with recent feedback",
+      ),
     ).toBeTruthy();
-    expect((await screen.findAllByText("1 note")).length).toBe(2);
+    expect((await screen.findAllByText("1 note")).length).toBe(1);
   });
 
   it("onboards when nothing has been published yet", async () => {
-    stubLibrary({ documents: { default: [], research: [] } });
+    stubLibrary({ documents: [], collections: [] });
 
-    render(<HomePage workspaceSlug={null} />);
+    render(<HomePage collectionSlug={null} />);
 
     expect(
       await screen.findByRole("heading", {
@@ -196,22 +224,17 @@ describe("workspace home", () => {
     expect(screen.getByText("Send back")).toBeTruthy();
   });
 
-  it("switches scope from the page heading", async () => {
+  it("links to collection management", async () => {
     stubLibrary();
-    const user = userEvent.setup();
 
-    render(<HomePage workspaceSlug={null} />);
+    render(<HomePage collectionSlug={null} />);
 
-    const trigger = await screen.findByRole("button", {
-      name: "All workspaces",
-    });
-
-    expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    await user.click(trigger);
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    await screen.findByText("Reviewing the release");
     expect(
-      screen.getByRole("link", { name: "Research1" }).getAttribute("href"),
-    ).toBe("/workspaces/research");
+      screen
+        .getByRole("link", { name: "Manage collections" })
+        .getAttribute("href"),
+    ).toBe("/collections");
   });
 
   it("reports a failed load", async () => {
@@ -222,7 +245,7 @@ describe("workspace home", () => {
       }),
     );
 
-    render(<HomePage workspaceSlug={null} />);
+    render(<HomePage collectionSlug={null} />);
 
     expect(await screen.findByText("Failed to fetch")).toBeTruthy();
   });
@@ -230,12 +253,14 @@ describe("workspace home", () => {
 
 interface StubOptions {
   batches?: unknown[];
-  documents?: Record<string, unknown[]>;
+  collections?: unknown[];
+  documents?: unknown[];
   latestBatchId?: number | null;
 }
 
 function stubLibrary({
   batches = [],
+  collections = COLLECTIONS,
   documents = DOCUMENTS,
   latestBatchId = null,
 }: StubOptions = {}) {
@@ -244,18 +269,16 @@ function stubLibrary({
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 
-      if (url === "/api/workspaces") {
-        return jsonResponse({ workspaces: WORKSPACES });
+      if (url === "/api/collections") {
+        return jsonResponse({ collections });
+      }
+
+      if (url === "/api/docs") {
+        return jsonResponse({ documents });
       }
 
       if (url.endsWith("/feedback")) {
         return jsonResponse({ latestBatchId, batches });
-      }
-
-      const listMatch = /^\/api\/workspaces\/([^/]+)\/documents$/.exec(url);
-
-      if (listMatch?.[1]) {
-        return jsonResponse({ documents: documents[listMatch[1]] ?? [] });
       }
 
       return jsonResponse({}, 404);

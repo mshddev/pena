@@ -15,7 +15,7 @@ import {
 } from "./storage/pena-store.js";
 import { SqlitePenaStore } from "./storage/sqlite-pena-store.js";
 
-const DOCUMENT_URL = "/api/workspaces/default/documents/initial-spec";
+const DOCUMENT_URL = "/api/docs/initial-spec";
 const FEEDBACK_URL = `${DOCUMENT_URL}/feedback`;
 const FEEDBACK_WAIT_URL = `${FEEDBACK_URL}/wait`;
 const feedbackPayload = {
@@ -249,118 +249,305 @@ describe("Pena API", () => {
     ).toBe(404);
   });
 
-  it("requires workspace scope for every document route", async () => {
+  it("no longer serves workspace routes and rejects invalid slugs", async () => {
     const app = createApp();
-    const response = await app.inject({
-      method: "GET",
-      url: "/api/documents/initial-spec",
-    });
 
-    expect(response.statusCode).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/workspaces/default/documents/initial-spec",
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (await app.inject({ method: "GET", url: "/api/workspaces" })).statusCode,
+    ).toBe(404);
+    expect(
+      (await app.inject({ method: "GET", url: "/api/docs/Invalid_Slug" }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: "/api/collections/Invalid_Slug",
+          payload: { name: "Renamed" },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (await app.inject({ method: "GET", url: "/api/docs?collection=Bad!" }))
+        .statusCode,
+    ).toBe(400);
   });
 
-  it("creates, renames, lists, and deletes an empty workspace", async () => {
+  it("creates, lists, renames, reparents, and deletes collections", async () => {
     const app = createApp();
-    const defaultList = await app.inject({ method: "GET", url: "/api/workspaces" });
-
-    expect(defaultList.json()).toEqual({
-      workspaces: [
-        expect.objectContaining({
-          slug: "default",
-          name: "Default",
-          documentCount: 0,
-        }),
-      ],
-    });
+    const emptyList = await app.inject({ method: "GET", url: "/api/collections" });
+    expect(emptyList.json()).toEqual({ collections: [] });
 
     const created = await app.inject({
       method: "POST",
-      url: "/api/workspaces",
+      url: "/api/collections",
       payload: { name: "Product Notes" },
     });
     expect(created.statusCode).toBe(201);
     expect(created.json()).toMatchObject({
       slug: "product-notes",
       name: "Product Notes",
+      parentSlug: null,
+    });
+
+    const child = await app.inject({
+      method: "POST",
+      url: "/api/collections",
+      payload: { name: "Roadmaps", parentSlug: "product-notes" },
+    });
+    expect(child.statusCode).toBe(201);
+    expect(child.json()).toMatchObject({
+      slug: "roadmaps",
+      parentSlug: "product-notes",
+    });
+
+    await publishDocument(app, "/api/docs/q3-roadmap", "Q3", "Q3 Roadmap");
+    await app.inject({
+      method: "POST",
+      url: "/api/docs/q3-roadmap/move",
+      headers: { "if-match": await documentEtag(app, "/api/docs/q3-roadmap") },
+      payload: { collectionSlug: "roadmaps" },
+    });
+
+    const listed = await app.inject({ method: "GET", url: "/api/collections" });
+    expect(listed.json()).toEqual({
+      collections: [
+        expect.objectContaining({
+          slug: "product-notes",
+          parentSlug: null,
+          documentCount: 0,
+          childCount: 1,
+        }),
+        expect.objectContaining({
+          slug: "roadmaps",
+          parentSlug: "product-notes",
+          documentCount: 1,
+          childCount: 0,
+        }),
+      ],
     });
 
     const renamed = await app.inject({
       method: "PATCH",
-      url: "/api/workspaces/product-notes",
+      url: "/api/collections/product-notes",
       payload: { name: "Product Team" },
     });
     expect(renamed.statusCode).toBe(200);
     expect(renamed.json()).toMatchObject({
       slug: "product-notes",
       name: "Product Team",
+      parentSlug: null,
+    });
+
+    const reparented = await app.inject({
+      method: "PATCH",
+      url: "/api/collections/roadmaps",
+      payload: { parentSlug: null },
+    });
+    expect(reparented.statusCode).toBe(200);
+    expect(reparented.json()).toMatchObject({
+      slug: "roadmaps",
+      parentSlug: null,
     });
 
     const deleted = await app.inject({
       method: "DELETE",
-      url: "/api/workspaces/product-notes",
+      url: "/api/collections/product-notes",
     });
     expect(deleted.statusCode).toBe(204);
-  });
-
-  it("protects default and blocks deletion of a non-empty workspace", async () => {
-    const app = createApp();
-    const defaultDelete = await app.inject({
-      method: "DELETE",
-      url: "/api/workspaces/default",
-    });
-    expect(defaultDelete.statusCode).toBe(403);
-
-    await app.inject({
-      method: "POST",
-      url: "/api/workspaces",
-      payload: { name: "Research" },
-    });
-    await publishDocument(
-      app,
-      "/api/workspaces/research/documents/shared-spec",
-    );
-    const nonEmptyDelete = await app.inject({
-      method: "DELETE",
-      url: "/api/workspaces/research",
-    });
-    expect(nonEmptyDelete.statusCode).toBe(409);
-  });
-
-  it("scopes identical document slugs and feedback by workspace", async () => {
-    const app = createApp();
-    await app.inject({
-      method: "POST",
-      url: "/api/workspaces",
-      payload: { name: "Research" },
-    });
-    await publishDocument(app, DOCUMENT_URL, "Default copy");
-    const researchUrl = "/api/workspaces/research/documents/initial-spec";
-    await publishDocument(app, researchUrl, "Research copy");
-    await app.inject({
-      method: "POST",
-      url: `${researchUrl}/feedback`,
-      headers: { "if-match": await documentEtag(app, researchUrl) },
-      payload: feedbackPayload,
-    });
-
-    expect((await app.inject({ method: "GET", url: DOCUMENT_URL })).json())
-      .toMatchObject({ workspaceSlug: "default", content: "Default copy" });
-    expect((await app.inject({ method: "GET", url: researchUrl })).json())
-      .toMatchObject({ workspaceSlug: "research", content: "Research copy" });
     expect(
-      (await app.inject({ method: "GET", url: FEEDBACK_URL })).json().batches,
-    ).toEqual([]);
-    expect(
-      (await app.inject({ method: "GET", url: `${researchUrl}/feedback` }))
-        .json().batches,
+      (await app.inject({ method: "GET", url: "/api/collections" })).json()
+        .collections,
     ).toHaveLength(1);
   });
 
-  it("moves an active document to another workspace", async () => {
+  it("rejects invalid collection changes", async () => {
     const app = createApp();
     await app.inject({
       method: "POST",
-      url: "/api/workspaces",
+      url: "/api/collections",
+      payload: { name: "Parent" },
+    });
+    await app.inject({
+      method: "POST",
+      url: "/api/collections",
+      payload: { name: "Child", parentSlug: "parent" },
+    });
+
+    const cycle = await app.inject({
+      method: "PATCH",
+      url: "/api/collections/parent",
+      payload: { parentSlug: "child" },
+    });
+    expect(cycle.statusCode).toBe(409);
+    expect(cycle.json().error).toContain("descendants");
+
+    const selfParent = await app.inject({
+      method: "PATCH",
+      url: "/api/collections/parent",
+      payload: { parentSlug: "parent" },
+    });
+    expect(selfParent.statusCode).toBe(409);
+
+    const nonEmptyParent = await app.inject({
+      method: "DELETE",
+      url: "/api/collections/parent",
+    });
+    expect(nonEmptyParent.statusCode).toBe(409);
+
+    await publishDocument(app, "/api/docs/child-doc");
+    await app.inject({
+      method: "POST",
+      url: "/api/docs/child-doc/move",
+      headers: { "if-match": await documentEtag(app, "/api/docs/child-doc") },
+      payload: { collectionSlug: "child" },
+    });
+    const nonEmptyChild = await app.inject({
+      method: "DELETE",
+      url: "/api/collections/child",
+    });
+    expect(nonEmptyChild.statusCode).toBe(409);
+
+    const missingParent = await app.inject({
+      method: "POST",
+      url: "/api/collections",
+      payload: { name: "Orphan", parentSlug: "nowhere" },
+    });
+    expect(missingParent.statusCode).toBe(404);
+
+    const missingCollection = await app.inject({
+      method: "PATCH",
+      url: "/api/collections/nowhere",
+      payload: { name: "Anything" },
+    });
+    expect(missingCollection.statusCode).toBe(404);
+
+    const emptyUpdate = await app.inject({
+      method: "PATCH",
+      url: "/api/collections/parent",
+      payload: {},
+    });
+    expect(emptyUpdate.statusCode).toBe(400);
+
+    const invalidName = await app.inject({
+      method: "POST",
+      url: "/api/collections",
+      payload: { name: "!!!" },
+    });
+    expect(invalidName.statusCode).toBe(400);
+
+    const blankName = await app.inject({
+      method: "POST",
+      url: "/api/collections",
+      payload: { name: "   " },
+    });
+    expect(blankName.statusCode).toBe(400);
+
+    const duplicateName = await app.inject({
+      method: "POST",
+      url: "/api/collections",
+      payload: { name: "parent" },
+    });
+    expect(duplicateName.statusCode).toBe(409);
+  });
+
+  it("keeps document slugs global and files a new document by collection", async () => {
+    const app = createApp();
+    await app.inject({
+      method: "POST",
+      url: "/api/collections",
+      payload: { name: "Research" },
+    });
+    await publishDocument(app, DOCUMENT_URL, "Root copy");
+
+    const duplicate = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: {
+        "content-type": "application/json",
+        "if-none-match": "*",
+      },
+      payload: {
+        title: "Initial Specification",
+        content: "Second copy",
+        collectionSlug: "research",
+      },
+    });
+    expect(duplicate.statusCode).toBe(412);
+
+    const filed = await app.inject({
+      method: "PUT",
+      url: "/api/docs/research-notes",
+      headers: {
+        "content-type": "application/json",
+        "if-none-match": "*",
+      },
+      payload: {
+        title: "Research Notes",
+        content: "Filed on create",
+        collectionSlug: "research",
+      },
+    });
+    expect(filed.statusCode).toBe(201);
+    expect(filed.json()).toMatchObject({
+      slug: "research-notes",
+      collectionSlug: "research",
+    });
+    expect(
+      (await app.inject({ method: "GET", url: "/api/docs/research-notes" }))
+        .json(),
+    ).toMatchObject({ collectionSlug: "research", content: "Filed on create" });
+    expect(
+      (await app.inject({ method: "GET", url: DOCUMENT_URL })).json(),
+    ).toMatchObject({ collectionSlug: null, content: "Root copy" });
+
+    const inCollection = await app.inject({
+      method: "GET",
+      url: "/api/docs?collection=research",
+    });
+    expect(inCollection.json().documents).toEqual([
+      expect.objectContaining({ slug: "research-notes" }),
+    ]);
+    const atRoot = await app.inject({
+      method: "GET",
+      url: "/api/docs?collection=root",
+    });
+    expect(atRoot.json().documents).toEqual([
+      expect.objectContaining({ slug: "initial-spec" }),
+    ]);
+    const everything = await app.inject({ method: "GET", url: "/api/docs" });
+    expect(everything.json().documents).toHaveLength(2);
+
+    const missingCollection = await app.inject({
+      method: "PUT",
+      url: "/api/docs/lost-notes",
+      headers: {
+        "content-type": "application/json",
+        "if-none-match": "*",
+      },
+      payload: {
+        title: "Lost Notes",
+        content: "Nowhere",
+        collectionSlug: "nowhere",
+      },
+    });
+    expect(missingCollection.statusCode).toBe(404);
+  });
+
+  it("moves an active document into a collection and back to the root", async () => {
+    const app = createApp();
+    await app.inject({
+      method: "POST",
+      url: "/api/collections",
       payload: { name: "Research" },
     });
     await publishDocument(app);
@@ -370,55 +557,81 @@ describe("Pena API", () => {
       headers: { "if-match": await documentEtag(app) },
       payload: feedbackPayload,
     });
+    const beforeMove = await documentEtag(app);
 
     const response = await app.inject({
       method: "POST",
       url: `${DOCUMENT_URL}/move`,
-      headers: { "if-match": await documentEtag(app) },
-      payload: { workspaceSlug: "research" },
+      headers: { "if-match": beforeMove },
+      payload: { collectionSlug: "research" },
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.headers.location).toBe(
-      "/api/workspaces/research/documents/initial-spec",
-    );
     expect(response.json()).toMatchObject({
-      workspaceSlug: "research",
+      collectionSlug: "research",
       slug: "initial-spec",
     });
-    expect((await app.inject({ method: "GET", url: DOCUMENT_URL })).statusCode)
-      .toBe(404);
+    expect(requiredEtag(response)).not.toBe(beforeMove);
+    expect((await app.inject({ method: "GET", url: DOCUMENT_URL })).json())
+      .toMatchObject({ collectionSlug: "research" });
     expect(
-      (
-        await app.inject({
-          method: "GET",
-          url: "/api/workspaces/research/documents/initial-spec/feedback",
-        })
-      ).json().batches,
+      (await app.inject({ method: "GET", url: FEEDBACK_URL })).json().batches,
     ).toHaveLength(1);
-  });
 
-  it("blocks moving archived documents and destination slug collisions", async () => {
-    const app = createApp();
-    await app.inject({
+    const stale = await app.inject({
       method: "POST",
-      url: "/api/workspaces",
-      payload: { name: "Research" },
+      url: `${DOCUMENT_URL}/move`,
+      headers: { "if-match": beforeMove },
+      payload: { collectionSlug: null },
     });
-    await publishDocument(app);
-    await publishDocument(
-      app,
-      "/api/workspaces/research/documents/initial-spec",
-      "Research copy",
-    );
+    expect(stale.statusCode).toBe(412);
 
-    const collision = await app.inject({
+    const backToRoot = await app.inject({
       method: "POST",
       url: `${DOCUMENT_URL}/move`,
       headers: { "if-match": await documentEtag(app) },
-      payload: { workspaceSlug: "research" },
+      payload: { collectionSlug: null },
     });
-    expect(collision.statusCode).toBe(409);
+    expect(backToRoot.statusCode).toBe(200);
+    expect(backToRoot.json()).toMatchObject({ collectionSlug: null });
+    expect(
+      (await app.inject({ method: "GET", url: "/api/docs?collection=root" }))
+        .json().documents,
+    ).toEqual([expect.objectContaining({ slug: "initial-spec" })]);
+  });
+
+  it("blocks moving archived documents and rejects bad destinations", async () => {
+    const app = createApp();
+    await app.inject({
+      method: "POST",
+      url: "/api/collections",
+      payload: { name: "Research" },
+    });
+    await publishDocument(app);
+
+    const unknown = await app.inject({
+      method: "POST",
+      url: `${DOCUMENT_URL}/move`,
+      headers: { "if-match": await documentEtag(app) },
+      payload: { collectionSlug: "nowhere" },
+    });
+    expect(unknown.statusCode).toBe(404);
+
+    const malformed = await app.inject({
+      method: "POST",
+      url: `${DOCUMENT_URL}/move`,
+      headers: { "if-match": await documentEtag(app) },
+      payload: { collectionSlug: "Bad Slug" },
+    });
+    expect(malformed.statusCode).toBe(400);
+
+    const missingField = await app.inject({
+      method: "POST",
+      url: `${DOCUMENT_URL}/move`,
+      headers: { "if-match": await documentEtag(app) },
+      payload: {},
+    });
+    expect(missingField.statusCode).toBe(400);
 
     await app.inject({
       method: "PATCH",
@@ -430,7 +643,7 @@ describe("Pena API", () => {
       method: "POST",
       url: `${DOCUMENT_URL}/move`,
       headers: { "if-match": await documentEtag(app) },
-      payload: { workspaceSlug: "research" },
+      payload: { collectionSlug: "research" },
     });
     expect(archived.statusCode).toBe(409);
     expect(archived.json().error).toContain("Unarchive");
@@ -438,21 +651,10 @@ describe("Pena API", () => {
 
   it("lists published documents by most recent update", async () => {
     const app = createApp();
-    await publishDocument(
-      app,
-      "/api/workspaces/default/documents/older-draft",
-      "## Older draft",
-    );
-    await publishDocument(
-      app,
-      "/api/workspaces/default/documents/newer-draft",
-      "## Newer draft",
-    );
+    await publishDocument(app, "/api/docs/older-draft", "## Older draft");
+    await publishDocument(app, "/api/docs/newer-draft", "## Newer draft");
 
-    const response = await app.inject({
-      method: "GET",
-      url: "/api/workspaces/default/documents",
-    });
+    const response = await app.inject({ method: "GET", url: "/api/docs" });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
@@ -491,11 +693,11 @@ describe("Pena API", () => {
 
     const activeDocuments = await app.inject({
       method: "GET",
-      url: "/api/workspaces/default/documents",
+      url: "/api/docs",
     });
     const archivedDocuments = await app.inject({
       method: "GET",
-      url: "/api/workspaces/default/documents?status=archived",
+      url: "/api/docs?status=archived",
     });
     expect(activeDocuments.json()).toEqual({ documents: [] });
     expect(archivedDocuments.json().documents).toHaveLength(1);
@@ -529,21 +731,27 @@ describe("Pena API", () => {
     expect(documentResponse.statusCode).toBe(404);
   });
 
-  it("lists the global archive and filters it by workspace", async () => {
+  it("lists the global archive and filters it by collection", async () => {
     const app = createApp();
     await app.inject({
       method: "POST",
-      url: "/api/workspaces",
+      url: "/api/collections",
       payload: { name: "Research" },
     });
-    const defaultUrl = "/api/workspaces/default/documents/shared-draft";
-    const researchUrl = "/api/workspaces/research/documents/shared-draft";
-    await publishDocument(app, defaultUrl, "Default copy");
+    const rootUrl = "/api/docs/root-draft";
+    const researchUrl = "/api/docs/research-draft";
+    await publishDocument(app, rootUrl, "Root copy");
     await publishDocument(app, researchUrl, "Research copy");
     await app.inject({
+      method: "POST",
+      url: `${researchUrl}/move`,
+      headers: { "if-match": await documentEtag(app, researchUrl) },
+      payload: { collectionSlug: "research" },
+    });
+    await app.inject({
       method: "PATCH",
-      url: defaultUrl,
-      headers: { "if-match": await documentEtag(app, defaultUrl) },
+      url: rootUrl,
+      headers: { "if-match": await documentEtag(app, rootUrl) },
       payload: { status: "archived" },
     });
     await app.inject({
@@ -556,25 +764,37 @@ describe("Pena API", () => {
     const allArchive = await app.inject({ method: "GET", url: "/api/archive" });
     expect(allArchive.statusCode).toBe(200);
     expect(allArchive.json().documents).toEqual([
-      expect.objectContaining({ workspaceSlug: "research", slug: "shared-draft" }),
-      expect.objectContaining({ workspaceSlug: "default", slug: "shared-draft" }),
+      expect.objectContaining({
+        collectionSlug: "research",
+        slug: "research-draft",
+      }),
+      expect.objectContaining({ collectionSlug: null, slug: "root-draft" }),
     ]);
 
     const researchArchive = await app.inject({
       method: "GET",
-      url: "/api/archive?workspace=research",
+      url: "/api/archive?collection=research",
     });
     expect(researchArchive.statusCode).toBe(200);
     expect(researchArchive.json().documents).toEqual([
-      expect.objectContaining({ workspaceSlug: "research", slug: "shared-draft" }),
+      expect.objectContaining({
+        collectionSlug: "research",
+        slug: "research-draft",
+      }),
     ]);
+
+    const missingArchive = await app.inject({
+      method: "GET",
+      url: "/api/archive?collection=nowhere",
+    });
+    expect(missingArchive.statusCode).toBe(404);
   });
 
   it("rejects an invalid document list status", async () => {
     const app = createApp();
     const response = await app.inject({
       method: "GET",
-      url: "/api/workspaces/default/documents?status=deleted",
+      url: "/api/docs?status=deleted",
     });
 
     expect(response.statusCode).toBe(400);
@@ -593,8 +813,8 @@ describe("Pena API", () => {
     expect(publishResponse.statusCode).toBe(201);
     expect(requiredEtag(publishResponse)).toMatch(/^"pena-.+"$/);
     expect(publishResponse.json()).toEqual({
-      workspaceSlug: "default",
       slug: "initial-spec",
+      collectionSlug: null,
       title: "Initial Specification",
       version: 1,
       updatedAt: expect.any(String),
@@ -775,7 +995,6 @@ describe("Pena API", () => {
     expect(response.statusCode).toBe(200);
     expect(requiredEtag(response)).toBe(etag);
     expect(response.json()).toEqual({
-      workspaceSlug: "default",
       documentSlug: "initial-spec",
       documentVersion: 1,
       latestBatchId: 2,
@@ -825,7 +1044,7 @@ describe("Pena API", () => {
 
   it("isolates feedback waits by document", async () => {
     const app = createApp();
-    const articleUrl = "/api/workspaces/default/documents/article-draft";
+    const articleUrl = "/api/docs/article-draft";
     const articleWaitUrl = `${articleUrl}/feedback/wait`;
     await publishDocument(app);
     await publishDocument(app, articleUrl, "Article draft");
@@ -1067,8 +1286,8 @@ describe("Pena API", () => {
     });
     expect(updated.statusCode).toBe(200);
     expect(updated.json()).toEqual({
-      workspaceSlug: "default",
       slug: "initial-spec",
+      collectionSlug: null,
       title: "Initial Specification",
       version: 2,
       updatedAt: expect.any(String),
@@ -1142,7 +1361,7 @@ describe("Pena API", () => {
 
   it("isolates documents and feedback by slug", async () => {
     const app = createApp();
-    const articleUrl = "/api/workspaces/default/documents/article-draft";
+    const articleUrl = "/api/docs/article-draft";
     const articleFeedbackUrl = `${articleUrl}/feedback`;
 
     await publishDocument(app);
@@ -1221,7 +1440,7 @@ describe("Pena API", () => {
 
     const invalidSlugResponse = await publishDocument(
       app,
-      "/api/workspaces/default/documents/Invalid_Slug",
+      "/api/docs/Invalid_Slug",
     );
     expect(invalidSlugResponse.statusCode).toBe(400);
 
@@ -1289,16 +1508,16 @@ describe("Pena API", () => {
 
   it("returns HTTP 500 for invalid persisted feedback", async () => {
     const store: PenaStore = {
-      listWorkspaces() {
+      listCollections() {
         throw new Error("Not used in this test.");
       },
-      createWorkspace() {
+      createCollection() {
         throw new Error("Not used in this test.");
       },
-      renameWorkspace() {
+      updateCollection() {
         throw new Error("Not used in this test.");
       },
-      deleteWorkspace() {
+      deleteCollection() {
         throw new Error("Not used in this test.");
       },
       publishDocument() {
@@ -1307,12 +1526,21 @@ describe("Pena API", () => {
       getDocument() {
         throw new Error("Not used in this test.");
       },
+      listDocumentVersions() {
+        throw new Error("Not used in this test.");
+      },
+      getDocumentVersion() {
+        throw new Error("Not used in this test.");
+      },
+      restoreDocumentVersion() {
+        throw new Error("Not used in this test.");
+      },
       getDocumentResource() {
         return {
           etag: '"pena-test"',
           value: {
-            workspaceSlug: "default",
             slug: "initial-spec",
+            collectionSlug: null,
             title: "Initial Specification",
             content: "Current draft",
             version: 1,

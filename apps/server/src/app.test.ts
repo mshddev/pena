@@ -788,6 +788,19 @@ describe("Pena API", () => {
       url: "/api/archive?collection=nowhere",
     });
     expect(missingArchive.statusCode).toBe(404);
+
+    // "root" names archived documents outside every collection, matching
+    // the document list filter.
+    const rootArchive = await app.inject({
+      method: "GET",
+      url: "/api/archive?collection=root",
+    });
+    expect(rootArchive.statusCode).toBe(200);
+    expect(rootArchive.json()).toEqual({
+      documents: [
+        expect.objectContaining({ collectionSlug: null, slug: "root-draft" }),
+      ],
+    });
   });
 
   it("rejects an invalid document list status", async () => {

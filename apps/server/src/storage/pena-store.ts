@@ -204,7 +204,7 @@ export class UnsupportedSchemaVersionError extends Error {
 export class ReservedCollectionSlugMigrationError extends Error {
   constructor(slug: string) {
     super(
-      `A workspace uses the slug "${slug}", which collections reserve for documents outside every collection. Rename that workspace before upgrading.`,
+      `A workspace uses the slug "${slug}", which collections reserve for documents outside every collection. Renaming does not change a slug, so change it directly before upgrading: UPDATE workspaces SET slug = 'former-${slug}' WHERE slug = '${slug}';`,
     );
     this.name = "ReservedCollectionSlugMigrationError";
   }

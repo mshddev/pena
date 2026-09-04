@@ -43,6 +43,7 @@ import {
   DocumentNotFoundError,
   DocumentPreconditionFailedError,
   DocumentSlugConflictMigrationError,
+  ReservedCollectionSlugMigrationError,
   DocumentVersionNotFoundError,
   FeedbackPreconditionFailedError,
   PersistedDataError,
@@ -649,7 +650,7 @@ export class SqlitePenaStore implements PenaStore {
     return rows.map(toDocumentSummary);
   }
 
-  listArchivedDocuments(collectionSlug?: string): DocumentSummary[] {
+  listArchivedDocuments(collectionSlug?: string | null): DocumentSummary[] {
     return this.listDocuments({
       status: "archived",
       ...(collectionSlug === undefined ? {} : { collectionSlug }),
@@ -1490,6 +1491,18 @@ function migrateToCollections(database: Database.Database): void {
 
   if (duplicateSlugs.length > 0) {
     throw new DocumentSlugConflictMigrationError(duplicateSlugs);
+  }
+
+  // The old workspace layer accepted any non-empty slug, but "root" is how
+  // the document list names documents outside every collection.
+  const reservedWorkspace = database
+    .prepare<[string], { slug: string }>(
+      "SELECT slug FROM workspaces WHERE slug = ?",
+    )
+    .get(RESERVED_COLLECTION_SLUG);
+
+  if (reservedWorkspace) {
+    throw new ReservedCollectionSlugMigrationError(RESERVED_COLLECTION_SLUG);
   }
 
   database.pragma("foreign_keys = OFF");

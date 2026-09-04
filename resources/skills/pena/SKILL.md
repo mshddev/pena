@@ -342,7 +342,8 @@ curl --fail --silent --show-error \
 ```
 
 To filter the archive to one resolved collection, add
-`?collection=<collection-slug>`. Each result carries its `collectionSlug`. The
+`?collection=<collection-slug>`, or `?collection=root` for archived documents
+outside every collection. Each result carries its `collectionSlug`. The
 browser archive is available at `http://127.0.0.1:5173/archive` and accepts
 the same optional collection filter. Collections can be browsed at
 `http://127.0.0.1:5173/collections` and `http://127.0.0.1:5173/collections/<collection-slug>`.

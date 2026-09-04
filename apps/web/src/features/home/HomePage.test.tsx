@@ -237,6 +237,22 @@ describe("collection home", () => {
     ).toBe("/collections");
   });
 
+  it("shows a 404 for a collection that does not exist", async () => {
+    stubLibrary();
+
+    render(<HomePage collectionSlug="nowhere" />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Collection not found" }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "Return to the dashboard" })
+        .getAttribute("href"),
+    ).toBe("/");
+    expect(screen.queryByRole("searchbox")).toBeNull();
+  });
+
   it("reports a failed load", async () => {
     vi.stubGlobal(
       "fetch",

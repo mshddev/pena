@@ -16,6 +16,7 @@ import {
   DocumentNotArchivedError,
   DocumentNotFoundError,
   DocumentSlugConflictMigrationError,
+  ReservedCollectionSlugMigrationError,
   PersistedDataError,
   UnsupportedSchemaVersionError,
   type DocumentPublishOptions,
@@ -246,6 +247,40 @@ afterEach(() => {
 });
 
 describe("SqlitePenaStore", () => {
+  it("refuses to migrate a workspace whose slug collections reserve", () => {
+    const databasePath = createDatabasePath();
+    const database = createSchema9Database(databasePath, [
+      { id: 1, slug: "default", name: "Default" },
+      { id: 2, slug: "root", name: "Root" },
+    ]);
+    insertSchema9Document(database, {
+      id: 1,
+      workspaceId: 2,
+      slug: "in-root-workspace",
+      versions: [
+        {
+          title: "In Root Workspace",
+          content: "Filed in a workspace called root",
+          publishedAt: "2026-07-19T10:00:00.000Z",
+        },
+      ],
+    });
+    database.close();
+
+    expect(() => createStore(databasePath)).toThrow(
+      ReservedCollectionSlugMigrationError,
+    );
+
+    const reopened = new Database(databasePath);
+    expect(reopened.pragma("user_version", { simple: true })).toBe(9);
+    expect(
+      reopened
+        .prepare("SELECT name FROM sqlite_master WHERE name = 'collections'")
+        .get(),
+    ).toBeUndefined();
+    reopened.close();
+  });
+
   it("refuses the reserved collection slug that names the root", () => {
     const store = createStore();
 

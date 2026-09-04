@@ -66,7 +66,8 @@ export interface PenaStore {
     expectedEtag?: string,
   ): PenaDocument;
   listDocuments(filter?: DocumentListFilter): DocumentSummary[];
-  listArchivedDocuments(collectionSlug?: string): DocumentSummary[];
+  /** `undefined` lists every archived document, `null` only those at the root. */
+  listArchivedDocuments(collectionSlug?: string | null): DocumentSummary[];
   moveDocument(
     slug: string,
     collectionSlug: string | null,
@@ -143,7 +144,9 @@ export class CollectionNotFoundError extends Error {
 
 export class CollectionSlugConflictError extends Error {
   constructor(slug: string) {
-    super(`A collection with slug "${slug}" already exists.`);
+    super(
+      `A collection with slug "${slug}" already exists. The slug comes from the name, so pick a name that shortens to a different slug.`,
+    );
     this.name = "CollectionSlugConflictError";
   }
 }
@@ -195,6 +198,15 @@ export class UnsupportedSchemaVersionError extends Error {
       `The Pena database uses schema version ${actualVersion}, but this server only supports up to version ${supportedVersion}.`,
     );
     this.name = "UnsupportedSchemaVersionError";
+  }
+}
+
+export class ReservedCollectionSlugMigrationError extends Error {
+  constructor(slug: string) {
+    super(
+      `A workspace uses the slug "${slug}", which collections reserve for documents outside every collection. Rename that workspace before upgrading.`,
+    );
+    this.name = "ReservedCollectionSlugMigrationError";
   }
 }
 

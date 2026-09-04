@@ -269,9 +269,11 @@ export function buildApp(
     "/api/archive",
     async (request, reply) => {
       const requestedCollection = request.query.collection;
-      let collectionSlug: string | undefined;
+      let collectionSlug: string | null | undefined;
 
-      if (requestedCollection) {
+      if (requestedCollection === ROOT_COLLECTION_QUERY) {
+        collectionSlug = null;
+      } else if (requestedCollection) {
         const parsedCollectionSlug = parseCollectionSlug(
           requestedCollection,
           reply,

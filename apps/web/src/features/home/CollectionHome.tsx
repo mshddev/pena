@@ -154,6 +154,8 @@ export function CollectionHome({
     (total, section) => total + section.documents.length,
     0,
   );
+  const isUnknownCollection =
+    !isLoading && !error && !isRoot && currentCollection === null;
   const isEmpty =
     !isLoading && !error && documents.length === 0 && collections.length === 0;
   const isFolderEmpty =
@@ -163,6 +165,19 @@ export function CollectionHome({
     !isSearching &&
     folders.length === 0 &&
     scopedDocuments.length === 0;
+
+  if (isUnknownCollection) {
+    return (
+      <div className="app-shell">
+        <UtilityBar current={null} />
+        <main className="route-not-found">
+          <span aria-hidden="true">404</span>
+          <h1>Collection not found</h1>
+          <a href="/">Return to the dashboard</a>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="home-shell">

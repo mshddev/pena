@@ -273,7 +273,7 @@ export function ArchivePage({ collectionSlug }: ArchivePageProps) {
                     href={archiveHref(collection.slug)}
                     isActive={collectionSlug === collection.slug}
                     key={collection.slug}
-                    label={`${"  ".repeat(depth)}${collection.name}`}
+                    label={`${"\u00a0\u00a0".repeat(depth)}${collection.name}`}
                   />
                 ))}
               </nav>

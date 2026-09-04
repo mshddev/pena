@@ -431,7 +431,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
       .filter(({ collection }) => collection.slug !== currentCollectionSlug)
       .map(({ collection, depth }) => ({
         value: collection.slug,
-        label: `${"  ".repeat(depth)}${collection.name}`,
+        label: `${"\u00a0\u00a0".repeat(depth)}${collection.name}`,
       })),
   ];
   const breadcrumbPath = collectionPath(collections, currentCollectionSlug);

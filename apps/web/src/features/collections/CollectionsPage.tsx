@@ -761,7 +761,7 @@ interface ParentOptionProps {
 function ParentOption({ node }: ParentOptionProps) {
   return (
     <option value={node.collection.slug}>
-      {`${"  ".repeat(node.depth)}${node.collection.name}`}
+      {`${"\u00a0\u00a0".repeat(node.depth)}${node.collection.name}`}
     </option>
   );
 }

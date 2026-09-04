@@ -237,6 +237,32 @@ describe("collection home", () => {
     ).toBe("/collections");
   });
 
+  it("points at the archive when a collection holds only archived documents", async () => {
+    stubLibrary({
+      collections: [
+        {
+          ...COLLECTIONS[0],
+          slug: "dormant",
+          name: "Dormant",
+          documentCount: 2,
+          childCount: 0,
+        },
+      ],
+      documents: [],
+    });
+
+    render(<HomePage collectionSlug="dormant" />);
+
+    expect(
+      await screen.findByText(/Dormant has no active documents/),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "2 archived documents" })
+        .getAttribute("href"),
+    ).toBe("/archive?collection=dormant");
+  });
+
   it("shows a 404 for a collection that does not exist", async () => {
     stubLibrary();
 

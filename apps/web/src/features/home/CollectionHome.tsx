@@ -11,7 +11,11 @@ import {
 import { UtilityBar } from "../../components/UtilityBar";
 import { formatRelativeTime } from "../../format";
 import { isSearchShortcut, searchShortcutLabel } from "../../shortcuts";
-import { collectionHref, documentHref } from "../document-review/routing";
+import {
+  archiveHref,
+  collectionHref,
+  documentHref,
+} from "../document-review/routing";
 
 export interface FeedbackStat {
   total: number;
@@ -165,6 +169,11 @@ export function CollectionHome({
     !isSearching &&
     folders.length === 0 &&
     scopedDocuments.length === 0;
+  // The server count includes archived documents, so a folder can read as
+  // empty here while still holding documents that only the archive shows.
+  const archivedCount = currentCollection
+    ? Math.max(0, currentCollection.documentCount - scopedDocuments.length)
+    : 0;
 
   if (isUnknownCollection) {
     return (
@@ -291,7 +300,16 @@ export function CollectionHome({
               <p className="home-no-matches" role="status">
                 {isRoot
                   ? "No documents at the root yet."
-                  : `${scopeName} has no documents or collections yet.`}
+                  : archivedCount > 0
+                    ? `${scopeName} has no active documents or collections. `
+                    : `${scopeName} has no documents or collections yet.`}
+                {!isRoot && archivedCount > 0 ? (
+                  <a href={archiveHref(collectionSlug)}>
+                    {archivedCount === 1
+                      ? "1 archived document"
+                      : `${archivedCount} archived documents`}
+                  </a>
+                ) : null}
               </p>
             ) : isSearching && matchCount === 0 ? (
               <p className="home-no-matches" role="status">

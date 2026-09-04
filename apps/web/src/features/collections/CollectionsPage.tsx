@@ -24,7 +24,7 @@ import {
 import { UtilityBar } from "../../components/UtilityBar";
 import { formatRelativeTime } from "../../format";
 import { isSearchShortcut, searchShortcutLabel } from "../../shortcuts";
-import { collectionHref } from "../document-review/routing";
+import { archiveHref, collectionHref } from "../document-review/routing";
 import type { Notice } from "../document-review/types";
 
 /** Select value that stands for the root, since a slug can never be empty. */
@@ -567,7 +567,12 @@ export function CollectionsPage() {
                               id={`delete-blocked-${collection.slug}`}
                             >
                               Move out every document and nested collection
-                              first.
+                              first. Archived documents count too; find them
+                              in{" "}
+                              <a href={archiveHref(collection.slug)}>
+                                the archive
+                              </a>
+                              .
                             </p>
                           ) : null}
                         </div>

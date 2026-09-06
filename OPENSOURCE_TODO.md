@@ -25,7 +25,7 @@ Written at the root, covering:
 - [x] What Pena is, in two sentences.
 - [ ] A screenshot or short demo GIF of the review flow — pending item 3 (the asset work in progress); a `<!-- TODO -->` marker sits where it goes.
 - [x] Requirements: Node >= 24 (`.nvmrc`), pnpm.
-- [x] Quick start: `pnpm install` then `pnpm dev`, and the URLs (web at `127.0.0.1:5173`, API at `127.0.0.1:8788`).
+- [x] Quick start: `pnpm install`, `pnpm build`, `pnpm link --global`, then `pena server start` (web app and API at `127.0.0.1:8788`).
 - [x] How to install the Claude Code skill from `resources/skills/pena/`.
 - [x] Configuration: `PORT`, `PENA_DB_PATH`, and `PENA_ASSETS_DIR` env vars, with default storage in `.db/pena.sqlite` and `.assets`.
 - [x] Security note: the server binds to `127.0.0.1` only and has no auth — it is a local tool, do not expose it to a network.

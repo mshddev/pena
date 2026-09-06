@@ -27,7 +27,7 @@ export interface Invocation {
 const GLOBAL_OPTIONS: OptionSpecs = {
   url: { type: "string" },
   json: { type: "boolean" },
-  help: { type: "boolean" },
+  help: { type: "boolean", short: "h" },
 };
 
 const string = { type: "string" } as const;

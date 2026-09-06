@@ -47,6 +47,14 @@ describe("usage errors", () => {
     expect(result.stdout).toContain("pena doc publish <file>");
   });
 
+  it("accepts -h before and after the command words", async () => {
+    for (const argv of [["-h"], ["doc", "-h"], ["doc", "show", "-h"]]) {
+      const result = await cli(argv);
+      expect(result.code, argv.join(" ")).toBe(0);
+      expect(result.stdout, argv.join(" ")).toContain("Usage:");
+    }
+  });
+
   it("rejects unknown commands and options with exit 2", async () => {
     expect((await cli(["bogus"])).code).toBe(2);
     expect((await cli(["doc", "bogus"])).code).toBe(2);

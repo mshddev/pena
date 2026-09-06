@@ -25,6 +25,8 @@ import {
 
 const DEFAULT_WAIT_TIMEOUT_MS = 25_000;
 const MAX_WAIT_TIMEOUT_MS = 30_000;
+/** How long past the server's own cap `feedback wait` waits for an answer. */
+const WAIT_GRACE_MS = 10_000;
 
 /** Long-poll settings ported from resources/skills/pena/scripts/watch-feedback.mjs. */
 const LONG_POLL_TIMEOUT_MS = 25_000;
@@ -94,6 +96,9 @@ export const feedbackWait: CommandHandler = async (context) => {
   }
 
   let response: ApiResponse;
+  // The server caps the poll at `timeout`, but a stalled server or a
+  // half-open connection would otherwise hang this command forever.
+  const deadline = AbortSignal.timeout(timeout + WAIT_GRACE_MS);
 
   try {
     response = await context.client.request(
@@ -101,13 +106,20 @@ export const feedbackWait: CommandHandler = async (context) => {
       documentPath(slug, "/feedback/wait"),
       {
         query: { after: String(after), timeout: String(timeout) },
-        signal: context.io.signal,
+        signal: AbortSignal.any([context.io.signal, deadline]),
       },
     );
   } catch (error) {
     if (context.io.signal.aborted) {
       // Cancelled by the user (ctrl-c): nothing to report, exit 0.
       return undefined;
+    }
+
+    if (deadline.aborted) {
+      throw new CliError(
+        `Pena did not answer the feedback wait for ${slug} within ${timeout + WAIT_GRACE_MS} ms.`,
+        EXIT_FAILURE,
+      );
     }
 
     throw error;

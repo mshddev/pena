@@ -247,4 +247,18 @@ describe("pena server", () => {
     const result = await runCli(["server", "start", "--port", "http"], { env });
     expect(result.code).toBe(2);
   });
+
+  it("checks PENA_WEB_DIR instead of the in-tree web build when it is set", async () => {
+    const port = await closedPort();
+    const url = `http://127.0.0.1:${port}`;
+    const missing = join(directory, "no-web-build");
+    const result = await runCli(["server", "start", "--url", url], {
+      env: { ...env, PENA_WEB_DIR: missing },
+    });
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain(join(missing, "index.html"));
+    expect(result.stderr).toContain("PENA_WEB_DIR");
+    expect(readRecord()).toBeUndefined();
+  });
 });

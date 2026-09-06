@@ -11,7 +11,8 @@ when you need a field from the result, such as `etag` or `latestBatchId`.
 
 If `pena` is not on PATH, report that and tell the user to run
 `pnpm build && pnpm link --global` in the Pena repo (or invoke it as
-`pnpm pena ...` from the repo root). If a command reports that Pena is not
+`pnpm --silent pena ...` from the repo root; without `--silent`, pnpm's
+banner corrupts `--json` output). If a command reports that Pena is not
 running, run `pena server start`.
 
 ## Exit codes

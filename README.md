@@ -50,7 +50,7 @@ pnpm link --global
 
 verify: `pena --help` prints the command list.
 
-If pnpm complains that its global bin directory is not in `PATH`, run `pnpm setup`, open a new shell, and link again. Skipping the link works too — run every command below as `pnpm pena ...` from the repo root instead.
+If pnpm complains that its global bin directory is not in `PATH`, run `pnpm setup`, open a new shell, and link again. Skipping the link works too — run every command below as `pnpm --silent pena ...` from the repo root instead (`--silent` keeps pnpm's banner out of `--json` output).
 
 ## 5. Start the server
 

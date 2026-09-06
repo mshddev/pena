@@ -17,15 +17,27 @@ export interface MarkdownImageReference {
 
 // Lines come from a split on "\n", so a CRLF file leaves a trailing "\r" here.
 const FENCE_PATTERN = /^ {0,3}(`{3,}|~{3,})(.*?)\r?$/;
+const INDENTED_CODE_PATTERN = /^(?: {4}|\t)/;
+const LIST_ITEM_PATTERN = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|\r?$)/;
+const BLANK_PATTERN = /^[ \t]*\r?$/;
 
 export function findMarkdownImages(markdown: string): MarkdownImageReference[] {
   const references: MarkdownImageReference[] = [];
   const lines = markdown.split("\n");
   let offset = 0;
   let fence: { marker: string; length: number } | null = null;
+  // Indented code blocks (four spaces or a tab) only start after a blank
+  // line and never inside a list item, where the same indentation is list
+  // content. `inList` tracks whether the last block at the left margin was
+  // a list item; `previousBlank` whether the previous line was blank.
+  let indentedCode = false;
+  let inList = false;
+  let previousBlank = true;
 
   for (const [index, line] of lines.entries()) {
     const match = FENCE_PATTERN.exec(line);
+    const blank = BLANK_PATTERN.test(line);
+    const indented = INDENTED_CODE_PATTERN.test(line);
 
     if (fence) {
       if (
@@ -36,9 +48,20 @@ export function findMarkdownImages(markdown: string): MarkdownImageReference[] {
       ) {
         fence = null;
       }
+    } else if (indentedCode && (indented || blank)) {
+      // Still inside the indented code block.
+    } else if (!inList && previousBlank && indented && !blank) {
+      indentedCode = true;
     } else if (match && (match[1]?.[0] === "~" || !match[2]?.includes("`"))) {
+      indentedCode = false;
       fence = { marker: match[1]?.[0] ?? "`", length: match[1]?.length ?? 3 };
     } else {
+      indentedCode = false;
+
+      if (!blank && !indented) {
+        inList = LIST_ITEM_PATTERN.test(line);
+      }
+
       for (const image of scanLine(line)) {
         references.push({
           line: index + 1,
@@ -49,6 +72,7 @@ export function findMarkdownImages(markdown: string): MarkdownImageReference[] {
       }
     }
 
+    previousBlank = blank;
     offset += line.length + 1;
   }
 

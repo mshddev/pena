@@ -42,6 +42,32 @@ describe("findMarkdownImages", () => {
     expect(destinations("\\![not](image.png)")).toEqual([]);
   });
 
+  it("skips indented code blocks but not indented list content", () => {
+    expect(
+      destinations(
+        [
+          "Paragraph.",
+          "",
+          "    ![in code](code.png)",
+          "\t![tab code](tab.png)",
+          "",
+          "    ![still code](more.png)",
+          "Back to prose ![after](after.png)",
+          "    ![lazy continuation](lazy.png)",
+          "",
+          "- item",
+          "",
+          "    ![list content](list.png)",
+          "    - ![nested](nested.png)",
+          "",
+          "Prose again.",
+          "",
+          "    ![code again](again.png)",
+        ].join("\n"),
+      ),
+    ).toEqual(["after.png", "lazy.png", "list.png", "nested.png"]);
+  });
+
   it("skips backtick fenced code blocks", () => {
     expect(
       destinations(

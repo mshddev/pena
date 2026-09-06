@@ -9,7 +9,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { PenaClient } from "../client.js";
 import { CliError, EXIT_FAILURE, usageError } from "../errors.js";
@@ -75,6 +75,17 @@ function writeRecord(stateDir: string, record: ServerRecord): void {
 
 function removeRecord(stateDir: string): void {
   rmSync(recordPath(stateDir), { force: true });
+}
+
+/** Send a signal; a pid that has already exited (ESRCH) is not an error. */
+function signalProcess(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+      throw error;
+    }
+  }
 }
 
 /** Whether a process with this pid exists; EPERM counts as existing. */
@@ -171,10 +182,25 @@ async function runForeground(
   io.signal.addEventListener("abort", stop, { once: true });
 
   try {
-    const [code] = (await once(child, "exit")) as [number | null];
+    const [code, signal] = (await once(child, "exit")) as [
+      number | null,
+      NodeJS.Signals | null,
+    ];
 
-    if (code !== null && code !== 0) {
-      throw new CliError(`Pena exited with code ${code}.`, EXIT_FAILURE);
+    // The only acceptable exit is a clean one, or the SIGTERM this CLI sent
+    // when the user interrupted it. A signal death (OOM kill, a native crash)
+    // is a failure even though it has no exit code.
+    if (io.signal.aborted) {
+      return undefined;
+    }
+
+    if (code !== 0) {
+      throw new CliError(
+        code === null
+          ? `Pena was terminated by ${signal ?? "a signal"}.`
+          : `Pena exited with code ${code}.`,
+        EXIT_FAILURE,
+      );
     }
   } finally {
     io.signal.removeEventListener("abort", stop);
@@ -206,10 +232,19 @@ export const serverStart: CommandHandler = async (context) => {
     };
   }
 
-  for (const required of [serverEntryPath, webIndexPath]) {
+  // The server honours PENA_WEB_DIR, so an out-of-tree web build must
+  // satisfy the precondition just like the in-tree one.
+  const webDirectory = context.io.env.PENA_WEB_DIR;
+  const requiredWebIndex = webDirectory
+    ? join(resolve(webDirectory), "index.html")
+    : webIndexPath;
+
+  for (const required of [serverEntryPath, requiredWebIndex]) {
     if (!existsSync(required)) {
       throw usageError(
-        `Missing ${required}. Run \`pnpm build\` in the Pena repository first.`,
+        required === requiredWebIndex && webDirectory
+          ? `Missing ${required}. PENA_WEB_DIR must point at a built web app.`
+          : `Missing ${required}. Run \`pnpm build\` in the Pena repository first.`,
       );
     }
   }
@@ -327,7 +362,9 @@ export const serverStop: CommandHandler = async (context) => {
   }
 
   const { pid } = record;
-  process.kill(pid, "SIGTERM");
+  // The server may exit on its own between the ownership check and each
+  // signal; a vanished pid is a successful stop, not an error.
+  signalProcess(pid, "SIGTERM");
   const deadline = Date.now() + STOP_TIMEOUT_MS;
 
   while (Date.now() < deadline && processExists(pid)) {
@@ -335,10 +372,18 @@ export const serverStop: CommandHandler = async (context) => {
   }
 
   if (processExists(pid)) {
-    process.kill(pid, "SIGKILL");
+    signalProcess(pid, "SIGKILL");
+    const killDeadline = Date.now() + STOP_TIMEOUT_MS;
 
-    while (processExists(pid)) {
+    while (Date.now() < killDeadline && processExists(pid)) {
       await sleep(50);
+    }
+
+    if (processExists(pid)) {
+      throw new CliError(
+        `Pena (pid ${pid}) did not exit after SIGKILL. Inspect it with \`ps -p ${pid}\`.`,
+        EXIT_FAILURE,
+      );
     }
   }
 

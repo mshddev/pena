@@ -1,0 +1,24 @@
+{
+  "name": "@pena/cli",
+  "version": "0.0.2",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "pena": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "pretest": "pnpm --filter @pena/contracts build && pnpm --filter @pena/server build && pnpm --filter @pena/web build && tsc --build",
+    "test": "vitest run src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pena/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@pena/server": "workspace:*",
+    "@types/node": "^24.10.0",
+    "vitest": "^4.1.10"
+  }
+}

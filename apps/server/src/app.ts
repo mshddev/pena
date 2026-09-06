@@ -17,6 +17,7 @@ import {
   type FeedbackWaitResponse,
 } from "@pena/contracts";
 import multipart from "@fastify/multipart";
+import fastifyStatic from "@fastify/static";
 import { createReadStream } from "node:fs";
 import Fastify, {
   type FastifyInstance,
@@ -84,12 +85,19 @@ const MAX_FEEDBACK_WAIT_TIMEOUT_MS = 30_000;
 /** Query value that selects documents at the root, outside every collection. */
 const ROOT_COLLECTION_QUERY = "root";
 
+export interface BuildAppOptions {
+  /** Built web app directory to serve alongside the API; null serves the API only. */
+  webDirectory?: string | null;
+}
+
 export function buildApp(
   store: PenaStore,
   assetStore: AssetStore,
+  options: BuildAppOptions = {},
 ): FastifyInstance {
   const app = Fastify({ logger: false });
   const feedbackWaiters = new FeedbackWaiters();
+  const webDirectory = options.webDirectory ?? null;
 
   void app.register(multipart, {
     limits: {
@@ -105,6 +113,10 @@ export function buildApp(
   app.addHook("onClose", () => {
     store.close();
   });
+
+  if (webDirectory !== null) {
+    serveWebApp(app, webDirectory);
+  }
 
   app.get("/api/health", async () => ({ status: "ok" }));
 
@@ -806,6 +818,41 @@ export function buildApp(
 
   return app;
 }
+
+/**
+ * Serves the built web app next to the API from one port. Files are looked
+ * up in the directory at request time (`wildcard: true`), so a `pnpm build`
+ * while the server runs serves the new hashed assets without a restart.
+ * Anything not on disk falls through to the not-found handler, which
+ * returns the SPA shell for client-side routes such as `/docs/:slug` and a
+ * JSON 404 for API paths and missing files.
+ */
+function serveWebApp(app: FastifyInstance, webDirectory: string): void {
+  void app.register(fastifyStatic, {
+    root: webDirectory,
+    prefix: "/",
+    wildcard: true,
+  });
+
+  app.setNotFoundHandler(async (request, reply) => {
+    const path = request.url.split("?")[0] ?? "";
+
+    if (
+      !path.startsWith("/api/") &&
+      (request.method === "GET" || request.method === "HEAD") &&
+      !lastPathSegment(path).includes(".")
+    ) {
+      return reply.code(200).sendFile("index.html");
+    }
+
+    return reply.code(404).send({ error: "Not found." });
+  });
+}
+
+function lastPathSegment(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1);
+}
+
 
 function parseCollectionSlug(
   value: string,

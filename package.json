@@ -1,7 +1,7 @@
 {
   "name": "pena",
   "version": "0.0.2",
-  "description": "Local Markdown document review interface for Claude Code sessions — publish drafts, collect inline feedback in the browser, and pull it back into the session.",
+  "description": "Local Markdown document review interface for Claude Code sessions \u2014 publish drafts, collect inline feedback in the browser, and pull it back into the session.",
   "license": "MIT",
   "author": "mshddev <mshddev@gmail.com>",
   "repository": {
@@ -17,12 +17,17 @@
   ],
   "private": true,
   "packageManager": "pnpm@10.34.4",
+  "bin": {
+    "pena": "apps/cli/dist/index.js"
+  },
   "engines": {
     "node": ">=24"
   },
   "scripts": {
     "build": "pnpm --recursive --if-present build",
     "dev": "pnpm --filter @pena/contracts build && concurrently --kill-others --names server,web \"pnpm --filter @pena/server dev\" \"pnpm --filter @pena/web dev\"",
+    "pena": "node apps/cli/dist/index.js",
+    "start": "node apps/server/dist/index.js",
     "test": "pnpm --recursive --if-present test",
     "typecheck": "pnpm --filter @pena/contracts build && pnpm --recursive --if-present typecheck"
   },

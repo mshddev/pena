@@ -34,27 +34,43 @@ cd pena
 pnpm install
 ```
 
-## 3. Run it
+## 3. Build
 
 ```bash
-pnpm dev
+pnpm build
 ```
 
-verify: the web app is at `http://127.0.0.1:5173` and the API server prints `Pena SERVER is running at http://127.0.0.1:8788`.
+verify: `apps/web/dist/index.html` and `apps/cli/dist/index.js` exist.
 
-## 4. Install the Claude Code skill
+## 4. Put `pena` on your PATH
+
+```bash
+pnpm link --global
+```
+
+verify: `pena --help` prints the command list.
+
+If pnpm complains that its global bin directory is not in `PATH`, run `pnpm setup`, open a new shell, and link again. Skipping the link works too — run every command below as `pnpm --silent pena ...` from the repo root instead (`--silent` keeps pnpm's banner out of `--json` output).
+
+## 5. Start the server
+
+```bash
+pena server start
+```
+
+verify: it prints `Pena is running at http://127.0.0.1:8788`, and that URL opens the web app. `pena server status` and `pena server stop` manage it afterward.
+
+## 6. Install the Claude Code skill
 
 The skill is how Claude Code talks to Pena — it teaches the agent to publish documents, read feedback, and browse the archive.
 
 ```bash
-mkdir -p ~/.claude/skills/pena
-cp -R resources/skills/pena/. ~/.claude/skills/pena/
+pena skill install
 ```
 
-verify: in a new Claude Code session, ask it to *"publish this plan to Pena"* — it should respond with a `http://127.0.0.1:5173/docs/...` URL.
+verify: in a new Claude Code session, ask it to *"publish this plan to Pena"* — it should respond with a `http://127.0.0.1:8788/docs/...` URL.
 
-If you upgraded Pena from a version that had workspaces, reinstall the
-skill with the same commands: its script flags and URLs changed.
+If you upgraded from a version whose skill used curl and node scripts, run `pena skill install` again: the skill now drives the `pena` CLI and the review URLs moved to port 8788.
 
 # How To Use
 
@@ -66,10 +82,10 @@ skill with the same commands: its script flags and URLs changed.
 3. Submit the feedback. The active Claude Code session picks it up
    automatically, applies the comments, and republishes to the same slug.
 
-Claude starts one background feedback monitor after it publishes the document.
-The monitor stops when that Claude Code session ends. When the Monitor tool is
-not available, Pena keeps the feedback and you can still ask Claude to fetch it
-manually.
+Claude starts one background feedback monitor (`pena feedback watch`) after
+it publishes the document. The monitor stops when that Claude Code session
+ends. When the Monitor tool is not available, Pena keeps the feedback and you
+can still ask Claude to fetch it manually.
 
 Documents live at the root or inside collections, which nest like folders.
 Each immutable version contains its explicit
@@ -79,16 +95,52 @@ operational metadata from the reviewed body and renders the explicit title once
 inside the document surface. Earlier versions can be compared or restored. The
 current Markdown can also be downloaded as a `.md` file.
 Finished documents move to a browsable archive at
-`http://127.0.0.1:5173/archive`; archiving pauses publishing without removing
+`http://127.0.0.1:8788/archive`; archiving pauses publishing without removing
 history or the download action.
+
+# The CLI
+
+Everything the skill does is a `pena` command, so you can do it by hand too. `pena --help` prints the full usage; `--json` on any command prints the raw result.
+
+| Command | What it does |
+|---|---|
+| `pena server start [--port <n>] [--foreground]` | Start the server in the background (or attached with `--foreground`) |
+| `pena server stop` | Stop a server started by the CLI |
+| `pena server status` | Report whether Pena answers at the base URL |
+| `pena asset upload <file>` | Upload one image and print its `/api/assets/...` URL |
+| `pena collection list` | List collections with their parent and counts |
+| `pena collection create <name> [--parent <slug>]` | Create a collection |
+| `pena collection rename <slug> <name>` | Rename a collection |
+| `pena collection delete <slug>` | Delete an empty collection |
+| `pena doc list [--collection <slug\|root>] [--archived]` | List active or archived documents |
+| `pena doc show <slug> [--version <n>]` | Print a document, or one historical version |
+| `pena doc publish <file> --slug <slug> --title <title> [--collection <slug\|root> \| --root] [--etag <etag>] [--create] [--feedback-match <batch-id>] [--no-images]` | Upload referenced local images and publish the next version |
+| `pena doc rename <slug> <title>` | Change the title (creates a version) |
+| `pena doc move <slug> --to <collection-slug\|root>` | Move a document between collections |
+| `pena doc archive <slug>` / `pena doc unarchive <slug>` | Archive or reactivate a document |
+| `pena doc versions <slug>` | List a document's versions |
+| `pena doc restore <slug> <version>` | Restore a historical version |
+| `pena feedback show <slug> [--etag <etag>]` | Print every feedback batch for the current version |
+| `pena feedback wait <slug> [--after <batch-id>] [--timeout <ms>]` | Block once for the next feedback submission |
+| `pena feedback watch <slug> [--after <batch-id>]` | Long-poll forever, printing one JSON line per submission |
+| `pena skill install [--dir <skills-dir>]` | Copy the skill into `~/.claude/skills/pena` |
+
+Without `--create` or `--etag`, `doc publish` reads the current document first and creates it when absent or updates it against its current ETag; `--feedback-match <latestBatchId>` additionally fails with exit 3 when feedback arrived after you read it. An ETag includes its surrounding double quotes; `--etag` accepts it with or without them.
+
+Global flags: `--url <base>` picks the server (default `PENA_URL`, then `http://127.0.0.1:8788`) and `--json` switches the output to JSON.
+
+Exit codes: `0` success, `1` server or network error, `2` usage error (bad flag, unreadable file, invalid slug or title), `3` precondition failed (the document or its feedback changed), `4` `feedback wait` timed out.
 
 # Configuration
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `PORT` | `8788` | API server port |
+| `PORT` | `8788` | Server port (`pena server start --port` sets it for you) |
 | `PENA_DB_PATH` | `.db/pena.sqlite` | SQLite database location |
 | `PENA_ASSETS_DIR` | `.assets` | Uploaded image directory |
+| `PENA_WEB_DIR` | `apps/web/dist` | Built web app the server serves; when missing, the server runs API-only |
+| `PENA_URL` | `http://127.0.0.1:8788` | Base URL the CLI talks to (`--url` overrides it) |
+| `PENA_STATE_DIR` | `~/.pena` | Where the CLI keeps `server.json` (the pid and URL of the server it started) and `server.log` |
 
 Pena stores uploaded images by their content hash and does not delete them
 automatically. Back up both `PENA_DB_PATH` and `PENA_ASSETS_DIR` to preserve
@@ -97,13 +149,24 @@ documents and their images.
 > [!IMPORTANT]
 > The server binds to `127.0.0.1` only and has no authentication. Pena is a local tool for your own machine — do not expose it to a network.
 
+# Developing Pena
+
+To work on Pena itself, run the two-process dev mode instead of the built server:
+
+```bash
+pnpm dev
+```
+
+It starts the API with file watching at `http://127.0.0.1:8788` and the Vite dev server at `http://127.0.0.1:5173`, which proxies `/api` to the API. Point the CLI at either one with `--url`. `pnpm start` runs the built server in the foreground after `pnpm build`.
+
 # Architecture
 
-A pnpm monorepo with three packages:
+A pnpm monorepo with four packages:
 
-- `apps/server` — Fastify API with SQLite persistence and filesystem image assets
+- `apps/server` — Fastify API with SQLite persistence and filesystem image assets; serves the built web app
 - `apps/web` — React + Vite review interface
-- `packages/contracts` — shared Zod schemas between the two
+- `apps/cli` — the `pena` command, a thin client over the API with no third-party runtime dependencies
+- `packages/contracts` — shared Zod schemas between the three
 
 The design documents in `docs/` cover the initial spec, storage architecture, and the feedback model — they are historical snapshots; the implementation wins where they disagree.
 
@@ -114,7 +177,6 @@ Rough order, subject to change:
 - Keep submitted comments visible when reopening a document
 - Sidebar navigation pointing to document sections
 - Accept/reject flow for individual feedback items
-- Separate commands for client and server so they can be deployed independently
 
 # Contributing
 

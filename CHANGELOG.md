@@ -7,11 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pena` CLI (`apps/cli`): `server start|stop|status`, `asset upload`, `collection list|create|rename|delete`, `doc list|show|publish|rename|move|archive|unarchive|versions|restore`, `feedback show|wait|watch`, and `skill install`. `doc publish` uploads referenced local images and resolves ETag preconditions; exit codes distinguish usage errors, precondition failures, and `feedback wait` timeouts
+- The server serves the built web app, so one process on port 8788 handles both the review UI and the API (`PENA_WEB_DIR` overrides the directory; a missing build runs API-only)
+- Root scripts `pnpm start` (built server in the foreground) and `pnpm pena` (the CLI without linking)
+
 ### Changed
 
 - **Breaking:** workspaces are replaced by collections, optional folders that nest. A document lives at the root or in one collection, and its slug is global
-- **Breaking:** document URLs move to `/docs/<slug>` in the browser and `/api/docs/<slug>` in the API; collections live at `/collections` and `/api/collections`
-- **Breaking:** the skill scripts drop `--workspace`; `publish-document.mjs` gains `--collection <slug>` and `--root`, and the publish body accepts an optional `collectionSlug`
+- **Breaking:** document URLs move to `/docs/<slug>` in the browser and `/api/docs/<slug>` in the API; collections live at `/collections` and `/api/collections`; the publish body accepts an optional `collectionSlug`
+- **Breaking:** the Claude Code skill is rewritten on top of the `pena` CLI. The curl instructions and the `publish-document.mjs` / `watch-feedback.mjs` scripts are gone; install it with `pena skill install`
+- **Breaking:** review URLs move from the Vite dev server to the built app on port 8788 (`http://127.0.0.1:8788/docs/<slug>`); `pnpm dev` remains the two-process mode for working on Pena itself
 - The database migrates to schema 10: documents from the `default` workspace move to the root, every other workspace becomes a root collection, and the migration refuses to run if a document slug exists in more than one workspace
 
 ## [0.0.2] - 2026-08-02

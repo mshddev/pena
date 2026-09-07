@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-09-07
+
 ### Added
 
 - `pena` CLI (`apps/cli`): `server start|stop|status`, `asset upload`, `collection list|create|rename|delete`, `doc list|show|publish|rename|move|archive|unarchive|versions|restore`, `feedback show|wait|watch`, and `skill install`. `doc publish` uploads referenced local images and resolves ETag preconditions; exit codes distinguish usage errors, precondition failures, and `feedback wait` timeouts
@@ -63,5 +65,6 @@ Initial release.
 - Fastify API server and React web interface in a pnpm monorepo with shared Zod contracts
 - Claude Code skill (`resources/skills/pena`) to publish documents and pull feedback back into the session
 
+[0.0.3]: https://github.com/mshddev/pena/releases/tag/v0.0.3
 [0.0.2]: https://github.com/mshddev/pena/releases/tag/v0.0.2
 [0.0.1]: https://github.com/mshddev/pena/releases/tag/v0.0.1

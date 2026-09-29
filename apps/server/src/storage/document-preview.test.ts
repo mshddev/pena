@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { extractLeadingDocumentTitle } from "./document-preview.js";
+import {
+  extractLeadingDocumentTitle,
+  readDocumentExcerpt,
+} from "./document-preview.js";
 
 describe("extractLeadingDocumentTitle", () => {
   it("extracts a leading ATX H1 and leaves only the body", () => {
@@ -32,5 +35,32 @@ describe("extractLeadingDocumentTitle", () => {
       title: null,
       content,
     });
+  });
+});
+
+describe("readDocumentExcerpt", () => {
+  it("reads the visible prose of an HTML page", () => {
+    const content = `<!doctype html>
+<html>
+  <head><title>Ignored</title><style>body { color: red; }</style></head>
+  <body>
+    <!-- a note for the author -->
+    <h1>Pricing page</h1>
+    <p>Three <strong>plans</strong>, one &amp; only <a href="#">checkout</a>.</p>
+    <svg><text>Chart label</text></svg>
+    <script>console.log("never shown");</script>
+    <p>Taxes&nbsp;included&#33;</p>
+  </body>
+</html>`;
+
+    expect(readDocumentExcerpt(content, "html")).toBe(
+      "Three plans, one & only checkout. Taxes included!",
+    );
+  });
+
+  it("keeps Markdown as the default format", () => {
+    expect(readDocumentExcerpt("## Heading\n\n**Opening** prose.")).toBe(
+      "Opening prose.",
+    );
   });
 });

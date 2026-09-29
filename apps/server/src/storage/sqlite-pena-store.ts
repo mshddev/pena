@@ -16,6 +16,7 @@ import {
   FeedbackSubmissionSchema,
   type Collection,
   type CollectionSummary,
+  type DocumentFormat,
   type DocumentSummary,
   type DocumentVersion,
   type DocumentVersionSummary,
@@ -55,7 +56,7 @@ import {
   type PenaStore,
 } from "./pena-store.js";
 
-const CURRENT_SCHEMA_VERSION = 10;
+const CURRENT_SCHEMA_VERSION = 11;
 const RESERVED_COLLECTION_SLUG = "root";
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
 
@@ -86,6 +87,7 @@ interface DocumentRow {
   version_id: number;
   title: string;
   content: string;
+  format: DocumentFormat;
   version: number;
   updated_at: string;
   archived_at: string | null;
@@ -102,6 +104,7 @@ interface DocumentVersionRow {
   slug: string;
   title: string;
   content: string;
+  format: DocumentFormat;
   version: number;
   published_at: string;
 }
@@ -127,6 +130,7 @@ const DOCUMENT_ROW_SELECT = `
     current_version.id AS version_id,
     current_version.title,
     current_version.content,
+    current_version.format,
     current_version.version,
     current_version.published_at AS updated_at,
     documents.archived_at,
@@ -191,6 +195,7 @@ export class SqlitePenaStore implements PenaStore {
           condition,
           expectedLatestFeedbackBatchId,
           collectionSlug,
+          format: requestedFormat,
         }: DocumentPublishOptions,
       ): PenaDocument => {
         const target = this.resolveCollectionTarget(collectionSlug);
@@ -202,6 +207,7 @@ export class SqlitePenaStore implements PenaStore {
           }
 
           const collection = target ?? null;
+          const format = requestedFormat ?? "markdown";
           const updatedAt = this.clock().toISOString();
           const result = this.database
             .prepare<[number | null, string, string]>(
@@ -218,25 +224,27 @@ export class SqlitePenaStore implements PenaStore {
             .run(collection?.id ?? null, slug, randomUUID());
           const documentId = Number(result.lastInsertRowid);
           this.database
-            .prepare<[number, string, string, string]>(
+            .prepare<[number, string, string, DocumentFormat, string]>(
               `
                 INSERT INTO document_versions (
                   document_id,
                   version,
                   title,
                   content,
+                  format,
                   published_at
                 )
-                VALUES (?, 1, ?, ?, ?)
+                VALUES (?, 1, ?, ?, ?, ?)
               `,
             )
-            .run(documentId, title, content, updatedAt);
+            .run(documentId, title, content, format, updatedAt);
 
           return DocumentSchema.parse({
             slug,
             collectionSlug: collection?.slug ?? null,
             title,
             content,
+            format,
             version: 1,
             updatedAt,
             archivedAt: null,
@@ -258,9 +266,11 @@ export class SqlitePenaStore implements PenaStore {
           expectedLatestFeedbackBatchId,
         );
 
+        const format = requestedFormat ?? currentDocument.format;
         const contentChanged =
           currentDocument.title !== title ||
-          currentDocument.content !== content;
+          currentDocument.content !== content ||
+          currentDocument.format !== format;
         const nextCollectionId =
           target === undefined
             ? currentDocument.collection_id
@@ -281,19 +291,27 @@ export class SqlitePenaStore implements PenaStore {
 
         if (contentChanged) {
           this.database
-            .prepare<[number, number, string, string, string]>(
+            .prepare<[number, number, string, string, DocumentFormat, string]>(
               `
                 INSERT INTO document_versions (
                   document_id,
                   version,
                   title,
                   content,
+                  format,
                   published_at
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
               `,
             )
-            .run(currentDocument.id, nextVersion, title, content, updatedAt);
+            .run(
+              currentDocument.id,
+              nextVersion,
+              title,
+              content,
+              format,
+              updatedAt,
+            );
         }
 
         const update = this.database
@@ -324,6 +342,7 @@ export class SqlitePenaStore implements PenaStore {
               : (target?.slug ?? null),
           title,
           content,
+          format,
           version: nextVersion,
           updatedAt,
           archivedAt: null,
@@ -509,6 +528,7 @@ export class SqlitePenaStore implements PenaStore {
             documents.slug,
             document_versions.title,
             document_versions.content,
+            document_versions.format,
             document_versions.version,
             document_versions.published_at
           FROM document_versions
@@ -550,7 +570,8 @@ export class SqlitePenaStore implements PenaStore {
 
       if (
         historical.title === current.title &&
-        historical.content === current.content
+        historical.content === current.content &&
+        historical.format === current.format
       ) {
         return toDocument(current);
       }
@@ -558,16 +579,17 @@ export class SqlitePenaStore implements PenaStore {
       const nextVersion = current.version + 1;
       const updatedAt = this.clock().toISOString();
       this.database
-        .prepare<[number, number, string, string, string]>(
+        .prepare<[number, number, string, string, DocumentFormat, string]>(
           `
             INSERT INTO document_versions (
               document_id,
               version,
               title,
               content,
+              format,
               published_at
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
           `,
         )
         .run(
@@ -575,6 +597,7 @@ export class SqlitePenaStore implements PenaStore {
           nextVersion,
           historical.title,
           historical.content,
+          historical.format,
           updatedAt,
         );
       const update = this.database
@@ -596,6 +619,7 @@ export class SqlitePenaStore implements PenaStore {
         collectionSlug: current.collection_slug,
         title: historical.title,
         content: historical.content,
+        format: historical.format,
         version: nextVersion,
         updatedAt,
         archivedAt: null,
@@ -633,6 +657,7 @@ export class SqlitePenaStore implements PenaStore {
             documents.slug,
             current_version.title,
             current_version.content,
+            current_version.format,
             current_version.version,
             current_version.published_at AS updated_at,
             documents.archived_at
@@ -976,6 +1001,7 @@ export class SqlitePenaStore implements PenaStore {
               documents.slug,
               document_versions.title,
               document_versions.content,
+              document_versions.format,
               document_versions.version,
               document_versions.published_at
             FROM document_versions
@@ -1131,6 +1157,11 @@ function migrateDatabase(database: Database.Database): void {
 
   if (schemaVersion < 10) {
     migrateToCollections(database);
+    schemaVersion = 10;
+  }
+
+  if (schemaVersion < 11) {
+    migrateToDocumentFormats(database);
   }
 }
 
@@ -1581,6 +1612,25 @@ function migrateToCollections(database: Database.Database): void {
   }
 }
 
+/** Every version published before HTML support was Markdown. */
+function migrateToDocumentFormats(database: Database.Database): void {
+  const columns = database.pragma("table_info(document_versions)") as Array<{
+    name: string;
+  }>;
+
+  database.transaction(() => {
+    if (!columns.some(({ name }) => name === "format")) {
+      database.exec(`
+        ALTER TABLE document_versions
+          ADD COLUMN format TEXT NOT NULL DEFAULT 'markdown'
+          CHECK (format IN ('markdown', 'html'));
+      `);
+    }
+
+    database.pragma("user_version = 11");
+  })();
+}
+
 function slugifyCollectionName(name: string): string {
   return name
     .normalize("NFKD")
@@ -1616,6 +1666,7 @@ function toDocument(row: DocumentRow): PenaDocument {
     collectionSlug: row.collection_slug,
     title: row.title,
     content: row.content,
+    format: row.format,
     version: row.version,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
@@ -1628,6 +1679,7 @@ function toDocumentVersion(row: DocumentVersionRow): DocumentVersion {
     collectionSlug: row.collection_slug,
     title: row.title,
     content: row.content,
+    format: row.format,
     version: row.version,
     updatedAt: row.published_at,
   });
@@ -1640,6 +1692,7 @@ function toDocumentVersionSummary(
     slug: row.slug,
     collectionSlug: row.collection_slug,
     title: row.title,
+    format: row.format,
     version: row.version,
     updatedAt: row.published_at,
   });
@@ -1654,11 +1707,12 @@ function toDocumentSummary(row: DocumentSummaryRow): DocumentSummary {
     slug: row.slug,
     collectionSlug: row.collection_slug,
     title: row.title,
+    format: row.format,
     version: row.version,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
     // The body stays on the server; only what a listing can show leaves it.
-    excerpt: readDocumentExcerpt(row.content),
+    excerpt: readDocumentExcerpt(row.content, row.format),
   });
 }
 

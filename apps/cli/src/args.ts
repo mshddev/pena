@@ -111,9 +111,10 @@ export const COMMANDS: CommandSpec[] = [
       create: boolean,
       "feedback-match": string,
       "no-images": boolean,
+      format: string,
     },
     summary:
-      "--slug <slug> --title <title> [--collection <slug|root> | --root] [--etag <etag>] [--create] [--feedback-match <batch-id>] [--no-images]",
+      "--slug <slug> --title <title> [--collection <slug|root> | --root] [--etag <etag>] [--create] [--feedback-match <batch-id>] [--no-images] [--format <markdown|html>]",
   },
   {
     group: "doc",

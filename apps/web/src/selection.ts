@@ -4,6 +4,14 @@ export type SelectedPassage = Omit<CommentInput, "comment">;
 
 const CONTEXT_LENGTH = 120;
 
+/**
+ * Text a reader never sees: Pena's own annotation chrome, and the source of
+ * scripts and styles (an HTML page's, or the <style> inside a Mermaid SVG).
+ * Reading and finding a passage must skip the same text, or offsets drift.
+ */
+const HIDDEN_TEXT_SELECTOR =
+  "[data-pena-annotation], script, style, noscript, template";
+
 export function readSelection(
   root: HTMLElement,
   selection: Selection | null,
@@ -45,7 +53,7 @@ export function readElementPassage(
     return null;
   }
 
-  const range = window.document.createRange();
+  const range = root.ownerDocument.createRange();
   range.selectNodeContents(element);
 
   return readPassageAroundRange(root, range, selectedText);
@@ -56,11 +64,11 @@ function readPassageAroundRange(
   range: Range,
   selectedText: string,
 ): SelectedPassage {
-  const precedingRange = window.document.createRange();
+  const precedingRange = root.ownerDocument.createRange();
   precedingRange.selectNodeContents(root);
   precedingRange.setEnd(range.startContainer, range.startOffset);
 
-  const followingRange = window.document.createRange();
+  const followingRange = root.ownerDocument.createRange();
   followingRange.selectNodeContents(root);
   followingRange.setStart(range.endContainer, range.endOffset);
 
@@ -74,8 +82,8 @@ function readPassageAroundRange(
 function readRangeText(range: Range): string {
   const contents = range.cloneContents();
   contents
-    .querySelectorAll("[data-pena-annotation]")
-    .forEach((annotation) => annotation.remove());
+    .querySelectorAll(HIDDEN_TEXT_SELECTOR)
+    .forEach((hidden) => hidden.remove());
   return contents.textContent ?? "";
 }
 
@@ -84,14 +92,17 @@ export function findTextRange(
   selectedText: string,
   exactStart?: number,
 ): Range | null {
-  const walker = window.document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const walker = root.ownerDocument.createTreeWalker(
+    root,
+    NodeFilter.SHOW_TEXT,
+  );
   const textNodes: Text[] = [];
   let fullText = "";
 
   while (walker.nextNode()) {
     const textNode = walker.currentNode as Text;
 
-    if (textNode.parentElement?.closest("[data-pena-annotation]")) {
+    if (textNode.parentElement?.closest(HIDDEN_TEXT_SELECTOR)) {
       continue;
     }
 
@@ -137,7 +148,7 @@ export function findTextRange(
     return null;
   }
 
-  const range = window.document.createRange();
+  const range = root.ownerDocument.createRange();
   range.setStart(startNode, startOffset);
   range.setEnd(endNode, endOffset);
   return range;
@@ -162,7 +173,7 @@ export function readTextOffset(
     return null;
   }
 
-  const precedingRange = window.document.createRange();
+  const precedingRange = root.ownerDocument.createRange();
   precedingRange.selectNodeContents(root);
   precedingRange.setEnd(range.startContainer, range.startOffset);
 

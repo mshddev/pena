@@ -1,7 +1,9 @@
 import {
   CollectionSlugSchema,
+  DocumentFormatSchema,
   DocumentSlugSchema,
   DocumentTitleSchema,
+  type DocumentFormat,
 } from "@pena/contracts";
 
 import type { OptionValues } from "../args.js";
@@ -103,6 +105,16 @@ export function parseDocumentTitle(value: string): string {
     throw usageError(
       "The document title must be nonblank and contain at most 200 characters.",
     );
+  }
+
+  return parsed.data;
+}
+
+export function parseDocumentFormat(value: string): DocumentFormat {
+  const parsed = DocumentFormatSchema.safeParse(value);
+
+  if (!parsed.success) {
+    throw usageError('--format must be "markdown" or "html".');
   }
 
   return parsed.data;

@@ -1,6 +1,7 @@
 import type {
   Collection,
   CollectionSummary,
+  DocumentFormat,
   DocumentSummary,
   DocumentStatus,
   DocumentVersion,
@@ -34,6 +35,11 @@ export interface DocumentPublishOptions {
    * `undefined` to keep an existing document where it is.
    */
   collectionSlug?: string | null;
+  /**
+   * Leave it `undefined` to keep an existing document's format; a new
+   * document defaults to Markdown.
+   */
+  format?: DocumentFormat;
 }
 
 export interface DocumentListFilter {

@@ -11,6 +11,7 @@ import {
   haveSameDraftPositions,
   readMarkerPosition,
 } from "./annotation";
+import { readNodeWindow } from "./frame-geometry";
 import type { DraftComment, DraftPosition } from "./types";
 
 const draftHighlightStyles = `
@@ -23,27 +24,33 @@ const draftHighlightStyles = `
   }
 `;
 
+/**
+ * `surfaceKey` changes whenever the surface renders new content or, for a
+ * page in a frame, loads a new document. Highlights live in the surface's own
+ * document, which is the frame's rather than the review page's.
+ */
 export function useDraftHighlights(
   surfaceRef: RefObject<HTMLElement | null>,
-  documentContent: string,
+  surfaceKey: unknown,
   draftComments: DraftComment[],
 ): void {
   useEffect(() => {
-    const styleElement = document.createElement("style");
+    const ownerDocument = surfaceRef.current?.ownerDocument ?? document;
+    const styleElement = ownerDocument.createElement("style");
+    styleElement.dataset.penaAnnotation = "";
     styleElement.textContent = draftHighlightStyles;
-    document.head.append(styleElement);
+    ownerDocument.head.append(styleElement);
 
     return () => styleElement.remove();
-  }, []);
+  }, [surfaceKey, surfaceRef]);
 
   useEffect(() => {
-    if (!("highlights" in CSS) || typeof Highlight === "undefined") {
-      return;
-    }
-
     const surface = surfaceRef.current;
+    const surfaceWindow = surface ? readNodeWindow(surface) : null;
+    const highlights = surfaceWindow?.CSS?.highlights;
+    const HighlightConstructor = surfaceWindow?.Highlight;
 
-    if (!surface) {
+    if (!surface || !highlights || !HighlightConstructor) {
       return;
     }
 
@@ -52,18 +59,18 @@ export function useDraftHighlights(
       return range ? [range] : [];
     });
 
-    CSS.highlights.set("pena-draft-comments", new Highlight(...ranges));
+    highlights.set("pena-draft-comments", new HighlightConstructor(...ranges));
 
     return () => {
-      CSS.highlights.delete("pena-draft-comments");
+      highlights.delete("pena-draft-comments");
     };
-  }, [documentContent, draftComments, surfaceRef]);
+  }, [surfaceKey, draftComments, surfaceRef]);
 }
 
 export function useDraftPositions(
   surfaceRef: RefObject<HTMLElement | null>,
   stageRef: RefObject<HTMLElement | null>,
-  documentContent: string,
+  surfaceKey: unknown,
   draftComments: DraftComment[],
 ): Record<string, DraftPosition> {
   const [draftPositions, setDraftPositions] = useState<
@@ -103,15 +110,22 @@ export function useDraftPositions(
 
     updateDraftPositions();
 
-    const resizeObserver = new ResizeObserver(updateDraftPositions);
+    // A frame's content reflows in the frame's realm, so observe it there,
+    // and a frame scrolled sideways moves its text under the markers.
+    const surfaceWindow = readNodeWindow(surfaceElement);
+    const frameWindow = surfaceWindow === window ? null : surfaceWindow;
+    const Observer = surfaceWindow?.ResizeObserver ?? ResizeObserver;
+    const resizeObserver = new Observer(updateDraftPositions);
     resizeObserver.observe(surfaceElement);
     window.addEventListener("resize", updateDraftPositions);
+    frameWindow?.addEventListener("scroll", updateDraftPositions);
 
     return () => {
       resizeObserver.disconnect();
       window.removeEventListener("resize", updateDraftPositions);
+      frameWindow?.removeEventListener("scroll", updateDraftPositions);
     };
-  }, [documentContent, draftComments, stageRef, surfaceRef]);
+  }, [surfaceKey, draftComments, stageRef, surfaceRef]);
 
   return draftPositions;
 }
@@ -136,6 +150,14 @@ export function subscribeToSelectionPosition(
     }
   }
 
+  const surfaceWindow = readNodeWindow(surface);
+  const frameWindow = surfaceWindow === window ? null : surfaceWindow;
+
   window.addEventListener("resize", updateSelectionPosition);
-  return () => window.removeEventListener("resize", updateSelectionPosition);
+  frameWindow?.addEventListener("scroll", updateSelectionPosition);
+
+  return () => {
+    window.removeEventListener("resize", updateSelectionPosition);
+    frameWindow?.removeEventListener("scroll", updateSelectionPosition);
+  };
 }

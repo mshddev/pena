@@ -461,7 +461,7 @@ function DocumentEntry({
 const ONBOARDING_STEPS = [
   {
     title: "Publish",
-    detail: "Ask Claude to publish any Markdown doc.",
+    detail: "Ask Claude to publish a Markdown doc or an HTML page.",
   },
   {
     title: "Review",
@@ -478,7 +478,7 @@ function OnboardingCard() {
     <section className="home-onboarding">
       <h2>Publish your first document</h2>
       <p className="home-onboarding-lede">
-        Pena reviews Markdown documents that Claude publishes for you.
+        Pena reviews the documents and pages Claude publishes for you.
       </p>
       <ol className="home-steps">
         {ONBOARDING_STEPS.map((step, index) => (

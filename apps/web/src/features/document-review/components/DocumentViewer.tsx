@@ -1,16 +1,19 @@
 import {
   parseDecisionDocument,
   type DecisionBlock as DecisionBlockDefinition,
+  type ParsedDecisionDocument,
   type PenaDocument,
 } from "@pena/contracts";
 import {
   Fragment,
   memo,
+  useCallback,
   useLayoutEffect,
   useEffect,
   useMemo,
   useReducer,
   useRef,
+  useState,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
   type SyntheticEvent,
@@ -20,6 +23,7 @@ import { readElementPassage } from "../../../selection";
 import { isCommentShortcut } from "../../../shortcuts";
 import { MarkdownContent } from "../MarkdownContent";
 import {
+  findOutlineHeading,
   readActiveSection,
   readOutlineSections,
   type OutlineSection,
@@ -40,6 +44,8 @@ import {
   initialCommentEditorState,
 } from "../editor-state";
 import { createDraftDecision } from "../decision-feedback";
+import { toViewportRect } from "../frame-geometry";
+import { scrollToReadingPosition } from "../html-frame";
 import { createAnnotatedMarkdownComponents } from "../markdown-components";
 import type {
   DraftComment,
@@ -51,7 +57,24 @@ import { CommentComposer } from "./CommentComposer";
 import { DecisionBlock } from "./DecisionBlock";
 import { DocumentPageTitle } from "./DocumentPageTitle";
 import { FeedbackBar } from "./FeedbackBar";
+import { HtmlDocumentFrame } from "./HtmlDocumentFrame";
 import { PendingFeedbackPanel } from "./PendingFeedbackPanel";
+
+/** An HTML page carries no decision blocks. */
+const PAGE_WITHOUT_DECISIONS: ParsedDecisionDocument = {
+  segments: [],
+  decisions: [],
+};
+
+type PointerPosition = Pick<MouseEvent, "clientX" | "clientY" | "preventDefault">;
+
+/** What the frame's listeners call, refreshed every render. */
+interface FrameEventHandlers {
+  select: () => void;
+  click: (event: PointerPosition) => void;
+  move: (event: PointerPosition) => void;
+  pointerDown: () => void;
+}
 
 interface DocumentViewerProps {
   document: PenaDocument;
@@ -103,13 +126,23 @@ export function DocumentViewer({
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const pendingFeedbackPanelRef = useRef<HTMLElement>(null);
   const didRestoreLocationHashRef = useRef(false);
+  const frameEventsRef = useRef<FrameEventHandlers | null>(null);
   const [editor, dispatch] = useReducer(
     commentEditorReducer,
     initialCommentEditorState,
   );
+  const isHtml = penaDocument.format === "html";
+  // An HTML page is reviewed inside its frame: the surface is the frame's
+  // body once it loads, and it changes with every load.
+  const [frameSurface, setFrameSurface] = useState<HTMLElement | null>(null);
+  const pageSurface = isHtml ? frameSurface : null;
+  const surfaceKey = isHtml ? frameSurface : penaDocument.content;
   const parsedDocument = useMemo(
-    () => parseDecisionDocument(penaDocument.content),
-    [penaDocument.content],
+    () =>
+      isHtml
+        ? PAGE_WITHOUT_DECISIONS
+        : parseDecisionDocument(penaDocument.content),
+    [isHtml, penaDocument.content],
   );
   const draftComments = useMemo(
     () =>
@@ -130,15 +163,22 @@ export function DocumentViewer({
   const draftPositions = useDraftPositions(
     documentSurfaceRef,
     documentStageRef,
-    penaDocument.content,
+    surfaceKey,
     draftComments,
   );
 
-  useDraftHighlights(
-    documentSurfaceRef,
-    penaDocument.content,
-    draftComments,
-  );
+  useDraftHighlights(documentSurfaceRef, surfaceKey, draftComments);
+
+  const handleFrameLoad = useCallback((frameDocument: Document) => {
+    documentSurfaceRef.current = frameDocument.body;
+    setFrameSurface(frameDocument.body);
+  }, []);
+
+  useEffect(() => {
+    if (!isHtml) {
+      setFrameSurface(null);
+    }
+  }, [isHtml]);
 
   useEffect(() => {
     if (editor.editingCommentId) {
@@ -150,11 +190,14 @@ export function DocumentViewer({
   // is on the page — including the headings inside decision blocks.
   useLayoutEffect(() => {
     const stage = documentStageRef.current;
-    const nextSections = stage ? readOutlineSections(stage) : [];
+    const nextSections = stage
+      ? readOutlineSections(stage, pageSurface)
+      : [];
 
     onOutlineChange(nextSections);
 
-    if (didRestoreLocationHashRef.current) {
+    // An HTML page's headings only exist once its frame has loaded.
+    if (didRestoreLocationHashRef.current || (isHtml && !pageSurface)) {
       return;
     }
 
@@ -167,15 +210,31 @@ export function DocumentViewer({
 
     if (stage && target && stage.contains(target)) {
       target.scrollIntoView();
+      return;
     }
-  }, [onOutlineChange, parsedDocument, penaDocument.title]);
+
+    const pageTarget =
+      sectionId && pageSurface
+        ? findOutlineHeading(pageSurface, sectionId)
+        : null;
+
+    if (pageTarget) {
+      scrollToReadingPosition(pageTarget);
+    }
+  }, [
+    isHtml,
+    onOutlineChange,
+    pageSurface,
+    parsedDocument,
+    penaDocument.title,
+  ]);
 
   useEffect(() => {
     function trackActiveSection(): void {
       const surface = documentStageRef.current;
 
       if (surface) {
-        onActiveSectionChange(readActiveSection(surface));
+        onActiveSectionChange(readActiveSection(surface, pageSurface));
       }
     }
 
@@ -187,7 +246,118 @@ export function DocumentViewer({
       window.removeEventListener("scroll", trackActiveSection);
       window.removeEventListener("resize", trackActiveSection);
     };
-  }, [onActiveSectionChange, parsedDocument, penaDocument.title]);
+  }, [onActiveSectionChange, pageSurface, parsedDocument, penaDocument.title]);
+
+  // The outline links to `#pena-section-N`, which the review page cannot
+  // resolve inside the frame, so a link to a page heading scrolls to it here.
+  useEffect(() => {
+    if (!pageSurface) {
+      return;
+    }
+
+    const surface = pageSurface;
+
+    function handleSectionLinkClick(event: MouseEvent): void {
+      const link = (event.target as Element | null)?.closest?.(
+        'a[href^="#"]',
+      );
+      const sectionId = link?.getAttribute("href")?.slice(1);
+      const heading = sectionId ? findOutlineHeading(surface, sectionId) : null;
+
+      if (!heading) {
+        return;
+      }
+
+      event.preventDefault();
+      scrollToReadingPosition(heading);
+      window.history.replaceState(window.history.state, "", `#${sectionId}`);
+    }
+
+    window.document.addEventListener("click", handleSectionLinkClick);
+    return () =>
+      window.document.removeEventListener("click", handleSectionLinkClick);
+  }, [pageSurface]);
+
+  // Events inside the frame never reach the review page, so its listeners
+  // are attached to every document the frame loads.
+  useEffect(() => {
+    if (!pageSurface) {
+      return;
+    }
+
+    const frameDocument = pageSurface.ownerDocument;
+    const frameWindow = frameDocument.defaultView;
+    const handleSelect = () => frameEventsRef.current?.select();
+    // Only a key that extends the selection opens the composer. Any other
+    // key, Escape included, would reopen it from the selection still
+    // showing in the page.
+    const handleKeySelect = (event: KeyboardEvent) => {
+      if (extendsSelection(event)) {
+        frameEventsRef.current?.select();
+      }
+    };
+    const handleClick = (event: MouseEvent) =>
+      frameEventsRef.current?.click(event);
+    const handleMove = (event: MouseEvent) =>
+      frameEventsRef.current?.move(event);
+    const handlePointerDown = () => frameEventsRef.current?.pointerDown();
+    // A window that comes back with focus inside the frame tells only the
+    // frame, so the review page would never refetch a republished version.
+    // Focus that moves between the page and Pena itself stays inside the
+    // review window and is not a return.
+    let leftTheWindow = false;
+    const handleFrameBlur = () => {
+      window.setTimeout(() => {
+        leftTheWindow = !window.document.hasFocus();
+      });
+    };
+    const handleFrameFocus = () => {
+      if (leftTheWindow) {
+        leftTheWindow = false;
+        window.dispatchEvent(new Event("focus"));
+      }
+    };
+
+    frameDocument.addEventListener("mouseup", handleSelect);
+    frameDocument.addEventListener("keyup", handleKeySelect);
+    frameDocument.addEventListener("click", handleClick);
+    frameDocument.addEventListener("mousemove", handleMove);
+    frameDocument.addEventListener("pointerdown", handlePointerDown);
+    frameDocument.addEventListener("keydown", forwardFrameShortcut);
+    frameWindow?.addEventListener("blur", handleFrameBlur);
+    frameWindow?.addEventListener("focus", handleFrameFocus);
+
+    return () => {
+      frameDocument.removeEventListener("mouseup", handleSelect);
+      frameDocument.removeEventListener("keyup", handleKeySelect);
+      frameDocument.removeEventListener("click", handleClick);
+      frameDocument.removeEventListener("mousemove", handleMove);
+      frameDocument.removeEventListener("pointerdown", handlePointerDown);
+      frameDocument.removeEventListener("keydown", forwardFrameShortcut);
+      frameWindow?.removeEventListener("blur", handleFrameBlur);
+      frameWindow?.removeEventListener("focus", handleFrameFocus);
+    };
+  }, [pageSurface]);
+
+  useLayoutEffect(() => {
+    frameEventsRef.current = {
+      select: openSelectionFromSurface,
+      click: openDraftAtPoint,
+      move: (event) => {
+        const root = pageSurface?.ownerDocument.documentElement;
+
+        if (root) {
+          updateDraftCursor(root, event.clientX, event.clientY);
+        }
+      },
+      // The composer lives outside the frame, so any press inside is outside.
+      pointerDown: () => {
+        if (editor.passage) {
+          dispatch({ type: "closed" });
+        }
+      },
+    };
+  });
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -313,6 +483,7 @@ export function DocumentViewer({
     editor.anchorOffset,
     editor.passage,
     penaDocument.content,
+    surfaceKey,
   ]);
 
   function handleDocumentSelection(event: SyntheticEvent<HTMLElement>): void {
@@ -323,6 +494,10 @@ export function DocumentViewer({
       return;
     }
 
+    openSelectionFromSurface();
+  }
+
+  function openSelectionFromSurface(): void {
     const surface = documentSurfaceRef.current;
     const stage = documentStageRef.current;
 
@@ -338,8 +513,9 @@ export function DocumentViewer({
     }
   }
 
-  function handleDocumentClick(event: ReactMouseEvent<HTMLElement>): void {
-    const selection = window.getSelection();
+  function openDraftAtPoint(event: PointerPosition): void {
+    const selection =
+      documentSurfaceRef.current?.ownerDocument.getSelection() ?? null;
 
     if (editor.passage || (selection && !selection.isCollapsed)) {
       return;
@@ -356,10 +532,16 @@ export function DocumentViewer({
   function handleDocumentMouseMove(
     event: ReactMouseEvent<HTMLElement>,
   ): void {
-    event.currentTarget.style.cursor =
-      !editor.passage && findDraftAtPoint(event.clientX, event.clientY)
-        ? "pointer"
-        : "";
+    updateDraftCursor(event.currentTarget, event.clientX, event.clientY);
+  }
+
+  function updateDraftCursor(
+    element: HTMLElement,
+    clientX: number,
+    clientY: number,
+  ): void {
+    element.style.cursor =
+      !editor.passage && findDraftAtPoint(clientX, clientY) ? "pointer" : "";
   }
 
   function findDraftAtPoint(
@@ -430,7 +612,7 @@ export function DocumentViewer({
       comment: editor.text.trim(),
     });
     dispatch({ type: "closed" });
-    window.getSelection()?.removeAllRanges();
+    documentSurfaceRef.current?.ownerDocument.getSelection()?.removeAllRanges();
   }
 
   function deleteEditingComment(): void {
@@ -535,59 +717,70 @@ export function DocumentViewer({
           isPendingPanelVisible ? " with-pending-feedback" : ""
         }`}
       >
-        <div className="document-stage" ref={documentStageRef}>
+        <div
+          className={`document-stage${isHtml ? " html-stage" : ""}`}
+          ref={documentStageRef}
+        >
           <DocumentPageTitle title={penaDocument.title} />
-          <article
-            className="markdown-body"
-            ref={documentSurfaceRef}
-            onMouseUp={handleDocumentSelection}
-            onKeyUp={handleDocumentSelection}
-            onClick={handleDocumentClick}
-            onMouseMove={handleDocumentMouseMove}
-            onMouseLeave={(event) => {
-              event.currentTarget.style.cursor = "";
-            }}
-          >
-            {parsedDocument.segments.map((segment, index) => {
-              const namespace = `segment-${index}`;
+          {isHtml ? (
+            <HtmlDocumentFrame
+              content={penaDocument.content}
+              title={penaDocument.title}
+              onDocumentLoad={handleFrameLoad}
+            />
+          ) : (
+            <article
+              className="markdown-body"
+              ref={documentSurfaceRef}
+              onMouseUp={handleDocumentSelection}
+              onKeyUp={handleDocumentSelection}
+              onClick={openDraftAtPoint}
+              onMouseMove={handleDocumentMouseMove}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.cursor = "";
+              }}
+            >
+              {parsedDocument.segments.map((segment, index) => {
+                const namespace = `segment-${index}`;
 
-              if (segment.type === "markdown") {
+                if (segment.type === "markdown") {
+                  return (
+                    <MarkdownSegment
+                      content={segment.content}
+                      key={namespace}
+                      namespace={namespace}
+                    />
+                  );
+                }
+
+                const draftChoice =
+                  draftDecisions.find(
+                    (draft) => draft.decisionId === segment.decision.id,
+                  )?.choice ?? null;
+
                 return (
-                  <MarkdownSegment
-                    content={segment.content}
-                    key={namespace}
-                    namespace={namespace}
-                  />
+                  <Fragment key={segment.decision.id}>
+                    <DecisionBlock
+                      decision={segment.decision}
+                      namespace={namespace}
+                      draftChoice={draftChoice}
+                      submittedChoice={
+                        submittedDecisions[segment.decision.id] ?? null
+                      }
+                      isSubmitting={isSubmitting}
+                      position={
+                        parsedDocument.decisions.findIndex(
+                          (decision) => decision.id === segment.decision.id,
+                        ) + 1
+                      }
+                      total={parsedDocument.decisions.length}
+                      onChoice={chooseDecision}
+                    />
+                  </Fragment>
                 );
-              }
-
-              const draftChoice =
-                draftDecisions.find(
-                  (draft) => draft.decisionId === segment.decision.id,
-                )?.choice ?? null;
-
-              return (
-                <Fragment key={segment.decision.id}>
-                  <DecisionBlock
-                    decision={segment.decision}
-                    namespace={namespace}
-                    draftChoice={draftChoice}
-                    submittedChoice={
-                      submittedDecisions[segment.decision.id] ?? null
-                    }
-                    isSubmitting={isSubmitting}
-                    position={
-                      parsedDocument.decisions.findIndex(
-                        (decision) => decision.id === segment.decision.id,
-                      ) + 1
-                    }
-                    total={parsedDocument.decisions.length}
-                    onChoice={chooseDecision}
-                  />
-                </Fragment>
-              );
-            })}
-          </article>
+              })}
+            </article>
+          )}
 
           {draftComments.map((draft) => {
             const position = draftPositions[draft.id];
@@ -694,9 +887,49 @@ function readLocationHash(): string | null {
   }
 }
 
+/** Shift with a movement key, or letting go of Shift after one. */
+function extendsSelection(event: KeyboardEvent): boolean {
+  return (
+    event.key === "Shift" ||
+    (event.shiftKey && /^(Arrow|Home$|End$|Page)/.test(event.key))
+  );
+}
+
+/**
+ * Shortcuts pressed inside the frame never reach the review page. Replays the
+ * ones Pena listens for there, unless the page claimed the key itself.
+ */
+function forwardFrameShortcut(event: KeyboardEvent): void {
+  if (
+    event.defaultPrevented ||
+    !(event.metaKey || event.ctrlKey || event.key === "Escape")
+  ) {
+    return;
+  }
+
+  const forwarded = new KeyboardEvent("keydown", {
+    key: event.key,
+    code: event.code,
+    metaKey: event.metaKey,
+    ctrlKey: event.ctrlKey,
+    shiftKey: event.shiftKey,
+    altKey: event.altKey,
+    repeat: event.repeat,
+    bubbles: true,
+    cancelable: true,
+  });
+
+  if (!window.document.dispatchEvent(forwarded)) {
+    event.preventDefault();
+  }
+}
+
 function scrollRangeToEditorPosition(range: Range): void {
-  const anchorRect =
-    Array.from(range.getClientRects()).at(-1) ?? range.getBoundingClientRect();
+  const anchorRect = toViewportRect(
+    Array.from(range.getClientRects()).at(-1) ?? range.getBoundingClientRect(),
+    range.startContainer,
+    window.document,
+  );
   const utilityBarBottom =
     window.document
       .querySelector<HTMLElement>(".utility-bar")

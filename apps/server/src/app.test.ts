@@ -829,6 +829,7 @@ describe("Pena API", () => {
       slug: "initial-spec",
       collectionSlug: null,
       title: "Initial Specification",
+      format: "markdown",
       version: 1,
       updatedAt: expect.any(String),
       archivedAt: null,
@@ -892,6 +893,74 @@ describe("Pena API", () => {
     expect(
       (await app.inject({ method: "GET", url: DOCUMENT_URL })).statusCode,
     ).toBe(404);
+  });
+
+  it("publishes an HTML page without the Markdown-only checks", async () => {
+    const app = createApp();
+    const page = [
+      "<!doctype html>",
+      "<h1>Initial Specification</h1>",
+      "<pre>",
+      "# Initial Specification",
+      ":::pena-decision{#cache}",
+      "</pre>",
+    ].join("\n");
+    const created = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: { "content-type": "application/json", "if-none-match": "*" },
+      payload: { title: "Initial Specification", content: page, format: "html" },
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ format: "html", version: 1 });
+
+    // Omitting the format keeps HTML, so the Markdown checks stay off.
+    const republished = await publishDocument(
+      app,
+      DOCUMENT_URL,
+      "# Initial Specification",
+    );
+
+    expect(republished.statusCode).toBe(200);
+    expect(
+      (await app.inject({ method: "GET", url: DOCUMENT_URL })).json(),
+    ).toMatchObject({
+      content: "# Initial Specification",
+      format: "html",
+      version: 2,
+    });
+
+    const current = await app.inject({ method: "GET", url: DOCUMENT_URL });
+    const backToMarkdown = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: {
+        "content-type": "application/json",
+        "if-match": requiredEtag(current),
+      },
+      payload: {
+        title: "Initial Specification",
+        content: "# Initial Specification",
+        format: "markdown",
+      },
+    });
+
+    expect(backToMarkdown.statusCode).toBe(400);
+    expect(backToMarkdown.json().error).toContain("leading H1");
+  });
+
+  it("rejects an unknown document format", async () => {
+    const app = createApp();
+    const response = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: { "content-type": "application/json", "if-none-match": "*" },
+      payload: { title: "Initial Specification", content: "Hi", format: "pdf" },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain('"markdown" or "html"');
   });
 
   it("stores multiple comments in one feedback batch", async () => {
@@ -1302,6 +1371,7 @@ describe("Pena API", () => {
       slug: "initial-spec",
       collectionSlug: null,
       title: "Initial Specification",
+      format: "markdown",
       version: 2,
       updatedAt: expect.any(String),
       archivedAt: null,

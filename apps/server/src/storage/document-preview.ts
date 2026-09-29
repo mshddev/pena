@@ -1,5 +1,7 @@
 /** Derives opening prose for document listings without returning the body. */
 
+import type { DocumentFormat } from "@pena/contracts";
+
 /** Roughly a short paragraph — enough to preview, far short of the document. */
 const EXCERPT_LIMIT = 320;
 const TITLE_LIMIT = 200;
@@ -77,7 +79,16 @@ export function extractLeadingDocumentTitle(
   };
 }
 
-export function readDocumentExcerpt(content: string): string {
+export function readDocumentExcerpt(
+  content: string,
+  format: DocumentFormat = "markdown",
+): string {
+  return format === "html"
+    ? readHtmlExcerpt(content)
+    : readMarkdownExcerpt(content);
+}
+
+function readMarkdownExcerpt(content: string): string {
   const paragraphs: string[] = [];
 
   for (const line of readableLines(content)) {
@@ -177,6 +188,57 @@ function stripInline(text: string): string {
       .replace(/\\([\\`*_{}[\]()#+\-.!])/g, "$1")
       .replace(/\s+/g, " ")
   );
+}
+
+/**
+ * Elements whose text is never the page's opening prose: metadata, code,
+ * graphics, and headings (which the Markdown excerpt skips too).
+ */
+const HTML_SKIPPED_ELEMENTS =
+  /<(head|script|style|noscript|template|svg|h[1-6])\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
+
+/** Inline elements join the words around them without a space. */
+const HTML_INLINE_TAG =
+  /<\/?(?:a|abbr|b|cite|code|em|i|kbd|mark|q|s|small|span|strong|sub|sup|time|u)\b[^>]*>/gi;
+
+const HTML_ENTITIES: Record<string, string> = {
+  amp: "&",
+  apos: "'",
+  gt: ">",
+  lt: "<",
+  nbsp: " ",
+  quot: '"',
+};
+
+/** The visible text of an HTML page, reduced to a listing preview. */
+function readHtmlExcerpt(content: string): string {
+  const text = content
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(HTML_SKIPPED_ELEMENTS, " ")
+    .replace(HTML_INLINE_TAG, "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (entity, name: string) =>
+      decodeHtmlEntity(name) ?? entity,
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return capAtWord(text);
+}
+
+function decodeHtmlEntity(name: string): string | undefined {
+  if (name.startsWith("#")) {
+    const codePoint =
+      name[1] === "x" || name[1] === "X"
+        ? Number.parseInt(name.slice(2), 16)
+        : Number.parseInt(name.slice(1), 10);
+
+    return Number.isInteger(codePoint) && codePoint <= 0x10ffff
+      ? String.fromCodePoint(codePoint)
+      : undefined;
+  }
+
+  return HTML_ENTITIES[name.toLowerCase()];
 }
 
 /**

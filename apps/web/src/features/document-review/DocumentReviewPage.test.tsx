@@ -26,6 +26,7 @@ const documentResponse = {
   collectionSlug: null as string | null,
   title: "Review",
   content: DECISION_DOCUMENT,
+  format: "markdown" as "markdown" | "html",
   version: 1,
   updatedAt: "2026-07-18T10:00:00.000Z",
   archivedAt: null,
@@ -574,6 +575,49 @@ describe("saved document index", () => {
     expect(downloadLink.href).toBe("blob:pena-markdown");
     expect(downloadLink.isConnected).toBe(false);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:pena-markdown");
+  });
+
+  it("shows an HTML document in a frame and downloads it as HTML", async () => {
+    // Decision syntax means nothing in a page, even when it is malformed.
+    const page = "<p>:::pena-decision{#broken}</p>";
+    const NativeURL = URL;
+    const createObjectURL = vi.fn((_blob: Blob) => "blob:pena-html");
+
+    class DownloadURL extends NativeURL {}
+
+    Object.defineProperties(DownloadURL, {
+      createObjectURL: { value: createObjectURL },
+      revokeObjectURL: { value: vi.fn() },
+    });
+    vi.stubGlobal("URL", DownloadURL);
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+      String(input) === "/api/collections"
+        ? collectionListResponse()
+        : jsonResponse({ ...documentResponse, content: page, format: "html" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    expect((await screen.findByTitle("Review")).getAttribute("srcdoc")).toBe(
+      page,
+    );
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).endsWith("/feedback")),
+    ).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Download" }));
+
+    const htmlBlob = createObjectURL.mock.calls[0]?.[0] as Blob;
+    expect(htmlBlob.type).toBe("text/html;charset=utf-8");
+    expect(await htmlBlob.text()).toBe(page);
+    expect((clickSpy.mock.instances[0] as HTMLAnchorElement).download).toBe(
+      "review.html",
+    );
   });
 
   it("moves a root document into a collection", async () => {

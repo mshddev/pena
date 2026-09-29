@@ -1,11 +1,11 @@
 ---
 name: pena
-description: Use Pena to upload local images; publish, rename, and move explicitly titled, versioned Markdown documents for review; retrieve, apply, and republish user feedback; inspect or restore document versions; and inspect archived documents. Use when the user asks to send, publish, rename, move, compare, or restore a document in Pena, publish a document with images, add Pena decision blocks, read Pena feedback, revise a document reviewed in Pena, or browse its archive.
+description: Use Pena to upload local images; publish, rename, and move explicitly titled, versioned Markdown documents or HTML pages for review; retrieve, apply, and republish user feedback; inspect or restore document versions; and inspect archived documents. Use when the user asks to send, publish, rename, move, compare, or restore a document in Pena, publish a document with images, publish an HTML page, add Pena decision blocks, read Pena feedback, revise a document reviewed in Pena, or browse its archive.
 ---
 
 # Pena
 
-Pena is a Markdown document review interface at `http://127.0.0.1:8788`,
+Pena is a document review interface at `http://127.0.0.1:8788`,
 driven from the `pena` CLI (`pena --help` lists every command). Add `--json`
 when you need a field from the result, such as `etag` or `latestBatchId`.
 
@@ -31,11 +31,12 @@ Choose one stable lowercase, kebab-case slug per document, such as
 `initial-spec`. Slugs are global: reuse the same slug when publishing and
 reading feedback. Pena does not track the agent session.
 
-Every version carries an explicit title and Markdown content. Choose a
-concise title from the task context; never derive it from the first
-heading. Start the body with prose or H2 sections; a leading H1 is rejected
-with exit 2. Preserve the current title when revising only the body.
-Changing either title or content creates the next version.
+Every version carries an explicit title and content in one format:
+Markdown, or a complete HTML page. Choose a concise title from the task
+context; never derive it from the first heading. Start a Markdown body with
+prose or H2 sections; a leading H1 is rejected with exit 2. Preserve the
+current title when revising only the body. Changing the title, content, or
+format creates the next version.
 
 Every mutating command prints the document's new ETag. Retain the ETag and
 title from the latest result with the content they describe, and pass the
@@ -71,14 +72,19 @@ has a `slug`, a `name`, and a `parentSlug` (`null` at the top level).
 ## Publish a document
 
 1. State the title, collection (or root), and slug.
-2. Write the complete Markdown to a local file. Reference local images with
+2. Choose the format. Markdown suits prose: plans, specs, reports. Publish
+   an HTML page when the review is about how something looks or behaves,
+   such as a UI mockup, an interactive prototype, or a dashboard; read
+   [html-pages.md](html-pages.md) before writing one, then continue from
+   step 6.
+3. Write the complete Markdown to a local file. Reference local images with
    standard Markdown image syntax, meaningful alt text, and paths relative
    to that file. The CLI uploads each PNG, JPEG, WebP, or GIF (up to 10
    MiB), rewrites the destinations in a staged copy, and leaves the source
    file untouched; `/api/assets/` and `http(s)://` destinations, ordinary
    links, code spans, and fenced blocks stay as they are. A missing,
    unsupported, or rejected image stops the publish before anything is sent.
-3. Use a fenced `mermaid` block when a diagram materially clarifies a flow,
+4. Use a fenced `mermaid` block when a diagram materially clarifies a flow,
    sequence, or relationship; Pena renders it inline:
 
    ````markdown
@@ -97,7 +103,7 @@ has a `slug`, a `name`, and a `parentSlug` (`null` at the top level).
    foreign keys, and a few essential business columns, never imply a
    foreign-key constraint for a logical lookup, keep prose tables for table
    responsibilities and mutation behavior, and split large schemas by domain.
-4. When an item requires one user choice, add a decision block:
+5. When an item requires one user choice, add a decision block:
 
    ```markdown
    :::pena-decision{#add-request-cache choice-a="Apply" choice-b="Skip"}
@@ -109,7 +115,7 @@ has a `slug`, a `name`, and a `parentSlug` (`null` at the top level).
 
    Use a unique lowercase, kebab-case ID and exactly two short plain-text
    choices. Keep decision blocks top-level; do not nest them.
-5. For a new slug, create the document without reading it first:
+6. For a new slug, create the document without reading it first:
 
    ```bash
    pena doc publish <file> --slug <slug> --title "<title>" --create --collection <collection-slug>
@@ -117,7 +123,7 @@ has a `slug`, a `name`, and a `parentSlug` (`null` at the top level).
 
    Drop `--collection` for the root. Exit 3 means the slug already exists:
    run `pena doc show <slug>` and stop to reconcile, never overwrite.
-6. For an existing document, publish the complete next version against the
+7. For an existing document, publish the complete next version against the
    retained ETag:
 
    ```bash
@@ -130,7 +136,7 @@ has a `slug`, a `name`, and a `parentSlug` (`null` at the top level).
    Exit 3 means the document changed: run `pena doc show <slug>` and
    reconcile before retrying. An archived document (non-null `archivedAt`)
    must be unarchived explicitly; publishing never unarchives it.
-7. After a successful publish, start a watcher through the Monitor tool,
+8. After a successful publish, start a watcher through the Monitor tool,
    not as a foreground Bash command, unless one is already running for
    this slug in the current session:
 
@@ -144,7 +150,7 @@ has a `slug`, a `name`, and a `parentSlug` (`null` at the top level).
    feedback delivery is off; `pena feedback wait <slug> --after <batch-id>`
    then blocks up to 25 s for the next submission and exits 4 when none
    arrives.
-8. Report the title, version, collection (or "root"), slug, and the URL
+9. Report the title, version, collection (or "root"), slug, and the URL
    printed by the command.
 
 ## Handle a feedback event

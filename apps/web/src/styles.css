@@ -1255,6 +1255,29 @@ button:disabled {
   margin: 0 auto;
 }
 
+/* An HTML page brings its own design, so it takes the stage's full width
+   and the title lines up with it. The frame's white canvas stands in for a
+   browser's default, which a page without a background expects. */
+.html-stage .document-page-title {
+  max-width: none;
+}
+
+/* Beside the pending feedback panel the stage shrinks to fit its content,
+   and a frame's intrinsic width is only 300px, so it fills its column. */
+.html-stage {
+  width: 100%;
+}
+
+.html-document-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;
+  color-scheme: light;
+  animation: document-enter 320ms ease-out both;
+}
+
 .document-review-layout {
   max-width: 980px;
   margin: 0 auto;

@@ -4,6 +4,7 @@ import {
   readTextOffset,
 } from "../../selection";
 import type { AnchoredSelection } from "./editor-state";
+import { toViewportRect } from "./frame-geometry";
 import type {
   DraftComment,
   DraftPosition,
@@ -21,7 +22,8 @@ export function readAnchoredSelection(
   surface: HTMLElement,
   stage: HTMLElement,
 ): AnchoredSelection | null {
-  const selection = window.getSelection();
+  // A page in a frame keeps its own selection.
+  const selection = surface.ownerDocument.getSelection();
   const passage = readSelection(surface, selection);
 
   if (!passage || !selection?.rangeCount) {
@@ -135,7 +137,7 @@ export function readSelectionPosition(
   }
 
   const stageRect = stage.getBoundingClientRect();
-  const anchorRect = readRangeAnchorRect(range);
+  const anchorRect = readRangeAnchorRect(range, stage.ownerDocument);
   const popoverWidth = Math.min(COMMENT_POPOVER_WIDTH, stageRect.width);
   const positionToRight =
     anchorRect.right - stageRect.left + COMMENT_POPOVER_GAP;
@@ -164,7 +166,7 @@ export function readMarkerPosition(
   stage: HTMLElement,
 ): SelectionPosition {
   const stageRect = stage.getBoundingClientRect();
-  const anchorRect = readRangeAnchorRect(range);
+  const anchorRect = readRangeAnchorRect(range, stage.ownerDocument);
   const positionToRight =
     anchorRect.right - stageRect.left + COMMENT_MARKER_GAP;
   const fitsToRight =
@@ -238,8 +240,11 @@ function readClosestElement(node: Node): Element | null {
     : node.parentElement;
 }
 
-function readRangeAnchorRect(range: Range): DOMRect {
-  return (
-    Array.from(range.getClientRects()).at(-1) ?? range.getBoundingClientRect()
-  );
+export function readRangeAnchorRect(
+  range: Range,
+  viewportDocument: Document,
+): DOMRect {
+  const rect =
+    Array.from(range.getClientRects()).at(-1) ?? range.getBoundingClientRect();
+  return toViewportRect(rect, range.startContainer, viewportDocument);
 }

@@ -1,5 +1,6 @@
 import {
   parseDecisionDocument,
+  type DocumentFormat,
   type DocumentVersion,
   type DocumentVersionSummary,
   type PenaDocument,
@@ -17,6 +18,7 @@ import { MarkdownContent } from "../MarkdownContent";
 import { markdownComponents } from "../markdown-components";
 import { diffMarkdown } from "../version-diff";
 import { DocumentPageTitle } from "./DocumentPageTitle";
+import { HtmlDocumentFrame } from "./HtmlDocumentFrame";
 
 interface VersionHistoryProps {
   currentDocument: PenaDocument;
@@ -111,6 +113,7 @@ export function VersionHistory({
             collectionSlug: currentDocument.collectionSlug,
             title: currentDocument.title,
             content: currentDocument.content,
+            format: currentDocument.format,
             version: currentDocument.version,
             updatedAt: currentDocument.updatedAt,
           },
@@ -362,6 +365,7 @@ export function VersionHistory({
               <ReadOnlyDocument
                 title={selectedDocument.title}
                 content={selectedDocument.content}
+                format={selectedDocument.format}
               />
             ) : (
               <p className="version-history-state">Loading version…</p>
@@ -404,6 +408,27 @@ function VersionSelect({
 }
 
 export function ReadOnlyDocument({
+  title,
+  content,
+  format,
+}: {
+  title: string;
+  content: string;
+  format: DocumentFormat;
+}) {
+  if (format === "html") {
+    return (
+      <article className="readonly-document readonly-html-document">
+        <DocumentPageTitle title={title} />
+        <HtmlDocumentFrame content={content} title={title} />
+      </article>
+    );
+  }
+
+  return <ReadOnlyMarkdownDocument title={title} content={content} />;
+}
+
+function ReadOnlyMarkdownDocument({
   title,
   content,
 }: {

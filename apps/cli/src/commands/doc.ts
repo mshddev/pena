@@ -1,4 +1,5 @@
 import type {
+  DocumentFormat,
   DocumentMetadata,
   DocumentSummary,
   DocumentVersion,
@@ -27,6 +28,7 @@ import {
   describeCollection,
   documentUrl,
   parseCollectionTarget,
+  parseDocumentFormat,
   parseDocumentSlug,
   parseDocumentTitle,
   parseEtag,
@@ -133,6 +135,7 @@ export const docShow: CommandHandler = async (context) => {
     text: [
       `Title: ${document.title}`,
       `Slug: ${document.slug}`,
+      `Format: ${document.format}`,
       `Version: ${document.version}`,
       `Collection: ${describeCollection(document.collectionSlug)}`,
       `Archived: ${document.archivedAt ?? "no"}`,
@@ -231,14 +234,28 @@ export async function stageImages(
   return { content: staged, uploadedImages };
 }
 
-async function readMarkdownFile(path: string): Promise<string> {
+async function readDocumentFile(path: string): Promise<string> {
   try {
     return await readFile(path, "utf8");
   } catch (error) {
     throw usageError(
-      `Could not read the Markdown file "${path}": ${errorMessage(error)}`,
+      `Could not read the document file "${path}": ${errorMessage(error)}`,
     );
   }
+}
+
+/** `--format` wins; otherwise an .html or .htm file is HTML. */
+function readPublishFormat(
+  context: CommandContext,
+  filePath: string,
+): DocumentFormat {
+  const formatOption = stringOption(context, "format");
+
+  if (formatOption !== undefined) {
+    return parseDocumentFormat(formatOption);
+  }
+
+  return /\.html?$/i.test(filePath) ? "html" : "markdown";
 }
 
 export const docPublish: CommandHandler = async (context) => {
@@ -283,17 +300,21 @@ export const docPublish: CommandHandler = async (context) => {
     feedbackMatchOption === undefined
       ? undefined
       : parsePositiveInteger(feedbackMatchOption, "--feedback-match");
-  const content = await readMarkdownFile(filePath);
+  const format = readPublishFormat(context, filePath);
+  const content = await readDocumentFile(filePath);
 
-  if (hasLeadingH1(content)) {
+  if (format === "markdown" && hasLeadingH1(content)) {
     throw usageError(
       "The Markdown body must not repeat the document title as a leading H1.",
     );
   }
 
-  const staged = booleanOption(context, "no-images")
-    ? { content, uploadedImages: [] as UploadedImage[] }
-    : await stageImages(context.client, content, dirname(filePath));
+  // Only Markdown image syntax is rewritten. An HTML page references images
+  // uploaded with `pena asset upload` by their /api/assets/ URL.
+  const staged =
+    format === "html" || booleanOption(context, "no-images")
+      ? { content, uploadedImages: [] as UploadedImage[] }
+      : await stageImages(context.client, content, dirname(filePath));
   const headers: Record<string, string> = {};
 
   if (create) {
@@ -321,6 +342,7 @@ export const docPublish: CommandHandler = async (context) => {
     json: {
       title,
       content: staged.content,
+      format,
       // Omitting collectionSlug leaves an existing document where it is.
       ...(collectionSlug !== undefined ? { collectionSlug } : {}),
     },
@@ -334,6 +356,7 @@ export const docPublish: CommandHandler = async (context) => {
     data: {
       slug: document.slug,
       title: document.title,
+      format: document.format,
       version: document.version,
       collectionSlug: document.collectionSlug,
       archivedAt: document.archivedAt,

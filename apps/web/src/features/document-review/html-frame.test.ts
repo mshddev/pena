@@ -174,6 +174,34 @@ describe("createFrameHeightFitter", () => {
     expect(frame.applied).toHaveLength(settled);
   });
 
+  it("follows a page that drops its full-screen intro", () => {
+    // A `height: 100vh` splash above 1,200px of content and a 16px margin.
+    let introShown = true;
+    const { frame, settle } = fakeFrame(
+      (frameHeight) => (introShown ? frameHeight : 0) + 1_216,
+    );
+
+    settle();
+    introShown = false;
+    settle();
+
+    expect(frame.height).toBe(1_216);
+  });
+
+  it("follows a page that swaps its landing screen for a shorter one", () => {
+    // A `min-height: 100vh` hero above 600px, then a 900px sign-up screen.
+    let signUp = false;
+    const { frame, settle } = fakeFrame((frameHeight) =>
+      signUp ? 916 : frameHeight + 616,
+    );
+
+    settle();
+    signUp = true;
+    settle();
+
+    expect(frame.height).toBe(916);
+  });
+
   it("stops at once for a page taller than its frame by a multiple", () => {
     const { frame, settle } = fakeFrame((frameHeight) => frameHeight * 2);
 
@@ -280,5 +308,20 @@ describe("routeFrameNavigation", () => {
     frameDocument.getElementById("search")?.dispatchEvent(submit);
 
     expect(submit.defaultPrevented).toBe(true);
+  });
+
+  it("lets a dialog form close its dialog", () => {
+    const { frameDocument, frameWindow } = appendFrame(`
+      <dialog open><form id="confirm" method="dialog"><button>Cancel</button></form></dialog>
+    `);
+    routeFrameNavigation(frameDocument, { openLink: vi.fn(), scrollTo: vi.fn() });
+    const submit = new frameWindow.Event("submit", {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    frameDocument.getElementById("confirm")?.dispatchEvent(submit);
+
+    expect(submit.defaultPrevented).toBe(false);
   });
 });

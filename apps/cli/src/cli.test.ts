@@ -414,6 +414,14 @@ describe("doc publish", () => {
     expect(versions.stdout).toMatch(/^v2\t\S+\troot\thtml\tPage$/m);
     const firstVersion = await cli(["doc", "show", "page", "--version", "1"]);
     expect(firstVersion.stdout).toContain("Format: html");
+
+    // The document's own format decides the local checks: Markdown syntax
+    // inside an HTML page is text, and a Markdown H1 is a usage error.
+    const showsSyntax = writeMarkdown("syntax.txt", "<pre>![logo](missing.png)</pre>\n");
+    const h1 = writeMarkdown("h1.txt", "# Notes\n\nBody.\n");
+
+    expect((await cli(["doc", "publish", showsSyntax, "--slug", "page", "--title", "Page"])).code).toBe(0);
+    expect((await cli(["doc", "publish", h1, "--slug", "notes", "--title", "Notes"])).code).toBe(2);
   });
 
   it("leaves image destinations alone with --no-images", async () => {

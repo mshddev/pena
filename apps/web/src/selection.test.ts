@@ -75,4 +75,30 @@ describe("findTextRange", () => {
       surface.querySelectorAll("b")[1],
     );
   });
+
+  it("finds nothing once the passage itself is gone", () => {
+    const surface = window.document.createElement("article");
+    // The plans list re-rendered without the Starter row.
+    surface.innerHTML = "<p>Updated 10:00.</p><p>Team <b>$12</b> a seat.</p>";
+
+    expect(findTextRange(surface, "$12", 28, context)).toBeNull();
+  });
+
+  it("ignores whitespace the selection had at its edges", () => {
+    const surface = window.document.createElement("article");
+    surface.innerHTML =
+      "<p>Team <b>$12</b> a seat.</p><p>Updated 10:00. Plans: Starter <b>$12</b> a month.</p>";
+
+    // The raw selection took the spaces on both sides of "$12", so its
+    // context stops short of them while the trimmed passage does not.
+    // Its former offset is nearer the Team price, which a tie would favor.
+    const range = findTextRange(surface, "$12", 0, {
+      contextBefore: "Plans: Starter",
+      contextAfter: "a month.",
+    });
+
+    expect(range?.endContainer.parentElement).toBe(
+      surface.querySelectorAll("b")[1],
+    );
+  });
 });

@@ -181,6 +181,14 @@ export function hasLeadingH1(content: string): boolean {
   );
 }
 
+function assertNoLeadingH1(content: string): void {
+  if (hasLeadingH1(content)) {
+    throw usageError(
+      "The Markdown body must not repeat the document title as a leading H1.",
+    );
+  }
+}
+
 export interface UploadedImage {
   path: string;
   url: string;
@@ -312,18 +320,33 @@ export const docPublish: CommandHandler = async (context) => {
   const format = readPublishFormat(context, filePath);
   const content = await readDocumentFile(filePath);
 
-  // A file that names no format is left to the server, which knows the
-  // document's current one.
-  if (format === "markdown" && hasLeadingH1(content)) {
-    throw usageError(
-      "The Markdown body must not repeat the document title as a leading H1.",
-    );
+  if (format === "markdown") {
+    assertNoLeadingH1(content);
+  }
+
+  // The current document supplies the ETag when none is given, and the
+  // format when the file's extension names none.
+  const current =
+    create || (etagOption !== undefined && format !== undefined)
+      ? null
+      : await context.client.request("GET", documentPath(slug));
+
+  if (current && !current.ok && current.status !== 404) {
+    throw responseError(current);
+  }
+
+  const effectiveFormat =
+    format ??
+    (current?.ok ? (current.body as PenaDocument).format : "markdown");
+
+  if (format === undefined && effectiveFormat === "markdown") {
+    assertNoLeadingH1(content);
   }
 
   // Only Markdown image syntax is rewritten. An HTML page references images
   // uploaded with `pena asset upload` by their /api/assets/ URL.
   const staged =
-    format === "html" || booleanOption(context, "no-images")
+    effectiveFormat === "html" || booleanOption(context, "no-images")
       ? { content, uploadedImages: [] as UploadedImage[] }
       : await stageImages(context.client, content, dirname(filePath));
   const headers: Record<string, string> = {};
@@ -332,16 +355,10 @@ export const docPublish: CommandHandler = async (context) => {
     headers["if-none-match"] = "*";
   } else if (etagOption !== undefined) {
     headers["if-match"] = parseEtag(etagOption);
+  } else if (current?.ok) {
+    headers["if-match"] = requireEtag(current);
   } else {
-    const current = await context.client.request("GET", documentPath(slug));
-
-    if (current.status === 404) {
-      headers["if-none-match"] = "*";
-    } else if (current.ok) {
-      headers["if-match"] = requireEtag(current);
-    } else {
-      throw responseError(current);
-    }
+    headers["if-none-match"] = "*";
   }
 
   if (feedbackMatch !== undefined) {

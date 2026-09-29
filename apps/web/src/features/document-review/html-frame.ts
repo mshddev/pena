@@ -59,7 +59,14 @@ export function createFrameHeightFitter(
 
   return function fit(): void {
     const content = measure();
-    const next = content - viewportOverflow;
+    let next = content - viewportOverflow;
+
+    // Growing the frame never shrinks a page, so a page that shrank below
+    // the frame lost whatever was sized from the viewport.
+    if (viewportOverflow > 0 && next < height - 1) {
+      viewportOverflow = 0;
+      next = content;
+    }
 
     if (Math.abs(next - height) < 1) {
       return;
@@ -166,7 +173,8 @@ interface FrameNavigationHandlers {
  * A `srcdoc` page resolves URLs against the review page's URL, so even
  * `#section`, or a form's `action`, would load Pena inside the frame.
  * Fragments scroll within the page, every other link opens in a new tab, and
- * a form stays put: a mockup has nothing to submit to. Listening in the
+ * a form stays put, since a mockup has nothing to submit to; a dialog form
+ * still closes its dialog. Listening in the
  * bubble phase lets the page's own handlers claim an event first.
  */
 export function routeFrameNavigation(
@@ -209,6 +217,14 @@ export function routeFrameNavigation(
   }
 
   function handleSubmit(event: SubmitEvent): void {
+    const form = event.target as HTMLFormElement;
+    const submitter = event.submitter as HTMLButtonElement | null;
+
+    // A dialog form closes its dialog instead of navigating.
+    if ((submitter?.formMethod || form.method) === "dialog") {
+      return;
+    }
+
     event.preventDefault();
   }
 

@@ -8,6 +8,8 @@ export type PassageContext = Pick<
 >;
 
 const CONTEXT_LENGTH = 120;
+/** Context a moved passage must still share, or all of it when shorter. */
+const MIN_SHARED_CONTEXT = 12;
 
 /**
  * Text a reader never sees: Pena's own annotation chrome, and the source of
@@ -177,7 +179,8 @@ function isTextAt(fullText: string, text: string, start: number): boolean {
 
 /**
  * The occurrence of `selectedText` whose surroundings best match the context
- * it was read with, nearest its former start on a tie; -1 when none is left.
+ * it was read with, nearest its former start on a tie. -1 when no occurrence
+ * shares enough context, as when the passage itself was removed.
  */
 function findMovedPassage(
   fullText: string,
@@ -185,6 +188,9 @@ function findMovedPassage(
   { contextBefore, contextAfter }: PassageContext,
   formerStart: number,
 ): number {
+  const before = contextBefore.trimEnd();
+  const after = contextAfter.trimStart();
+  const minScore = Math.min(MIN_SHARED_CONTEXT, before.length + after.length);
   let bestStart = -1;
   let bestScore = -1;
   let bestDistance = Number.POSITIVE_INFINITY;
@@ -195,10 +201,15 @@ function findMovedPassage(
     start = fullText.indexOf(selectedText, start + 1)
   ) {
     const end = start + selectedText.length;
+    // The selection was trimmed, so whitespace at its edges is skipped.
     const score =
-      countSharedEnding(fullText, start, contextBefore) +
-      countSharedBeginning(fullText, end, contextAfter);
+      countSharedEnding(fullText, skipSpaceBackward(fullText, start), before) +
+      countSharedBeginning(fullText, skipSpaceForward(fullText, end), after);
     const distance = Math.abs(start - formerStart);
+
+    if (score < minScore) {
+      continue;
+    }
 
     if (score > bestScore || (score === bestScore && distance < bestDistance)) {
       bestStart = start;
@@ -208,6 +219,26 @@ function findMovedPassage(
   }
 
   return bestStart;
+}
+
+function skipSpaceBackward(text: string, end: number): number {
+  let index = end;
+
+  while (index > 0 && /\s/.test(text[index - 1] ?? "")) {
+    index -= 1;
+  }
+
+  return index;
+}
+
+function skipSpaceForward(text: string, start: number): number {
+  let index = start;
+
+  while (index < text.length && /\s/.test(text[index] ?? "")) {
+    index += 1;
+  }
+
+  return index;
 }
 
 /** How many characters of `text` end where `fullText` reaches `end`. */

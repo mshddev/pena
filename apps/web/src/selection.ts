@@ -2,6 +2,11 @@ import type { CommentInput } from "@pena/contracts";
 
 export type SelectedPassage = Omit<CommentInput, "comment">;
 
+export type PassageContext = Pick<
+  SelectedPassage,
+  "contextBefore" | "contextAfter"
+>;
+
 const CONTEXT_LENGTH = 120;
 
 /**
@@ -87,10 +92,17 @@ function readRangeText(range: Range): string {
   return contents.textContent ?? "";
 }
 
+/**
+ * Finds `selectedText` in `root`, at `exactStart` when given. A page's scripts
+ * can change the text in front of a passage after it was read; with
+ * `context`, a passage no longer at `exactStart` is looked up by the text
+ * around it instead.
+ */
 export function findTextRange(
   root: HTMLElement,
   selectedText: string,
   exactStart?: number,
+  context?: PassageContext,
 ): Range | null {
   const walker = root.ownerDocument.createTreeWalker(
     root,
@@ -110,14 +122,19 @@ export function findTextRange(
     fullText += textNode.data;
   }
 
-  const matchStart =
+  let matchStart =
     exactStart === undefined ? fullText.indexOf(selectedText) : exactStart;
 
-  if (
-    matchStart < 0 ||
-    fullText.slice(matchStart, matchStart + selectedText.length) !== selectedText
-  ) {
-    return null;
+  if (!isTextAt(fullText, selectedText, matchStart)) {
+    if (!context || exactStart === undefined) {
+      return null;
+    }
+
+    matchStart = findMovedPassage(fullText, selectedText, context, exactStart);
+
+    if (matchStart < 0) {
+      return null;
+    }
   }
 
   const matchEnd = matchStart + selectedText.length;
@@ -152,6 +169,79 @@ export function findTextRange(
   range.setStart(startNode, startOffset);
   range.setEnd(endNode, endOffset);
   return range;
+}
+
+function isTextAt(fullText: string, text: string, start: number): boolean {
+  return start >= 0 && fullText.slice(start, start + text.length) === text;
+}
+
+/**
+ * The occurrence of `selectedText` whose surroundings best match the context
+ * it was read with, nearest its former start on a tie; -1 when none is left.
+ */
+function findMovedPassage(
+  fullText: string,
+  selectedText: string,
+  { contextBefore, contextAfter }: PassageContext,
+  formerStart: number,
+): number {
+  let bestStart = -1;
+  let bestScore = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (
+    let start = fullText.indexOf(selectedText);
+    start !== -1;
+    start = fullText.indexOf(selectedText, start + 1)
+  ) {
+    const end = start + selectedText.length;
+    const score =
+      countSharedEnding(fullText, start, contextBefore) +
+      countSharedBeginning(fullText, end, contextAfter);
+    const distance = Math.abs(start - formerStart);
+
+    if (score > bestScore || (score === bestScore && distance < bestDistance)) {
+      bestStart = start;
+      bestScore = score;
+      bestDistance = distance;
+    }
+  }
+
+  return bestStart;
+}
+
+/** How many characters of `text` end where `fullText` reaches `end`. */
+function countSharedEnding(fullText: string, end: number, text: string): number {
+  let count = 0;
+
+  while (
+    count < text.length &&
+    count < end &&
+    fullText[end - 1 - count] === text[text.length - 1 - count]
+  ) {
+    count += 1;
+  }
+
+  return count;
+}
+
+/** How many characters of `text` begin where `fullText` reaches `start`. */
+function countSharedBeginning(
+  fullText: string,
+  start: number,
+  text: string,
+): number {
+  let count = 0;
+
+  while (
+    count < text.length &&
+    start + count < fullText.length &&
+    fullText[start + count] === text[count]
+  ) {
+    count += 1;
+  }
+
+  return count;
 }
 
 export function readTextOffset(

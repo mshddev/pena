@@ -72,6 +72,8 @@ verify: in a new Claude Code session, ask it to *"publish this plan to Pena"* â€
 
 If you upgraded from a version whose skill used curl and node scripts, run `pena skill install` again: the skill now drives the `pena` CLI and the review URLs moved to port 8788.
 
+After any upgrade, restart a running server (`pena server stop && pena server start`) and run `pena skill install` again. An older server can reject requests from a newer CLI.
+
 # How To Use
 
 1. Ask Claude Code to publish a document to Pena. It uploads referenced local

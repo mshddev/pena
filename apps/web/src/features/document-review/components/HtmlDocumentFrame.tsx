@@ -10,7 +10,7 @@ import {
   fitFrameToContent,
   openLinkInNewTab,
   readInitialFrameHeight,
-  routeFrameLinks,
+  routeFrameNavigation,
   scrollFrameSidewaysOnly,
   scrollToReadingPosition,
 } from "../html-frame";
@@ -69,7 +69,7 @@ export function HtmlDocumentFrame({
 
     scrollFrameSidewaysOnly(frameDocument);
     const stopFitting = fitFrameToContent(frame);
-    const stopRouting = routeFrameLinks(frameDocument, {
+    const stopRouting = routeFrameNavigation(frameDocument, {
       openLink: openLinkInNewTab,
       scrollTo: scrollToReadingPosition,
     });

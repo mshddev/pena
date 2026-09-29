@@ -469,7 +469,7 @@ export function DocumentViewer({
       surface,
       editor.anchorId,
       editor.anchorOffset,
-      editor.passage.selectedText,
+      editor.passage,
       (range) => {
         const position = readSelectionPosition(range, stage);
 

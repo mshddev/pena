@@ -119,6 +119,7 @@ export const docShow: CommandHandler = async (context) => {
       text: [
         `Title: ${document.title}`,
         `Slug: ${document.slug}`,
+        `Format: ${document.format}`,
         `Version: ${document.version}`,
         `Collection: ${describeCollection(document.collectionSlug)}`,
         `Updated: ${document.updatedAt}`,
@@ -244,18 +245,26 @@ async function readDocumentFile(path: string): Promise<string> {
   }
 }
 
-/** `--format` wins; otherwise an .html or .htm file is HTML. */
+/**
+ * `--format` wins, then the extension: .html or .htm is HTML, and .md or
+ * .markdown is Markdown. Any other file sends no format, so an existing
+ * document keeps its own and a new one defaults to Markdown.
+ */
 function readPublishFormat(
   context: CommandContext,
   filePath: string,
-): DocumentFormat {
+): DocumentFormat | undefined {
   const formatOption = stringOption(context, "format");
 
   if (formatOption !== undefined) {
     return parseDocumentFormat(formatOption);
   }
 
-  return /\.html?$/i.test(filePath) ? "html" : "markdown";
+  if (/\.html?$/i.test(filePath)) {
+    return "html";
+  }
+
+  return /\.(md|markdown)$/i.test(filePath) ? "markdown" : undefined;
 }
 
 export const docPublish: CommandHandler = async (context) => {
@@ -303,6 +312,8 @@ export const docPublish: CommandHandler = async (context) => {
   const format = readPublishFormat(context, filePath);
   const content = await readDocumentFile(filePath);
 
+  // A file that names no format is left to the server, which knows the
+  // document's current one.
   if (format === "markdown" && hasLeadingH1(content)) {
     throw usageError(
       "The Markdown body must not repeat the document title as a leading H1.",
@@ -342,7 +353,7 @@ export const docPublish: CommandHandler = async (context) => {
     json: {
       title,
       content: staged.content,
-      format,
+      ...(format !== undefined ? { format } : {}),
       // Omitting collectionSlug leaves an existing document where it is.
       ...(collectionSlug !== undefined ? { collectionSlug } : {}),
     },
@@ -443,7 +454,7 @@ export const docVersions: CommandHandler = async (context) => {
   const body = response.body as { versions: DocumentVersionSummary[] };
   const lines = body.versions.map(
     (version) =>
-      `v${version.version}\t${version.updatedAt}\t${describeCollection(version.collectionSlug)}\t${version.title}`,
+      `v${version.version}\t${version.updatedAt}\t${describeCollection(version.collectionSlug)}\t${version.format}\t${version.title}`,
   );
 
   return {

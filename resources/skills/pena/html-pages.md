@@ -6,9 +6,9 @@ selects and comments on its rendered text.
 
 ## Write the page
 
-- Write one self-contained `.html` file: inline the CSS and JS, or load
-  libraries from a CDN. Write every script yourself; the page runs with
-  Pena's origin and can reach its API.
+- Write one self-contained `.html` file: inline your own CSS and JS, and
+  load libraries from a CDN. A publish is limited to 1 MiB. Write every
+  script yourself; the page runs with Pena's origin and can reach its API.
 - Put the text the reader reviews in static markup. A comment's
   `selectedText` and context are rendered text, so text a script generates
   has no verbatim match in the source you revise.
@@ -32,6 +32,7 @@ pena doc publish page.html --slug <slug> --title "<title>" --create
 ```
 
 The `.html` extension selects HTML; `--format html` selects it for any other
-extension. Every other step of publishing and handling feedback is the same
+extension. Revise the page in its `.html` file: a `.md` file publishes as
+Markdown. Every other step of publishing and handling feedback is the same
 as for Markdown. Publishing a different format for an existing slug creates
 the next version in the new format.

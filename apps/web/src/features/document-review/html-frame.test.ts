@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFrameHeightFitter,
   measureFrameContent,
-  routeFrameLinks,
+  routeFrameNavigation,
   scrollFrameSidewaysOnly,
 } from "./html-frame";
 
@@ -91,61 +91,110 @@ describe("scrollFrameSidewaysOnly", () => {
   });
 });
 
+/**
+ * A frame whose page measures `layout(frameHeight)`, laid out as soon as the
+ * frame is resized, as a same-origin frame is.
+ */
+function fakeFrame(layout: (frameHeight: number) => number, height = 800) {
+  const frame = { height, applied: [] as number[] };
+  const fit = createFrameHeightFitter(
+    () => layout(frame.height),
+    (next) => {
+      frame.height = next;
+      frame.applied.push(next);
+    },
+    height,
+  );
+  // Every resize is observed and fits again, as the ResizeObserver does.
+  const settle = () => {
+    for (let pass = 0; pass < 20; pass += 1) {
+      const before = frame.applied.length;
+      fit();
+
+      if (frame.applied.length === before) {
+        return;
+      }
+    }
+
+    throw new Error("The frame never settled.");
+  };
+
+  return { frame, settle };
+}
+
 describe("createFrameHeightFitter", () => {
   it("grows and shrinks with the content", () => {
     let content = 1_200;
-    const applied: number[] = [];
-    const fit = createFrameHeightFitter(
-      () => content,
-      (height) => applied.push(height),
-      800,
-      () => 0,
-    );
+    const { frame, settle } = fakeFrame(() => content);
 
-    fit();
+    settle();
     content = 600;
-    fit();
-    fit();
+    settle();
 
-    expect(applied).toEqual([1_200, 600]);
+    expect(frame.applied).toEqual([1_200, 600]);
   });
 
-  it("stops chasing a page that grows with its own frame", () => {
-    let frameHeight = 800;
-    let clock = 0;
-    const applied: number[] = [];
-    // `min-height: 100vh` plus the default 8px body margin on each side.
-    let marginBelowContent = 16;
-    const fit = createFrameHeightFitter(
-      () => frameHeight + marginBelowContent,
-      (height) => {
-        frameHeight = height;
-        applied.push(height);
-      },
-      800,
-      () => clock,
-    );
+  it("follows content that grows in equal steps", () => {
+    // A staggered entrance: one 40px row at a time, then one more much later.
+    let rows = 0;
+    const { frame, settle } = fakeFrame(() => 200 + rows * 40, 200);
 
-    for (let step = 0; step < 10; step += 1) {
-      clock += 16;
-      fit();
+    for (let row = 0; row < 12; row += 1) {
+      rows += 1;
+      settle();
     }
 
-    // Long after the last resize, the same echo still does not restart it.
-    clock += 10_000;
-    fit();
+    rows += 1;
+    settle();
 
-    expect(applied).toEqual([816, 832, 848]);
+    expect(frame.height).toBe(200 + 13 * 40);
+  });
 
-    // A real change to the content is still followed.
-    marginBelowContent = 16 + 300;
-    fit();
+  it("settles a page that grows with its own frame", () => {
+    let content = 300;
+    // `min-height: 100vh` plus the default 8px body margin on each side.
+    const { frame, settle } = fakeFrame(
+      (frameHeight) => Math.max(frameHeight, content) + 16,
+    );
 
-    expect(applied.at(-1)).toBe(848 + 316);
+    settle();
+    settle();
+
+    expect(frame.applied).toEqual([816]);
+
+    // Content that outgrows the viewport is followed, short of the margin
+    // the viewport sizing adds.
+    content = 1_500;
+    settle();
+
+    expect(frame.height).toBeGreaterThanOrEqual(1_500);
+    expect(frame.height).toBeLessThanOrEqual(1_516);
+    const settled = frame.applied.length;
+    settle();
+    expect(frame.applied).toHaveLength(settled);
+  });
+
+  it("stops at once for a page taller than its frame by a multiple", () => {
+    const { frame, settle } = fakeFrame((frameHeight) => frameHeight * 2);
+
+    settle();
+
+    expect(frame.applied).toEqual([1_600]);
+  });
+
+  it("converges on a page only partly sized from its frame", () => {
+    const { frame, settle } = fakeFrame(
+      (frameHeight) => frameHeight / 2 + 400,
+      600,
+    );
+
+    settle();
+
+    expect(Math.abs(frame.height - 800)).toBeLessThan(2);
   });
 });
 
-describe("routeFrameLinks", () => {
+describe("routeFrameNavigation", () => {
   it("scrolls to fragments inside the page and opens other links in a new tab", () => {
     const { frameDocument, frameWindow } = appendFrame(`
       <a id="to-plans" href="#plans">Plans</a>
@@ -154,7 +203,7 @@ describe("routeFrameLinks", () => {
     `);
     const openLink = vi.fn();
     const scrollTo = vi.fn();
-    routeFrameLinks(frameDocument, { openLink, scrollTo });
+    routeFrameNavigation(frameDocument, { openLink, scrollTo });
 
     const fragmentClick = new frameWindow.MouseEvent("click", {
       bubbles: true,
@@ -180,7 +229,7 @@ describe("routeFrameLinks", () => {
       <a id="script" href="javascript:void 0">Run</a>
     `);
     const openLink = vi.fn();
-    routeFrameLinks(frameDocument, { openLink, scrollTo: vi.fn() });
+    routeFrameNavigation(frameDocument, { openLink, scrollTo: vi.fn() });
     frameDocument
       .getElementById("routed")
       ?.addEventListener("click", (event) => event.preventDefault());
@@ -194,5 +243,42 @@ describe("routeFrameLinks", () => {
     }
 
     expect(openLink).not.toHaveBeenCalled();
+  });
+
+  it("opens SVG links, including xlink:href, against the page's base URL", () => {
+    const { frameDocument, frameWindow } = appendFrame(`
+      <svg>
+        <a id="svg-link" href="https://example.com/chart"><text>Chart</text></a>
+        <a id="xlink" xlink:href="/guide"><text>Guide</text></a>
+      </svg>
+    `);
+    const openLink = vi.fn();
+    routeFrameNavigation(frameDocument, { openLink, scrollTo: vi.fn() });
+
+    for (const id of ["svg-link", "xlink"]) {
+      frameDocument.getElementById(id)?.firstElementChild?.dispatchEvent(
+        new frameWindow.MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    }
+
+    expect(openLink.mock.calls).toEqual([
+      ["https://example.com/chart"],
+      [new URL("/guide", frameDocument.baseURI).href],
+    ]);
+  });
+
+  it("keeps a form submission from navigating the frame", () => {
+    const { frameDocument, frameWindow } = appendFrame(`
+      <form id="search" action="/login"><button>Sign in</button></form>
+    `);
+    routeFrameNavigation(frameDocument, { openLink: vi.fn(), scrollTo: vi.fn() });
+    const submit = new frameWindow.Event("submit", {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    frameDocument.getElementById("search")?.dispatchEvent(submit);
+
+    expect(submit.defaultPrevented).toBe(true);
   });
 });

@@ -39,3 +39,40 @@ describe("readSelection", () => {
     );
   });
 });
+
+describe("findTextRange", () => {
+  const context = {
+    contextBefore: "Updated 9:59. Plans: Starter ",
+    contextAfter: " a month. Team ",
+  };
+
+  it("finds a passage moved by a change to the text in front of it", () => {
+    const surface = window.document.createElement("article");
+    // A ticking clock grew by a character after the passage was read.
+    surface.innerHTML =
+      "<p>Updated 10:00.</p><p>Plans: Starter <b>$12</b> a month. Team <b>$12</b> a seat.</p>";
+    const formerStart = "Updated 9:59.Plans: Starter ".length;
+
+    expect(findTextRange(surface, "$12", formerStart)).toBeNull();
+
+    const range = findTextRange(surface, "$12", formerStart, context);
+
+    // A range starts at the end of the text before it, so its end locates it.
+    expect(range?.toString()).toBe("$12");
+    expect(range?.endContainer.parentElement).toBe(
+      surface.querySelectorAll("b")[0],
+    );
+  });
+
+  it("picks the occurrence whose surroundings match, not the nearest", () => {
+    const surface = window.document.createElement("article");
+    surface.innerHTML =
+      "<p>Team <b>$12</b> a seat.</p><p>Plans: Starter <b>$12</b> a month.</p>";
+
+    const range = findTextRange(surface, "$12", 0, context);
+
+    expect(range?.endContainer.parentElement).toBe(
+      surface.querySelectorAll("b")[1],
+    );
+  });
+});

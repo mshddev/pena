@@ -16,10 +16,8 @@ export const HTML_FRAME_SANDBOX = [
 ].join(" ");
 
 const MIN_FRAME_HEIGHT = 320;
-/** A growth that lands this soon after a resize answers that resize. */
-const RESIZE_ECHO_MS = 250;
-const MAX_CHASED_GROWTHS = 3;
 const READING_OFFSET = 24;
+const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
 
 /**
  * The height a page's content takes. The root's own box is the content
@@ -46,48 +44,37 @@ export function measureFrameContent(frameDocument: Document): number {
 /**
  * Returns a function that sizes the frame to its content each time it runs.
  * A page sized from its own viewport (`min-height: 100vh` plus a margin)
- * grows by the same amount after every resize, forever. After a few of those
- * echoes in a row the frame stops following that amount for good, while
- * still following any other change to the content.
+ * overflows any frame by the same amount, so fitting it would never end. A
+ * same-origin frame lays out as soon as it is resized, so each fit measures
+ * again at once: a page still overflowing by as much as before grew with the
+ * frame, not with its content, and that overflow stops counting.
  */
 export function createFrameHeightFitter(
   measure: () => number,
   apply: (height: number) => void,
   initialHeight: number,
-  now: () => number = () => performance.now(),
 ): () => void {
   let height = initialHeight;
-  let lastAppliedAt = Number.NEGATIVE_INFINITY;
-  let lastGrowth = 0;
-  let chasedGrowths = 0;
-  let echoGrowth: number | null = null;
+  let viewportOverflow = 0;
 
   return function fit(): void {
-    const next = measure();
-    const growth = next - height;
+    const content = measure();
+    const next = content - viewportOverflow;
 
-    if (
-      Math.abs(growth) < 1 ||
-      (echoGrowth !== null && Math.abs(growth - echoGrowth) <= 1)
-    ) {
+    if (Math.abs(next - height) < 1) {
       return;
     }
 
-    const echoesResize =
-      growth > 0 &&
-      Math.abs(growth - lastGrowth) <= 1 &&
-      now() - lastAppliedAt < RESIZE_ECHO_MS;
-    chasedGrowths = echoesResize ? chasedGrowths + 1 : 0;
-    lastGrowth = growth;
-
-    if (chasedGrowths >= MAX_CHASED_GROWTHS) {
-      echoGrowth = growth;
-      return;
-    }
-
+    const overflowBefore = content - height;
     height = next;
-    lastAppliedAt = now();
     apply(next);
+
+    // An overflow that shrank is converging; the next fit follows it.
+    const overflowAfter = measure() - next;
+    viewportOverflow =
+      overflowAfter >= 1 && overflowAfter >= overflowBefore - 1
+        ? overflowAfter
+        : 0;
   };
 }
 
@@ -170,20 +157,21 @@ export function fitFrameToContent(frame: HTMLIFrameElement): () => void {
   };
 }
 
-interface FrameLinkHandlers {
+interface FrameNavigationHandlers {
   openLink: (url: string) => void;
   scrollTo: (element: Element) => void;
 }
 
 /**
- * A `srcdoc` page resolves links against the review page's URL, so even
- * `#section` would load Pena inside the frame. Fragments scroll within the
- * page and every other link opens in a new tab. Listening in the bubble
- * phase lets the page's own handlers claim a click first.
+ * A `srcdoc` page resolves URLs against the review page's URL, so even
+ * `#section`, or a form's `action`, would load Pena inside the frame.
+ * Fragments scroll within the page, every other link opens in a new tab, and
+ * a form stays put: a mockup has nothing to submit to. Listening in the
+ * bubble phase lets the page's own handlers claim an event first.
  */
-export function routeFrameLinks(
+export function routeFrameNavigation(
   frameDocument: Document,
-  { openLink, scrollTo }: FrameLinkHandlers,
+  { openLink, scrollTo }: FrameNavigationHandlers,
 ): () => void {
   function handleClick(event: MouseEvent): void {
     if (event.defaultPrevented || event.button !== 0) {
@@ -191,9 +179,9 @@ export function routeFrameLinks(
     }
 
     const link = readClosestLink(event.target);
-    const href = link?.getAttribute("href");
+    const href = link ? readLinkHref(link) : null;
 
-    if (!link || href === null || href === undefined) {
+    if (!link || href === null) {
       return;
     }
 
@@ -213,11 +201,24 @@ export function routeFrameLinks(
       return;
     }
 
-    openLink(link.href);
+    const url = resolveUrl(href, frameDocument.baseURI);
+
+    if (url) {
+      openLink(url);
+    }
+  }
+
+  function handleSubmit(event: SubmitEvent): void {
+    event.preventDefault();
   }
 
   frameDocument.addEventListener("click", handleClick);
-  return () => frameDocument.removeEventListener("click", handleClick);
+  frameDocument.addEventListener("submit", handleSubmit);
+
+  return () => {
+    frameDocument.removeEventListener("click", handleClick);
+    frameDocument.removeEventListener("submit", handleSubmit);
+  };
 }
 
 export function openLinkInNewTab(url: string): void {
@@ -260,7 +261,8 @@ export function readInitialFrameHeight(): number {
   return Math.max(MIN_FRAME_HEIGHT, window.innerHeight - utilityBarBottom);
 }
 
-function readClosestLink(target: EventTarget | null): HTMLAnchorElement | null {
+/** An HTML link, or an SVG one using either `href` or `xlink:href`. */
+function readClosestLink(target: EventTarget | null): Element | null {
   // The target belongs to the frame's realm, so `instanceof` would fail.
   const node = target as Node | null;
   const element =
@@ -268,7 +270,21 @@ function readClosestLink(target: EventTarget | null): HTMLAnchorElement | null {
       ? (node as Element)
       : (node?.parentElement ?? null);
 
-  return element?.closest<HTMLAnchorElement>("a[href]") ?? null;
+  return element?.closest("a[href], a[*|href]") ?? null;
+}
+
+function readLinkHref(link: Element): string | null {
+  return (
+    link.getAttribute("href") ?? link.getAttributeNS(XLINK_NAMESPACE, "href")
+  );
+}
+
+function resolveUrl(href: string, base: string): string | null {
+  try {
+    return new URL(href, base).href;
+  } catch {
+    return null;
+  }
 }
 
 function findFragmentTarget(

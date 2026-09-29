@@ -2,6 +2,7 @@ import {
   findTextRange,
   readSelection,
   readTextOffset,
+  type PassageContext,
 } from "../../selection";
 import type { AnchoredSelection } from "./editor-state";
 import { toViewportRect } from "./frame-geometry";
@@ -88,20 +89,35 @@ export function findDraftRange(
     draft.anchorId,
     draft.selectedText,
     draft.anchorOffset,
+    draft,
   );
 }
 
+/**
+ * Every anchor is tried at the exact offset before any is searched by
+ * context, so a passage that did not move always wins over a lookalike.
+ */
 export function findAnchoredTextRange(
   surface: HTMLElement,
   anchorId: string,
   selectedText: string,
   anchorOffset: number,
+  context?: PassageContext,
 ): Range | null {
-  for (const anchor of resolveAnnotationAnchors(surface, anchorId)) {
-    const range = findTextRange(anchor, selectedText, anchorOffset);
+  const anchors = resolveAnnotationAnchors(surface, anchorId);
 
-    if (range) {
-      return range;
+  for (const passageContext of context ? [undefined, context] : [undefined]) {
+    for (const anchor of anchors) {
+      const range = findTextRange(
+        anchor,
+        selectedText,
+        anchorOffset,
+        passageContext,
+      );
+
+      if (range) {
+        return range;
+      }
     }
   }
 

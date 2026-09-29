@@ -5,6 +5,7 @@ import {
   type RefObject,
 } from "react";
 
+import type { SelectedPassage } from "../../selection";
 import {
   findAnchoredTextRange,
   findDraftRange,
@@ -134,15 +135,16 @@ export function subscribeToSelectionPosition(
   surface: HTMLElement,
   anchorId: string,
   anchorOffset: number,
-  selectedText: string,
+  passage: SelectedPassage,
   onPositionChange: (range: Range) => void,
 ): () => void {
   function updateSelectionPosition(): void {
     const range = findAnchoredTextRange(
       surface,
       anchorId,
-      selectedText,
+      passage.selectedText,
       anchorOffset,
+      passage,
     );
 
     if (range) {

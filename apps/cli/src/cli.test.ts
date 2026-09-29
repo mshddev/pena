@@ -397,6 +397,25 @@ describe("doc publish", () => {
     expect(invalid.stderr).toContain('"markdown" or "html"');
   });
 
+  it("keeps a document's format when the file's extension names none", async () => {
+    const page = "<!doctype html>\n<p>Plans</p>\n";
+    const html = writeMarkdown("page.html", page);
+    const revision = writeMarkdown("revision.txt", page.replace("Plans", "Pricing"));
+    const notes = writeMarkdown("notes.txt", "Plain notes.\n");
+
+    await cli(["doc", "publish", html, "--slug", "page", "--title", "Page"]);
+    const republished = await cli(["--json", "doc", "publish", revision, "--slug", "page", "--title", "Page"]);
+    const created = await cli(["--json", "doc", "publish", notes, "--slug", "notes", "--title", "Notes"]);
+
+    expect(republished.json()).toMatchObject({ format: "html", version: 2 });
+    expect(created.json()).toMatchObject({ format: "markdown" });
+
+    const versions = await cli(["doc", "versions", "page"]);
+    expect(versions.stdout).toMatch(/^v2\t\S+\troot\thtml\tPage$/m);
+    const firstVersion = await cli(["doc", "show", "page", "--version", "1"]);
+    expect(firstVersion.stdout).toContain("Format: html");
+  });
+
   it("leaves image destinations alone with --no-images", async () => {
     const path = writeMarkdown("spec.md", "![x](nope.png)\n");
     const result = await cli(["--json", "doc", "publish", path, "--slug", "spec", "--title", "Spec", "--no-images"]);

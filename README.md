@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D24-brightgreen)](.nvmrc)
 
-Pena is a local Markdown document review interface for Claude Code sessions. Claude publishes a draft — a plan, spec, or report — to Pena; you read it in the browser, select text, leave inline comments, and submit; Claude pulls the feedback back into the session and revises.
+Pena is a local document review interface for Claude Code sessions. Claude publishes a draft — a plan, spec, or report in Markdown, or a complete HTML page such as a UI mockup — to Pena; you read it in the browser, select text, leave inline comments, and submit; Claude pulls the feedback back into the session and revises.
 
 <!-- TODO: screenshot / demo GIF of the review flow -->
 
@@ -72,6 +72,8 @@ verify: in a new Claude Code session, ask it to *"publish this plan to Pena"* �
 
 If you upgraded from a version whose skill used curl and node scripts, run `pena skill install` again: the skill now drives the `pena` CLI and the review URLs moved to port 8788.
 
+After any upgrade, restart a running server (`pena server stop && pena server start`) and run `pena skill install` again. An older server can reject requests from a newer CLI.
+
 # How To Use
 
 1. Ask Claude Code to publish a document to Pena. It uploads referenced local
@@ -87,13 +89,20 @@ it publishes the document. The monitor stops when that Claude Code session
 ends. When the Monitor tool is not available, Pena keeps the feedback and you
 can still ask Claude to fetch it manually.
 
+A document can also be an HTML page. Publish a `.html` file and Pena renders
+it as the complete page it is, its own styles and scripts running, in a frame
+that grows with the page; you select and comment on the rendered text the
+same way. The page runs with Pena's origin and can call its API, so publish
+only HTML you trust, such as the pages Claude writes for you.
+
 Documents live at the root or inside collections, which nest like folders.
 Each immutable version contains its explicit
-title and Markdown content, with feedback attached to that exact version.
+title and its Markdown or HTML content, with feedback attached to that exact
+version.
 Changing only the title still creates a version. The document view separates
 operational metadata from the reviewed body and renders the explicit title once
 inside the document surface. Earlier versions can be compared or restored. The
-current Markdown can also be downloaded as a `.md` file.
+current content can also be downloaded as a `.md` or `.html` file.
 Finished documents move to a browsable archive at
 `http://127.0.0.1:8788/archive`; archiving pauses publishing without removing
 history or the download action.
@@ -114,7 +123,7 @@ Everything the skill does is a `pena` command, so you can do it by hand too. `pe
 | `pena collection delete <slug>` | Delete an empty collection |
 | `pena doc list [--collection <slug\|root>] [--archived]` | List active or archived documents |
 | `pena doc show <slug> [--version <n>]` | Print a document, or one historical version |
-| `pena doc publish <file> --slug <slug> --title <title> [--collection <slug\|root> \| --root] [--etag <etag>] [--create] [--feedback-match <batch-id>] [--no-images]` | Upload referenced local images and publish the next version |
+| `pena doc publish <file> --slug <slug> --title <title> [--collection <slug\|root> \| --root] [--etag <etag>] [--create] [--feedback-match <batch-id>] [--no-images] [--format <markdown\|html>]` | Upload referenced local images and publish the next version; a `.html` file publishes as an HTML page |
 | `pena doc rename <slug> <title>` | Change the title (creates a version) |
 | `pena doc move <slug> --to <collection-slug\|root>` | Move a document between collections |
 | `pena doc archive <slug>` / `pena doc unarchive <slug>` | Archive or reactivate a document |

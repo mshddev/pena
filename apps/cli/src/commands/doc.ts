@@ -1,4 +1,5 @@
 import type {
+  DocumentFormat,
   DocumentMetadata,
   DocumentSummary,
   DocumentVersion,
@@ -27,6 +28,7 @@ import {
   describeCollection,
   documentUrl,
   parseCollectionTarget,
+  parseDocumentFormat,
   parseDocumentSlug,
   parseDocumentTitle,
   parseEtag,
@@ -117,6 +119,7 @@ export const docShow: CommandHandler = async (context) => {
       text: [
         `Title: ${document.title}`,
         `Slug: ${document.slug}`,
+        `Format: ${document.format}`,
         `Version: ${document.version}`,
         `Collection: ${describeCollection(document.collectionSlug)}`,
         `Updated: ${document.updatedAt}`,
@@ -133,6 +136,7 @@ export const docShow: CommandHandler = async (context) => {
     text: [
       `Title: ${document.title}`,
       `Slug: ${document.slug}`,
+      `Format: ${document.format}`,
       `Version: ${document.version}`,
       `Collection: ${describeCollection(document.collectionSlug)}`,
       `Archived: ${document.archivedAt ?? "no"}`,
@@ -175,6 +179,14 @@ export function hasLeadingH1(content: string): boolean {
     /^ {0,3}#[\t ]+\S/.test(firstLine) ||
     (firstLine.trim().length > 0 && /^ {0,3}=+[\t ]*$/.test(secondLine))
   );
+}
+
+function assertNoLeadingH1(content: string): void {
+  if (hasLeadingH1(content)) {
+    throw usageError(
+      "The Markdown body must not repeat the document title as a leading H1.",
+    );
+  }
 }
 
 export interface UploadedImage {
@@ -231,14 +243,36 @@ export async function stageImages(
   return { content: staged, uploadedImages };
 }
 
-async function readMarkdownFile(path: string): Promise<string> {
+async function readDocumentFile(path: string): Promise<string> {
   try {
     return await readFile(path, "utf8");
   } catch (error) {
     throw usageError(
-      `Could not read the Markdown file "${path}": ${errorMessage(error)}`,
+      `Could not read the document file "${path}": ${errorMessage(error)}`,
     );
   }
+}
+
+/**
+ * `--format` wins, then the extension: .html or .htm is HTML, and .md or
+ * .markdown is Markdown. Any other file sends no format, so an existing
+ * document keeps its own and a new one defaults to Markdown.
+ */
+function readPublishFormat(
+  context: CommandContext,
+  filePath: string,
+): DocumentFormat | undefined {
+  const formatOption = stringOption(context, "format");
+
+  if (formatOption !== undefined) {
+    return parseDocumentFormat(formatOption);
+  }
+
+  if (/\.html?$/i.test(filePath)) {
+    return "html";
+  }
+
+  return /\.(md|markdown)$/i.test(filePath) ? "markdown" : undefined;
 }
 
 export const docPublish: CommandHandler = async (context) => {
@@ -283,33 +317,48 @@ export const docPublish: CommandHandler = async (context) => {
     feedbackMatchOption === undefined
       ? undefined
       : parsePositiveInteger(feedbackMatchOption, "--feedback-match");
-  const content = await readMarkdownFile(filePath);
+  const format = readPublishFormat(context, filePath);
+  const content = await readDocumentFile(filePath);
 
-  if (hasLeadingH1(content)) {
-    throw usageError(
-      "The Markdown body must not repeat the document title as a leading H1.",
-    );
+  if (format === "markdown") {
+    assertNoLeadingH1(content);
   }
 
-  const staged = booleanOption(context, "no-images")
-    ? { content, uploadedImages: [] as UploadedImage[] }
-    : await stageImages(context.client, content, dirname(filePath));
+  // The current document supplies the ETag when none is given, and the
+  // format when the file's extension names none.
+  const current =
+    create || (etagOption !== undefined && format !== undefined)
+      ? null
+      : await context.client.request("GET", documentPath(slug));
+
+  if (current && !current.ok && current.status !== 404) {
+    throw responseError(current);
+  }
+
+  const effectiveFormat =
+    format ??
+    (current?.ok ? (current.body as PenaDocument).format : "markdown");
+
+  if (format === undefined && effectiveFormat === "markdown") {
+    assertNoLeadingH1(content);
+  }
+
+  // Only Markdown image syntax is rewritten. An HTML page references images
+  // uploaded with `pena asset upload` by their /api/assets/ URL.
+  const staged =
+    effectiveFormat === "html" || booleanOption(context, "no-images")
+      ? { content, uploadedImages: [] as UploadedImage[] }
+      : await stageImages(context.client, content, dirname(filePath));
   const headers: Record<string, string> = {};
 
   if (create) {
     headers["if-none-match"] = "*";
   } else if (etagOption !== undefined) {
     headers["if-match"] = parseEtag(etagOption);
+  } else if (current?.ok) {
+    headers["if-match"] = requireEtag(current);
   } else {
-    const current = await context.client.request("GET", documentPath(slug));
-
-    if (current.status === 404) {
-      headers["if-none-match"] = "*";
-    } else if (current.ok) {
-      headers["if-match"] = requireEtag(current);
-    } else {
-      throw responseError(current);
-    }
+    headers["if-none-match"] = "*";
   }
 
   if (feedbackMatch !== undefined) {
@@ -321,6 +370,7 @@ export const docPublish: CommandHandler = async (context) => {
     json: {
       title,
       content: staged.content,
+      ...(format !== undefined ? { format } : {}),
       // Omitting collectionSlug leaves an existing document where it is.
       ...(collectionSlug !== undefined ? { collectionSlug } : {}),
     },
@@ -334,6 +384,7 @@ export const docPublish: CommandHandler = async (context) => {
     data: {
       slug: document.slug,
       title: document.title,
+      format: document.format,
       version: document.version,
       collectionSlug: document.collectionSlug,
       archivedAt: document.archivedAt,
@@ -420,7 +471,7 @@ export const docVersions: CommandHandler = async (context) => {
   const body = response.body as { versions: DocumentVersionSummary[] };
   const lines = body.versions.map(
     (version) =>
-      `v${version.version}\t${version.updatedAt}\t${describeCollection(version.collectionSlug)}\t${version.title}`,
+      `v${version.version}\t${version.updatedAt}\t${describeCollection(version.collectionSlug)}\t${version.format}\t${version.title}`,
   );
 
   return {

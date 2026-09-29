@@ -203,6 +203,7 @@ describe("doc publish", () => {
     expect(result.json()).toEqual({
       slug: "initial-spec",
       title: "Initial Specification",
+      format: "markdown",
       version: 1,
       collectionSlug: null,
       archivedAt: null,
@@ -360,6 +361,67 @@ describe("doc publish", () => {
     expect((await cli(["doc", "publish", rejected, "--slug", "spec", "--title", "Spec"])).code).toBe(1);
 
     expect((await cli(["--json", "doc", "list"])).json()).toEqual({ documents: [] });
+  });
+
+  it("publishes an .html file as an HTML page without Markdown checks", async () => {
+    const page = [
+      "<!doctype html>",
+      "<h1>Spec</h1>",
+      '<img src="images/missing.png" alt="Left as written">',
+      "",
+    ].join("\n");
+    const path = writeMarkdown("page.html", page);
+    const result = await cli(["--json", "doc", "publish", path, "--slug", "page", "--title", "Spec"]);
+
+    expect(result.code).toBe(0);
+    expect(result.json()).toMatchObject({ format: "html", uploadedImages: [] });
+
+    const shown = await cli(["doc", "show", "page"]);
+    expect(shown.stdout).toContain("Format: html");
+    expect(shown.stdout).toContain(page);
+  });
+
+  it("lets --format override the file extension", async () => {
+    const html = writeMarkdown("page.txt", "<p>Page</p>\n");
+    const markdown = writeMarkdown("notes.html", "Plain notes.\n");
+
+    expect(
+      (await cli(["--json", "doc", "publish", html, "--slug", "page", "--title", "Page", "--format", "html"])).json(),
+    ).toMatchObject({ format: "html" });
+    expect(
+      (await cli(["--json", "doc", "publish", markdown, "--slug", "notes", "--title", "Notes", "--format", "markdown"])).json(),
+    ).toMatchObject({ format: "markdown" });
+
+    const invalid = await cli(["doc", "publish", html, "--slug", "page", "--title", "Page", "--format", "pdf"]);
+    expect(invalid.code).toBe(2);
+    expect(invalid.stderr).toContain('"markdown" or "html"');
+  });
+
+  it("keeps a document's format when the file's extension names none", async () => {
+    const page = "<!doctype html>\n<p>Plans</p>\n";
+    const html = writeMarkdown("page.html", page);
+    const revision = writeMarkdown("revision.txt", page.replace("Plans", "Pricing"));
+    const notes = writeMarkdown("notes.txt", "Plain notes.\n");
+
+    await cli(["doc", "publish", html, "--slug", "page", "--title", "Page"]);
+    const republished = await cli(["--json", "doc", "publish", revision, "--slug", "page", "--title", "Page"]);
+    const created = await cli(["--json", "doc", "publish", notes, "--slug", "notes", "--title", "Notes"]);
+
+    expect(republished.json()).toMatchObject({ format: "html", version: 2 });
+    expect(created.json()).toMatchObject({ format: "markdown" });
+
+    const versions = await cli(["doc", "versions", "page"]);
+    expect(versions.stdout).toMatch(/^v2\t\S+\troot\thtml\tPage$/m);
+    const firstVersion = await cli(["doc", "show", "page", "--version", "1"]);
+    expect(firstVersion.stdout).toContain("Format: html");
+
+    // The document's own format decides the local checks: Markdown syntax
+    // inside an HTML page is text, and a Markdown H1 is a usage error.
+    const showsSyntax = writeMarkdown("syntax.txt", "<pre>![logo](missing.png)</pre>\n");
+    const h1 = writeMarkdown("h1.txt", "# Notes\n\nBody.\n");
+
+    expect((await cli(["doc", "publish", showsSyntax, "--slug", "page", "--title", "Page"])).code).toBe(0);
+    expect((await cli(["doc", "publish", h1, "--slug", "notes", "--title", "Notes"])).code).toBe(2);
   });
 
   it("leaves image destinations alone with --no-images", async () => {

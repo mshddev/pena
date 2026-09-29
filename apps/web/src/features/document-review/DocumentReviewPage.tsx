@@ -36,7 +36,7 @@ import {
   formatFeedbackCount,
   readSubmittedDecisions,
 } from "./decision-feedback";
-import { downloadMarkdown } from "./markdown-download";
+import { downloadDocument } from "./document-download";
 import type { OutlineSection } from "./outline";
 import { collectionHref } from "./routing";
 import type {
@@ -104,12 +104,16 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
       }
 
       const nextDocument = resource.document;
-      const parsedDocument = parseDecisionDocument(nextDocument.content);
+      // Decision blocks are Markdown syntax; an HTML page has none.
+      const decisions =
+        nextDocument.format === "html"
+          ? []
+          : parseDecisionDocument(nextDocument.content).decisions;
       const nextSubmittedDecisions =
-        parsedDocument.decisions.length > 0
+        decisions.length > 0
           ? readSubmittedDecisions(
               await fetchFeedback(documentSlug, resource.etag),
-              parsedDocument.decisions,
+              decisions,
             )
           : {};
 
@@ -505,7 +509,11 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
                   className="download-document-button"
                   type="button"
                   onClick={() =>
-                    downloadMarkdown(currentDocument.content, documentSlug)
+                    downloadDocument(
+                      currentDocument.content,
+                      currentDocument.format,
+                      documentSlug,
+                    )
                   }
                 >
                   <DownloadIcon />
@@ -619,6 +627,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
             <ReadOnlyDocument
               title={currentDocument.title}
               content={currentDocument.content}
+              format={currentDocument.format}
             />
           </div>
         ) : currentDocument ? (
@@ -661,7 +670,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
             title="No document published yet"
             description={
               <>
-                Ask Claude to publish Markdown using the{" "}
+                Ask Claude to publish a document using the{" "}
                 <strong>{documentSlug}</strong> slug, then refresh this page.
               </>
             }

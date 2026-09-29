@@ -365,27 +365,37 @@ export function buildApp(
       if (!parsedRequest.success) {
         return reply.code(400).send({
           error:
-            "The request body must contain a nonblank title of at most 200 characters, Markdown content, and optionally a collection slug (or null).",
+            'The request body must contain a nonblank title of at most 200 characters, content, and optionally a format ("markdown" or "html") and a collection slug (or null).',
         });
       }
 
-      if (
-        extractLeadingDocumentTitle(parsedRequest.data.content).title !== null
-      ) {
-        return reply.code(400).send({
-          error:
-            "Markdown content must not repeat the document title as a leading H1.",
-        });
-      }
+      // An omitted format keeps the current one, so the checks follow the
+      // format the stored version will have.
+      const format =
+        parsedRequest.data.format ??
+        store.getDocument(params.documentSlug)?.format ??
+        "markdown";
 
-      try {
-        parseDecisionDocument(parsedRequest.data.content);
-      } catch (error) {
-        if (error instanceof DecisionBlockSyntaxError) {
-          return reply.code(400).send({ error: error.message });
+      // An HTML page owns its own headings and has no decision blocks.
+      if (format === "markdown") {
+        if (
+          extractLeadingDocumentTitle(parsedRequest.data.content).title !== null
+        ) {
+          return reply.code(400).send({
+            error:
+              "Markdown content must not repeat the document title as a leading H1.",
+          });
         }
 
-        throw error;
+        try {
+          parseDecisionDocument(parsedRequest.data.content);
+        } catch (error) {
+          if (error instanceof DecisionBlockSyntaxError) {
+            return reply.code(400).send({ error: error.message });
+          }
+
+          throw error;
+        }
       }
 
       try {
@@ -411,6 +421,9 @@ export function buildApp(
           {
             condition,
             expectedLatestFeedbackBatchId,
+            ...(parsedRequest.data.format === undefined
+              ? {}
+              : { format: parsedRequest.data.format }),
             ...(parsedRequest.data.collectionSlug === undefined
               ? {}
               : { collectionSlug: parsedRequest.data.collectionSlug }),

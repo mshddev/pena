@@ -94,12 +94,21 @@ export type CollectionUpdateRequest = z.infer<
   typeof CollectionUpdateRequestSchema
 >;
 
+/**
+ * How a document's content is read. Markdown renders in Pena's own styling;
+ * HTML is a complete page that runs its own CSS and scripts in a frame.
+ */
+export const DocumentFormatSchema = z.enum(["markdown", "html"]);
+
+export type DocumentFormat = z.infer<typeof DocumentFormatSchema>;
+
 export const DocumentSchema = z.object({
   slug: DocumentSlugSchema,
   /** The collection the document is filed in, or `null` at the root. */
   collectionSlug: CollectionSlugSchema.nullable(),
   title: DocumentTitleSchema,
   content: z.string(),
+  format: DocumentFormatSchema,
   version: z.number().int().positive(),
   updatedAt: z.iso.datetime(),
   archivedAt: z.iso.datetime().nullable(),
@@ -116,6 +125,11 @@ export type DocumentMetadata = z.infer<typeof DocumentMetadataSchema>;
 export const DocumentPublishRequestSchema = z.strictObject({
   title: DocumentTitleSchema,
   content: z.string(),
+  /**
+   * Omit it to keep an existing document's format; a new document defaults
+   * to Markdown.
+   */
+  format: DocumentFormatSchema.optional(),
   /**
    * Files the document in a collection (or at the root with `null`). Omit it
    * to leave an existing document where it is.
@@ -171,8 +185,8 @@ export const DocumentSummarySchema = DocumentSchema.omit({
   content: true,
 }).extend({
   /**
-   * The opening prose with Markdown stripped, so a listing can preview what a
-   * document says without being sent the whole body.
+   * The opening prose with Markdown or HTML markup stripped, so a listing can
+   * preview what a document says without being sent the whole body.
    */
   excerpt: z.string(),
 });

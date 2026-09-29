@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- HTML documents. `pena doc publish page.html` (or `--format html`) publishes a complete page, which the review UI renders in a frame with its own styles and scripts running, grown to the page's full height. Comments, highlights, the outline, version history, and the archive work on the rendered page. `#id` links scroll within the page, other links open in a new tab, form submissions stay put, and Download saves a `.html` file. The page runs with Pena's origin, so only publish HTML you trust
+- Every document, version, and listing carries a `format` (`markdown` or `html`). The publish body accepts an optional `format`; omitting it keeps the document's current format, and a new document defaults to Markdown. The leading-H1 and decision-block checks apply to Markdown only
+- `doc publish` reads the format from the extension: `.html`/`.htm` is HTML, `.md`/`.markdown` is Markdown, and any other file keeps the document's current format; `--format` overrides. `doc show --version` and `doc versions` print the format
+
+### Changed
+
+- **Restart a running server after upgrading** (`pena server stop && pena server start`): an older server rejects the `format` field the new CLI sends, so every publish fails until it restarts
+- The database migrates to schema 11: every existing version becomes Markdown
+- A comment's context no longer includes the source of `<script>` and `<style>` elements, such as the styles inside a Mermaid diagram
+
 ## [0.0.3] - 2026-09-07
 
 ### Added

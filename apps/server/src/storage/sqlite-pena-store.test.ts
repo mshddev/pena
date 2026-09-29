@@ -307,6 +307,7 @@ describe("SqlitePenaStore", () => {
       {
         slug: "first-draft",
         collectionSlug: null,
+        format: "markdown",
         version: 2,
         updatedAt: "2026-07-19T10:02:00.000Z",
         archivedAt: null,
@@ -316,6 +317,7 @@ describe("SqlitePenaStore", () => {
       {
         slug: "second-draft",
         collectionSlug: null,
+        format: "markdown",
         version: 1,
         updatedAt: "2026-07-19T10:01:00.000Z",
         archivedAt: null,
@@ -944,6 +946,70 @@ describe("SqlitePenaStore", () => {
     expect(historicalFeedback.count).toBe(1);
   });
 
+  it("stores a format per version and keeps it when a publish omits it", () => {
+    const store = createStore();
+    const markdown = publishStoreDocument(store, "pricing-page", "Draft");
+
+    expect(markdown.format).toBe("markdown");
+
+    const html = publishStoreDocument(store, "pricing-page", "<p>Draft</p>", {
+      format: "html",
+    });
+    // A rename sends the same content without a format.
+    const renamed = store.publishDocument(
+      "pricing-page",
+      "Pricing",
+      "<p>Draft</p>",
+    );
+
+    expect(html).toMatchObject({ format: "html", version: 2 });
+    expect(renamed).toMatchObject({ format: "html", version: 3 });
+    expect(store.getDocument("pricing-page")?.format).toBe("html");
+    expect(store.getDocumentVersion("pricing-page", 1)?.format).toBe(
+      "markdown",
+    );
+    expect(
+      store.listDocumentVersions("pricing-page").map(({ format }) => format),
+    ).toEqual(["html", "html", "markdown"]);
+    expect(store.listDocuments()).toEqual([
+      expect.objectContaining({
+        slug: "pricing-page",
+        format: "html",
+        excerpt: "Draft",
+      }),
+    ]);
+  });
+
+  it("creates a version when only the format changes", () => {
+    const store = createStore();
+    publishStoreDocument(store, "pricing-page", "Same text");
+
+    const changed = publishStoreDocument(store, "pricing-page", "Same text", {
+      format: "html",
+    });
+    const unchanged = publishStoreDocument(store, "pricing-page", "Same text", {
+      format: "html",
+    });
+
+    expect(changed).toMatchObject({ format: "html", version: 2 });
+    expect(unchanged.version).toBe(2);
+  });
+
+  it("restores a historical version with its format", () => {
+    const store = createStore();
+    publishStoreDocument(store, "pricing-page", "<p>Page</p>", {
+      format: "html",
+    });
+    publishStoreDocument(store, "pricing-page", "<p>Page</p>", {
+      format: "markdown",
+    });
+
+    const restored = store.restoreDocumentVersion("pricing-page", 1);
+
+    expect(restored).toMatchObject({ format: "html", version: 3 });
+    expect(store.getDocument("pricing-page")?.format).toBe("html");
+  });
+
   it("treats restoring identical content as a no-op", () => {
     const store = createStore();
     publishStoreDocument(store, "initial-spec", "Same");
@@ -1090,6 +1156,7 @@ describe("SqlitePenaStore", () => {
       collectionSlug: null,
       title: "Initial Spec",
       content: "Existing draft",
+      format: "markdown",
       version: 1,
       updatedAt: "2026-07-19T10:00:00.000Z",
       archivedAt: null,
@@ -1162,6 +1229,7 @@ describe("SqlitePenaStore", () => {
         slug: "initial-spec",
         collectionSlug: null,
         title: "Initial Spec",
+        format: "markdown",
         version: 7,
         updatedAt: "2026-07-19T10:00:00.000Z",
       },
@@ -1250,7 +1318,7 @@ describe("SqlitePenaStore", () => {
   it("rejects databases created by a newer schema version", () => {
     const databasePath = createDatabasePath();
     const database = new Database(databasePath);
-    database.pragma("user_version = 11");
+    database.pragma("user_version = 12");
     database.close();
 
     expect(() => createStore(databasePath)).toThrow(
@@ -1295,7 +1363,7 @@ describe("SqlitePenaStore", () => {
     const inspectionDatabase = new Database(databasePath);
     expect(
       inspectionDatabase.pragma("user_version", { simple: true }),
-    ).toBe(10);
+    ).toBe(11);
     expect(
       (
         inspectionDatabase.pragma("table_info(feedback_batches)") as Array<{
@@ -1303,6 +1371,44 @@ describe("SqlitePenaStore", () => {
         }>
       ).some(({ name }) => name === "instruction_text"),
     ).toBe(true);
+    inspectionDatabase.close();
+  });
+
+  it("migrates every existing version to the Markdown format", () => {
+    const databasePath = createDatabasePath();
+    const store = createStore(databasePath);
+    publishStoreDocument(store, "initial-spec", "First");
+    publishStoreDocument(store, "initial-spec", "Second");
+    store.close();
+    stores.delete(store);
+
+    const database = new Database(databasePath);
+    database.exec(`
+      ALTER TABLE document_versions DROP COLUMN format;
+      PRAGMA user_version = 10;
+    `);
+    database.close();
+
+    const migratedStore = createStore(databasePath);
+
+    expect(migratedStore.getDocument("initial-spec")).toMatchObject({
+      content: "Second",
+      format: "markdown",
+      version: 2,
+    });
+    expect(migratedStore.getDocumentVersion("initial-spec", 1)?.format).toBe(
+      "markdown",
+    );
+
+    const inspectionDatabase = new Database(databasePath);
+    expect(
+      inspectionDatabase.pragma("user_version", { simple: true }),
+    ).toBe(11);
+    expect(() =>
+      inspectionDatabase
+        .prepare("UPDATE document_versions SET format = 'pdf'")
+        .run(),
+    ).toThrow(/CHECK constraint failed/);
     inspectionDatabase.close();
   });
 
@@ -1423,7 +1529,7 @@ describe("SqlitePenaStore", () => {
     const inspectionDatabase = new Database(databasePath);
     expect(
       inspectionDatabase.pragma("user_version", { simple: true }),
-    ).toBe(10);
+    ).toBe(11);
     expect(
       inspectionDatabase
         .prepare(

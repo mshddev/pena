@@ -16,7 +16,9 @@ import {
 import { formatClockTime, formatRelativeTime } from "../../../format";
 import { MarkdownContent } from "../MarkdownContent";
 import { markdownComponents } from "../markdown-components";
+import { diffCanvas } from "../canvas-diff";
 import { diffMarkdown } from "../version-diff";
+import { ReadOnlyCanvas } from "./CanvasDocumentViewer";
 import { DocumentPageTitle } from "./DocumentPageTitle";
 import { HtmlDocumentFrame } from "./HtmlDocumentFrame";
 
@@ -149,7 +151,10 @@ export function VersionHistory({
   const diff = useMemo(
     () =>
       beforeDocument && afterDocument
-        ? diffMarkdown(beforeDocument.content, afterDocument.content)
+        ? beforeDocument.format === "excalidraw" &&
+          afterDocument.format === "excalidraw"
+          ? diffCanvas(beforeDocument.content, afterDocument.content)
+          : diffMarkdown(beforeDocument.content, afterDocument.content)
         : [],
     [afterDocument, beforeDocument],
   );
@@ -421,6 +426,15 @@ export function ReadOnlyDocument({
       <article className="readonly-document readonly-html-document">
         <DocumentPageTitle title={title} />
         <HtmlDocumentFrame content={content} title={title} />
+      </article>
+    );
+  }
+
+  if (format === "excalidraw") {
+    return (
+      <article className="readonly-document readonly-canvas-document">
+        <DocumentPageTitle title={title} />
+        <ReadOnlyCanvas content={content} />
       </article>
     );
   }

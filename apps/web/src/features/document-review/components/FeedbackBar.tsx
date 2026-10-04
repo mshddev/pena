@@ -15,6 +15,8 @@ interface FeedbackBarProps {
   onInstructionComposerOpenChange: (isOpen: boolean) => void;
   onSubmit: () => void;
   onViewPending: () => void;
+  /** How to start a comment, shown while nothing is drafted. */
+  commentHint?: string;
 }
 
 export function FeedbackBar({
@@ -29,6 +31,7 @@ export function FeedbackBar({
   onInstructionComposerOpenChange,
   onSubmit,
   onViewPending,
+  commentHint = "select text",
 }: FeedbackBarProps) {
   const [isMinimized, setIsMinimized] = useState(false);
   const feedbackCount = commentCount + decisionCount;
@@ -100,7 +103,7 @@ export function FeedbackBar({
                   decisionCount,
                   hasInstruction,
                 )
-              : "Add an instruction or select text to comment."}
+              : `Add an instruction or ${commentHint} to comment.`}
           </p>
         )}
       </div>

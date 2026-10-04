@@ -1,7 +1,11 @@
 import type { DocumentFormat } from "@pena/contracts";
 
-const MARKDOWN_DOWNLOAD = { mediaType: "text/markdown", extension: "md" };
-const HTML_DOWNLOAD = { mediaType: "text/html", extension: "html" };
+const DOWNLOADS: Record<DocumentFormat, { mediaType: string; extension: string }> = {
+  markdown: { mediaType: "text/markdown", extension: "md" },
+  html: { mediaType: "text/html", extension: "html" },
+  // The file Excalidraw itself saves and opens.
+  excalidraw: { mediaType: "application/vnd.excalidraw+json", extension: "excalidraw" },
+};
 
 export function downloadDocument(
   content: string,
@@ -9,8 +13,7 @@ export function downloadDocument(
   documentSlug: string,
 ): void {
   // A document from a server older than formats has none, and is Markdown.
-  const { mediaType, extension } =
-    format === "html" ? HTML_DOWNLOAD : MARKDOWN_DOWNLOAD;
+  const { mediaType, extension } = DOWNLOADS[format] ?? DOWNLOADS.markdown;
   const blob = new Blob([content], {
     type: `${mediaType};charset=utf-8`,
   });

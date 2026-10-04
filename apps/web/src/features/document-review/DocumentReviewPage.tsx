@@ -26,6 +26,7 @@ import {
 } from "../../collections";
 import { formatClockTime, formatRelativeTime } from "../../format";
 import { isSubmitAllShortcut } from "../../shortcuts";
+import { CanvasDocumentViewer } from "./components/CanvasDocumentViewer";
 import { DocumentViewer } from "./components/DocumentViewer";
 import { PenaLayout } from "./components/PenaLayout";
 import {
@@ -104,11 +105,11 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
       }
 
       const nextDocument = resource.document;
-      // Decision blocks are Markdown syntax; an HTML page has none.
+      // Decision blocks are Markdown syntax; a page or a canvas has none.
       const decisions =
-        nextDocument.format === "html"
-          ? []
-          : parseDecisionDocument(nextDocument.content).decisions;
+        nextDocument.format === "markdown"
+          ? parseDecisionDocument(nextDocument.content).decisions
+          : [];
       const nextSubmittedDecisions =
         decisions.length > 0
           ? readSubmittedDecisions(
@@ -262,11 +263,12 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
             ? {}
             : { instruction: submittedInstruction }),
           comments: submittedDrafts.map(
-            ({ selectedText, comment, contextBefore, contextAfter }) => ({
+            ({ selectedText, comment, contextBefore, contextAfter, target }) => ({
               selectedText,
               comment,
               contextBefore,
               contextAfter,
+              ...(target ? { target } : {}),
             }),
           ),
         },
@@ -630,6 +632,32 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
               format={currentDocument.format}
             />
           </div>
+        ) : currentDocument?.format === "excalidraw" ? (
+          <CanvasDocumentViewer
+            document={currentDocument}
+            draftFeedback={draftFeedback}
+            feedbackInstruction={feedbackInstruction}
+            isInstructionComposerOpen={isInstructionComposerOpen}
+            isPendingFeedbackOpen={isPendingFeedbackOpen}
+            isSubmitting={isSubmitting}
+            notice={notice}
+            onDraftSaved={saveDraft}
+            onDraftDeleted={(draftId) =>
+              setDraftFeedback((drafts) =>
+                drafts.filter((draft) => draft.id !== draftId),
+              )
+            }
+            onNoticeClear={() => setNotice(null)}
+            onFeedbackInstructionChange={(instruction) => {
+              setFeedbackInstruction(instruction);
+              setNotice(null);
+            }}
+            onInstructionComposerOpenChange={setIsInstructionComposerOpen}
+            onPendingFeedbackOpenChange={setIsPendingFeedbackOpen}
+            onSubmitFeedback={() => void sendFeedback()}
+            onOutlineChange={handleOutlineChange}
+            onActiveSectionChange={handleActiveSectionChange}
+          />
         ) : currentDocument ? (
           <DocumentViewer
             document={currentDocument}

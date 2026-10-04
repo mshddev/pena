@@ -12,11 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HTML documents. `pena doc publish page.html` (or `--format html`) publishes a complete page, which the review UI renders in a frame with its own styles and scripts running, grown to the page's full height. Comments, highlights, the outline, version history, and the archive work on the rendered page. `#id` links scroll within the page, other links open in a new tab, form submissions stay put, and Download saves a `.html` file. The page runs with Pena's origin, so only publish HTML you trust
 - Every document, version, and listing carries a `format` (`markdown` or `html`). The publish body accepts an optional `format`; omitting it keeps the document's current format, and a new document defaults to Markdown. The leading-H1 and decision-block checks apply to Markdown only
 - `doc publish` reads the format from the extension: `.html`/`.htm` is HTML, `.md`/`.markdown` is Markdown, and any other file keeps the document's current format; `--format` overrides. `doc show --version` and `doc versions` print the format
+- Excalidraw canvases. `pena doc publish diagram.excalidraw` (or `--format excalidraw`) publishes a scene, which the review UI draws in Excalidraw's view mode, loaded only for canvas documents. Click an element (a label counts as its shape) or Shift-drag over an area to comment; numbered markers follow the canvas through pan and zoom. A hand-written scene is a list of skeletons that keep their ids; a scene saved by Excalidraw loads as it is. Frames fill the outline, version compare lists the elements that changed, and Download saves a `.excalidraw` file. Excalidraw's fonts are served by Pena, so a canvas renders offline
+- A comment may carry a `target`: the ids of the canvas elements it points at and the area they cover. `feedback show` prints the ids. Publishing a scene checks its shape and that every element has a unique id, in the server and in `doc publish` (exit 2)
 
 ### Changed
 
 - **Restart a running server after upgrading** (`pena server stop && pena server start`): an older server rejects the `format` field the new CLI sends, so every publish fails until it restarts
 - The database migrates to schema 11: every existing version becomes Markdown
+- The database migrates to schema 12, rebuilding the versions table so a version can be an Excalidraw scene
 - A comment's context no longer includes the source of `<script>` and `<style>` elements, such as the styles inside a Mermaid diagram
 
 ## [0.0.3] - 2026-09-07

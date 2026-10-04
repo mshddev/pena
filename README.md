@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D24-brightgreen)](.nvmrc)
 
-Pena is a local document review interface for Claude Code sessions. Claude publishes a draft — a plan, spec, or report in Markdown, or a complete HTML page such as a UI mockup — to Pena; you read it in the browser, select text, leave inline comments, and submit; Claude pulls the feedback back into the session and revises.
+Pena is a local document review interface for Claude Code sessions. Claude publishes a draft — a plan, spec, or report in Markdown, a complete HTML page such as a UI mockup, or an Excalidraw diagram — to Pena; you read it in the browser, select text, leave inline comments, and submit; Claude pulls the feedback back into the session and revises.
 
 <!-- TODO: screenshot / demo GIF of the review flow -->
 
@@ -95,14 +95,22 @@ that grows with the page; you select and comment on the rendered text the
 same way. The page runs with Pena's origin and can call its API, so publish
 only HTML you trust, such as the pages Claude writes for you.
 
+A document can also be an Excalidraw canvas. Publish a `.excalidraw` file
+and Pena draws the scene in Excalidraw's view mode: you pan and zoom, click
+an element or Shift-drag over an area to comment, and Claude gets back the
+ids of the elements you pointed at. Claude writes the scene as short
+skeletons (shapes with labels, arrows bound by id); a scene saved from
+Excalidraw loads as it is. The fonts are served by Pena, so a canvas
+renders offline.
+
 Documents live at the root or inside collections, which nest like folders.
 Each immutable version contains its explicit
-title and its Markdown or HTML content, with feedback attached to that exact
+title and its Markdown, HTML, or Excalidraw content, with feedback attached to that exact
 version.
 Changing only the title still creates a version. The document view separates
 operational metadata from the reviewed body and renders the explicit title once
 inside the document surface. Earlier versions can be compared or restored. The
-current content can also be downloaded as a `.md` or `.html` file.
+current content can also be downloaded as a `.md`, `.html`, or `.excalidraw` file.
 Finished documents move to a browsable archive at
 `http://127.0.0.1:8788/archive`; archiving pauses publishing without removing
 history or the download action.
@@ -123,7 +131,7 @@ Everything the skill does is a `pena` command, so you can do it by hand too. `pe
 | `pena collection delete <slug>` | Delete an empty collection |
 | `pena doc list [--collection <slug\|root>] [--archived]` | List active or archived documents |
 | `pena doc show <slug> [--version <n>]` | Print a document, or one historical version |
-| `pena doc publish <file> --slug <slug> --title <title> [--collection <slug\|root> \| --root] [--etag <etag>] [--create] [--feedback-match <batch-id>] [--no-images] [--format <markdown\|html>]` | Upload referenced local images and publish the next version; a `.html` file publishes as an HTML page |
+| `pena doc publish <file> --slug <slug> --title <title> [--collection <slug\|root> \| --root] [--etag <etag>] [--create] [--feedback-match <batch-id>] [--no-images] [--format <markdown\|html\|excalidraw>]` | Upload referenced local images and publish the next version; a `.html` file publishes as an HTML page and a `.excalidraw` file as a canvas |
 | `pena doc rename <slug> <title>` | Change the title (creates a version) |
 | `pena doc move <slug> --to <collection-slug\|root>` | Move a document between collections |
 | `pena doc archive <slug>` / `pena doc unarchive <slug>` | Archive or reactivate a document |

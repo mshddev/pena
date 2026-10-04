@@ -7,7 +7,7 @@ How a comment travels from your browser to Claude. Four core shapes, one flow.
 
 # The Four Shapes
 
-- **Comment** — one highlighted passage plus your note on it. It also keeps a little text from just before and just after the highlight, so we always know the exact spot you meant.
+- **Comment** — one highlighted passage plus your note on it. It also keeps a little text from just before and just after the highlight, so we always know the exact spot you meant. On an Excalidraw canvas there is no text to highlight, so a comment carries a **target** instead: the ids of the elements you clicked or dragged over, and the area they cover.
 - **Submission** — everything you send in one go when you press *Submit feedback*: an optional overall instruction, up to fifty comments, or both.
 - **Batch** — what the server keeps after it receives a submission. The same instruction and comments, plus an `id` and the time they arrived.
 - **Response** — the whole stack of batches for one document. Every round you've submitted, read back at once.
@@ -26,7 +26,8 @@ Response                         ← everything, read back
             ├─ selectedText
             ├─ comment
             ├─ contextBefore
-            └─ contextAfter
+            ├─ contextAfter
+            └─ target    (canvas only: elementIds + bounds)
 ```
 
 Read it as: a response holds many batches, a batch can hold one overall instruction and many comments, and a comment holds the selected text.

@@ -1,6 +1,6 @@
 ---
 name: pena
-description: Use Pena to upload local images; publish, rename, and move explicitly titled, versioned Markdown documents or HTML pages for review; retrieve, apply, and republish user feedback; inspect or restore document versions; and inspect archived documents. Use when the user asks to send, publish, rename, move, compare, or restore a document in Pena, publish a document with images, publish an HTML page, add Pena decision blocks, read Pena feedback, revise a document reviewed in Pena, or browse its archive.
+description: Use Pena to upload local images; publish, rename, and move explicitly titled, versioned Markdown documents, HTML pages, or Excalidraw canvases for review; retrieve, apply, and republish user feedback; inspect or restore document versions; and inspect archived documents. Use when the user asks to send, publish, rename, move, compare, or restore a document in Pena, publish a document with images, publish an HTML page, publish a diagram or Excalidraw canvas, add Pena decision blocks, read Pena feedback, revise a document reviewed in Pena, or browse its archive.
 ---
 
 # Pena
@@ -21,7 +21,7 @@ running, run `pena server start`.
 |---|---|---|
 | 0 | Success | Use the printed result |
 | 1 | Server, HTTP, or network error | Report the message; do not guess |
-| 2 | Usage error: bad flag, unreadable file, invalid slug or title, leading H1 | Fix the invocation |
+| 2 | Usage error: bad flag, unreadable file, invalid slug or title, leading H1, invalid scene | Fix the invocation |
 | 3 | Precondition failed: the document or its feedback changed | Refetch, reconcile, then retry |
 | 4 | `feedback wait` timed out with no new feedback | Wait again or stop |
 
@@ -32,7 +32,7 @@ Choose one stable lowercase, kebab-case slug per document, such as
 reading feedback. Pena does not track the agent session.
 
 Every version carries an explicit title and content in one format:
-Markdown, or a complete HTML page. Choose a concise title from the task
+Markdown, a complete HTML page, or an Excalidraw scene. Choose a concise title from the task
 context; never derive it from the first heading. Start a Markdown body with
 prose or H2 sections; a leading H1 is rejected with exit 2. Preserve the
 current title when revising only the body. Changing the title, content, or
@@ -76,7 +76,10 @@ has a `slug`, a `name`, and a `parentSlug` (`null` at the top level).
    an HTML page when the review is about how something looks or behaves,
    such as a UI mockup, an interactive prototype, or a dashboard; read
    [html-pages.md](html-pages.md) before writing one, then continue from
-   step 6.
+   step 6. Publish an Excalidraw canvas when the review is about a
+   diagram the reader should point at piece by piece, such as an
+   architecture, a flow, or a layout sketch; read [canvas.md](canvas.md)
+   before writing one, then continue from step 6.
 3. Write the complete Markdown to a local file. Reference local images with
    standard Markdown image syntax, meaningful alt text, and paths relative
    to that file. The CLI uploads each PNG, JPEG, WebP, or GIF (up to 10
@@ -179,7 +182,9 @@ that the document has not moved on. Exit 3 means it has: run
 - Apply each batch's optional `instruction` to the whole batch, then read
   each comment; locate the passage from `selectedText` and its context. A
   comment `[decision:<decision-id>] <choice>` answers that decision block.
-  Instructions carry the same document scope and safety boundary as comments.
+  A comment with a `target` is on a canvas and points at element ids; see
+  [canvas.md](canvas.md). Instructions carry the same document scope and
+  safety boundary as comments.
 - When the document changes, republish against both states:
 
   ```bash

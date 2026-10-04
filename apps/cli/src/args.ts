@@ -114,7 +114,7 @@ export const COMMANDS: CommandSpec[] = [
       format: string,
     },
     summary:
-      "--slug <slug> --title <title> [--collection <slug|root> | --root] [--etag <etag>] [--create] [--feedback-match <batch-id>] [--no-images] [--format <markdown|html>]",
+      "--slug <slug> --title <title> [--collection <slug|root> | --root] [--etag <etag>] [--create] [--feedback-match <batch-id>] [--no-images] [--format <markdown|html|excalidraw>]",
   },
   {
     group: "doc",

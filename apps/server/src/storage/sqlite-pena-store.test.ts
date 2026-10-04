@@ -1318,7 +1318,7 @@ describe("SqlitePenaStore", () => {
   it("rejects databases created by a newer schema version", () => {
     const databasePath = createDatabasePath();
     const database = new Database(databasePath);
-    database.pragma("user_version = 12");
+    database.pragma("user_version = 13");
     database.close();
 
     expect(() => createStore(databasePath)).toThrow(
@@ -1363,7 +1363,7 @@ describe("SqlitePenaStore", () => {
     const inspectionDatabase = new Database(databasePath);
     expect(
       inspectionDatabase.pragma("user_version", { simple: true }),
-    ).toBe(11);
+    ).toBe(12);
     expect(
       (
         inspectionDatabase.pragma("table_info(feedback_batches)") as Array<{
@@ -1403,7 +1403,69 @@ describe("SqlitePenaStore", () => {
     const inspectionDatabase = new Database(databasePath);
     expect(
       inspectionDatabase.pragma("user_version", { simple: true }),
-    ).toBe(11);
+    ).toBe(12);
+    expect(() =>
+      inspectionDatabase
+        .prepare("UPDATE document_versions SET format = 'pdf'")
+        .run(),
+    ).toThrow(/CHECK constraint failed/);
+    inspectionDatabase.close();
+  });
+
+  it("widens the format constraint to Excalidraw and keeps feedback attached", () => {
+    const databasePath = createDatabasePath();
+    const store = createStore(databasePath);
+    publishStoreDocument(store, "initial-spec", "First");
+    store.addFeedback("initial-spec", feedbackSubmission);
+    store.close();
+    stores.delete(store);
+
+    // Rebuild the versions table as schema 11 had it, which allowed only
+    // Markdown and HTML.
+    const database = new Database(databasePath);
+    database.pragma("foreign_keys = OFF");
+    database.exec(`
+      CREATE TABLE document_versions_schema_11 (
+        id           INTEGER PRIMARY KEY,
+        document_id  INTEGER NOT NULL
+                     REFERENCES documents(id) ON DELETE CASCADE,
+        version      INTEGER NOT NULL CHECK (version >= 1),
+        content      TEXT NOT NULL,
+        published_at TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', format TEXT NOT NULL DEFAULT 'markdown'
+        CHECK (format IN ('markdown', 'html')),
+        UNIQUE (document_id, version)
+      ) STRICT;
+      INSERT INTO document_versions_schema_11 SELECT * FROM document_versions;
+      DROP TABLE document_versions;
+      ALTER TABLE document_versions_schema_11 RENAME TO document_versions;
+      CREATE INDEX document_versions_document_id_version
+        ON document_versions(document_id, version);
+      PRAGMA user_version = 11;
+    `);
+    expect(() =>
+      database.prepare("UPDATE document_versions SET format = 'excalidraw'").run(),
+    ).toThrow(/CHECK constraint failed/);
+    database.close();
+
+    const migratedStore = createStore(databasePath);
+
+    expect(migratedStore.getFeedback("initial-spec").latestBatchId).toBe(1);
+    publishStoreDocument(migratedStore, "initial-spec", '{"type":"excalidraw","elements":[]}', {
+      format: "excalidraw",
+    });
+    expect(migratedStore.getDocument("initial-spec")).toMatchObject({
+      format: "excalidraw",
+      version: 2,
+    });
+    expect(migratedStore.getDocumentVersion("initial-spec", 1)?.format).toBe(
+      "markdown",
+    );
+
+    const inspectionDatabase = new Database(databasePath);
+    expect(
+      inspectionDatabase.pragma("user_version", { simple: true }),
+    ).toBe(12);
+    expect(inspectionDatabase.pragma("foreign_key_check")).toEqual([]);
     expect(() =>
       inspectionDatabase
         .prepare("UPDATE document_versions SET format = 'pdf'")
@@ -1529,7 +1591,7 @@ describe("SqlitePenaStore", () => {
     const inspectionDatabase = new Database(databasePath);
     expect(
       inspectionDatabase.pragma("user_version", { simple: true }),
-    ).toBe(11);
+    ).toBe(12);
     expect(
       inspectionDatabase
         .prepare(

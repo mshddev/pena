@@ -114,7 +114,7 @@ export function parseDocumentFormat(value: string): DocumentFormat {
   const parsed = DocumentFormatSchema.safeParse(value);
 
   if (!parsed.success) {
-    throw usageError('--format must be "markdown" or "html".');
+    throw usageError('--format must be "markdown", "html", or "excalidraw".');
   }
 
   return parsed.data;

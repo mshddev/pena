@@ -1,10 +1,12 @@
-import type {
-  DocumentFormat,
-  DocumentMetadata,
-  DocumentSummary,
-  DocumentVersion,
-  DocumentVersionSummary,
-  PenaDocument,
+import {
+  ExcalidrawSceneSyntaxError,
+  parseExcalidrawScene,
+  type DocumentFormat,
+  type DocumentMetadata,
+  type DocumentSummary,
+  type DocumentVersion,
+  type DocumentVersionSummary,
+  type PenaDocument,
 } from "@pena/contracts";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -254,9 +256,10 @@ async function readDocumentFile(path: string): Promise<string> {
 }
 
 /**
- * `--format` wins, then the extension: .html or .htm is HTML, and .md or
- * .markdown is Markdown. Any other file sends no format, so an existing
- * document keeps its own and a new one defaults to Markdown.
+ * `--format` wins, then the extension: .html or .htm is HTML, .excalidraw is
+ * an Excalidraw scene, and .md or .markdown is Markdown. Any other file sends
+ * no format, so an existing document keeps its own and a new one defaults to
+ * Markdown.
  */
 function readPublishFormat(
   context: CommandContext,
@@ -272,7 +275,31 @@ function readPublishFormat(
     return "html";
   }
 
+  if (/\.excalidraw$/i.test(filePath)) {
+    return "excalidraw";
+  }
+
   return /\.(md|markdown)$/i.test(filePath) ? "markdown" : undefined;
+}
+
+/** The server's own content checks, run first so they exit 2. */
+function assertPublishableContent(
+  content: string,
+  format: DocumentFormat,
+): void {
+  if (format === "markdown") {
+    assertNoLeadingH1(content);
+  } else if (format === "excalidraw") {
+    try {
+      parseExcalidrawScene(content);
+    } catch (error) {
+      if (error instanceof ExcalidrawSceneSyntaxError) {
+        throw usageError(error.message);
+      }
+
+      throw error;
+    }
+  }
 }
 
 export const docPublish: CommandHandler = async (context) => {
@@ -320,8 +347,8 @@ export const docPublish: CommandHandler = async (context) => {
   const format = readPublishFormat(context, filePath);
   const content = await readDocumentFile(filePath);
 
-  if (format === "markdown") {
-    assertNoLeadingH1(content);
+  if (format !== undefined) {
+    assertPublishableContent(content, format);
   }
 
   // The current document supplies the ETag when none is given, and the
@@ -339,14 +366,14 @@ export const docPublish: CommandHandler = async (context) => {
     format ??
     (current?.ok ? (current.body as PenaDocument).format : "markdown");
 
-  if (format === undefined && effectiveFormat === "markdown") {
-    assertNoLeadingH1(content);
+  if (format === undefined) {
+    assertPublishableContent(content, effectiveFormat);
   }
 
   // Only Markdown image syntax is rewritten. An HTML page references images
   // uploaded with `pena asset upload` by their /api/assets/ URL.
   const staged =
-    effectiveFormat === "html" || booleanOption(context, "no-images")
+    effectiveFormat !== "markdown" || booleanOption(context, "no-images")
       ? { content, uploadedImages: [] as UploadedImage[] }
       : await stageImages(context.client, content, dirname(filePath));
   const headers: Record<string, string> = {};

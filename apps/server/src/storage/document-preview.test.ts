@@ -58,6 +58,24 @@ describe("readDocumentExcerpt", () => {
     );
   });
 
+  it("reads an Excalidraw scene's text in reading order", () => {
+    const scene = JSON.stringify({
+      type: "excalidraw",
+      elements: [
+        { id: "db", type: "rectangle", x: 400, y: 200, label: { text: "Database" } },
+        { id: "title", type: "text", x: 0, y: 0, text: "Checkout\nflow", originalText: "Checkout flow" },
+        { id: "api", type: "rectangle", x: 0, y: 200, label: { text: "API" } },
+        { id: "gone", type: "text", x: 0, y: 100, text: "Deleted", isDeleted: true },
+        { id: "arrow", type: "arrow", x: 100, y: 220 },
+      ],
+    });
+
+    expect(readDocumentExcerpt(scene, "excalidraw")).toBe(
+      "Checkout flow API Database",
+    );
+    expect(readDocumentExcerpt("not a scene", "excalidraw")).toBe("");
+  });
+
   it("keeps Markdown as the default format", () => {
     expect(readDocumentExcerpt("## Heading\n\n**Opening** prose.")).toBe(
       "Opening prose.",

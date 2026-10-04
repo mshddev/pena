@@ -960,7 +960,88 @@ describe("Pena API", () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json().error).toContain('"markdown" or "html"');
+    expect(response.json().error).toContain(
+      '"markdown", "html", or "excalidraw"',
+    );
+  });
+
+  it("publishes an Excalidraw scene and rejects one without element ids", async () => {
+    const app = createApp();
+    const scene = JSON.stringify({
+      type: "excalidraw",
+      elements: [{ id: "api", type: "rectangle", x: 0, y: 0 }],
+    });
+    const created = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: { "content-type": "application/json", "if-none-match": "*" },
+      payload: { title: "Architecture", content: scene, format: "excalidraw" },
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ format: "excalidraw", version: 1 });
+
+    // Omitting the format keeps Excalidraw, so the scene is checked again.
+    const withoutIds = await publishDocument(
+      app,
+      DOCUMENT_URL,
+      JSON.stringify({
+        type: "excalidraw",
+        elements: [{ type: "rectangle", x: 0, y: 0 }],
+      }),
+    );
+
+    expect(withoutIds.statusCode).toBe(400);
+    expect(withoutIds.json().error).toBe(
+      'Scene element 0 needs an "id" of 1 to 100 characters.',
+    );
+
+    const notJson = await publishDocument(app, DOCUMENT_URL, "## Heading");
+
+    expect(notJson.statusCode).toBe(400);
+    expect(notJson.json().error).toMatch(/^Excalidraw content must be JSON/);
+    expect(
+      (await app.inject({ method: "GET", url: DOCUMENT_URL })).json(),
+    ).toMatchObject({ content: scene, format: "excalidraw", version: 1 });
+  });
+
+  it("stores the canvas target of a comment on a scene", async () => {
+    const app = createApp();
+    const published = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: { "content-type": "application/json", "if-none-match": "*" },
+      payload: {
+        title: "Architecture",
+        content: JSON.stringify({
+          type: "excalidraw",
+          elements: [{ id: "api", type: "rectangle", x: 0, y: 0 }],
+        }),
+        format: "excalidraw",
+      },
+    });
+    const comment = {
+      selectedText: "API",
+      comment: "Split this service.",
+      contextBefore: "",
+      contextAfter: "",
+      target: {
+        elementIds: ["api"],
+        bounds: { x: 0, y: 0, width: 120, height: 60 },
+      },
+    };
+    const submitted = await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      headers: { "if-match": requiredEtag(published) },
+      payload: { comments: [comment] },
+    });
+
+    expect(submitted.statusCode).toBe(201);
+    expect(
+      (await app.inject({ method: "GET", url: FEEDBACK_URL })).json().batches[0]
+        .comments,
+    ).toEqual([comment]);
   });
 
   it("stores multiple comments in one feedback batch", async () => {

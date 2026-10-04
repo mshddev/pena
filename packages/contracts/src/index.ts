@@ -9,6 +9,7 @@ export {
 } from "./decision-blocks.js";
 export {
   ExcalidrawSceneSyntaxError,
+  isSavedSceneElement,
   parseExcalidrawScene,
   readExcalidrawSceneText,
   type ExcalidrawScene,

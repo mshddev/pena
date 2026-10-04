@@ -511,7 +511,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
                   className="download-document-button"
                   type="button"
                   onClick={() =>
-                    downloadDocument(
+                    void downloadDocument(
                       currentDocument.content,
                       currentDocument.format,
                       documentSlug,

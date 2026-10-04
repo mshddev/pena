@@ -1000,6 +1000,63 @@ describe("Pena API", () => {
 
     expect(notJson.statusCode).toBe(400);
     expect(notJson.json().error).toMatch(/^Excalidraw content must be JSON/);
+
+    // A skeleton's references must name real elements, or expanding it
+    // fails in the browser; a saved element's are Excalidraw's own.
+    const rejections = await Promise.all(
+      [
+        [{ id: "backend", type: "frame", name: "Backend" }],
+        [
+          { id: "api", type: "rectangle", x: 0, y: 0 },
+          { id: "backend", type: "frame", children: ["apii"] },
+        ],
+        [{ id: "calls", type: "arrow", x: 0, y: 0, start: { id: "api" } }],
+      ].map((elements) =>
+        publishDocument(
+          app,
+          DOCUMENT_URL,
+          JSON.stringify({ type: "excalidraw", elements }),
+        ),
+      ),
+    );
+
+    expect(rejections.map((response) => response.json().error)).toEqual([
+      'Scene element 0 is a frame and needs a "children" array of element ids.',
+      'Scene element 1 lists "apii" in "children", but no element has that id.',
+      'Scene element 0 binds its start to "api", but no element has that id.',
+    ]);
+
+    const savedWithDanglingBinding = await publishDocument(
+      app,
+      DOCUMENT_URL,
+      JSON.stringify({
+        type: "excalidraw",
+        elements: [
+          { id: "calls", type: "arrow", x: 0, y: 0, seed: 1, version: 3, start: { id: "gone" } },
+        ],
+      }),
+    );
+
+    expect(savedWithDanglingBinding.statusCode).toBe(200);
+    expect(
+      (await app.inject({ method: "GET", url: DOCUMENT_URL })).json(),
+    ).toMatchObject({ format: "excalidraw", version: 2 });
+  });
+
+  it("keeps the first scene when a revision is rejected", async () => {
+    const app = createApp();
+    const scene = JSON.stringify({
+      type: "excalidraw",
+      elements: [{ id: "api", type: "rectangle", x: 0, y: 0 }],
+    });
+    await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: { "content-type": "application/json", "if-none-match": "*" },
+      payload: { title: "Architecture", content: scene, format: "excalidraw" },
+    });
+    await publishDocument(app, DOCUMENT_URL, "## Heading");
+
     expect(
       (await app.inject({ method: "GET", url: DOCUMENT_URL })).json(),
     ).toMatchObject({ content: scene, format: "excalidraw", version: 1 });

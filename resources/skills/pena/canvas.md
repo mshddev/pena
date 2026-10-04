@@ -23,7 +23,8 @@ Write a skeleton, one element per line; Pena expands it in the browser:
 ```
 
 - Give every element a unique, short kebab-case `id`. Feedback points at
-  these ids, and publishing rejects a missing or repeated one (exit 2).
+  these ids, and publishing rejects a missing or repeated one (exit 2), as
+  well as an id in `children`, `start`, or `end` that names no element.
 - Keep ids stable across revisions: change an element under its own id,
   so comments on it still point at it. A new id is a new element.
 - Shapes (`rectangle`, `ellipse`, `diamond`) take `x`, `y`, `width`, and
@@ -41,7 +42,10 @@ Write a skeleton, one element per line; Pena expands it in the browser:
   clean lines).
 - Leave room between elements; the canvas fits the whole scene on load.
 - A scene saved by Excalidraw itself, where every element has a `seed` and
-  a `version`, loads unchanged. Revise a drawing the user made that way.
+  a `version`, loads unchanged. To revise such a drawing, add skeletons
+  beside its saved elements; Pena expands only the elements without a
+  `seed`. To change a saved shape, replace it with a fresh skeleton under
+  the same id and delete the text element that was its label.
 
 Offer choices in a text element or in your report; decision blocks are
 Markdown syntax. A publish is limited to 1 MiB.

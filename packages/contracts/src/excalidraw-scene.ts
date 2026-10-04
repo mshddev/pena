@@ -1,4 +1,5 @@
 const ELEMENT_ID_MAX_LENGTH = 100;
+const FRAME_TYPES = new Set(["frame", "magicframe"]);
 
 /**
  * One element of an Excalidraw scene. Pena reads only the fields it needs and
@@ -90,7 +91,54 @@ export function parseExcalidrawScene(content: string): ExcalidrawScene {
     elementIds.add(element.id);
   });
 
+  scene.elements.forEach((element: Record<string, unknown>, index) => {
+    if (!isSavedSceneElement(element)) {
+      checkSkeletonReferences(element, index, elementIds);
+    }
+  });
+
   return scene as ExcalidrawScene;
+}
+
+/**
+ * Excalidraw writes a seed and a version on every element it saves. Any
+ * other element is a skeleton, which Excalidraw expands when it loads.
+ */
+export function isSavedSceneElement(element: Record<string, unknown>): boolean {
+  return typeof element.seed === "number" && typeof element.version === "number";
+}
+
+/**
+ * Expanding a skeleton fails on a frame without `children` or on an id that
+ * names no element, so those are caught when the scene is published.
+ */
+function checkSkeletonReferences(
+  element: Record<string, unknown>,
+  index: number,
+  elementIds: ReadonlySet<string>,
+): void {
+  if (FRAME_TYPES.has(element.type as string)) {
+    if (
+      !Array.isArray(element.children) ||
+      !element.children.every((child) => typeof child === "string")
+    ) {
+      throw elementError(index, 'is a frame and needs a "children" array of element ids');
+    }
+
+    for (const child of element.children as string[]) {
+      if (!elementIds.has(child)) {
+        throw elementError(index, `lists "${child}" in "children", but no element has that id`);
+      }
+    }
+  }
+
+  for (const end of ["start", "end"] as const) {
+    const bound = element[end];
+
+    if (isRecord(bound) && typeof bound.id === "string" && !elementIds.has(bound.id)) {
+      throw elementError(index, `binds its ${end} to "${bound.id}", but no element has that id`);
+    }
+  }
 }
 
 /**

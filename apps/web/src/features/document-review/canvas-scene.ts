@@ -13,6 +13,9 @@ export interface CanvasElement {
   readonly height: number;
   readonly angle?: number;
   readonly strokeWidth?: number;
+  readonly backgroundColor?: string;
+  /** Set on a line or arrow drawn as a curve through its points. */
+  readonly roundness?: unknown;
   readonly isDeleted?: boolean;
   readonly points?: readonly (readonly [number, number])[];
   readonly containerId?: string | null;
@@ -46,6 +49,13 @@ export interface CanvasSection {
 /** How near a click must land to a line, in screen pixels. */
 const HIT_TOLERANCE = 6;
 const SELECTED_TEXT_LIMIT = 10_000;
+/** The most element ids one comment may carry (the feedback contract's cap). */
+export const MAX_TARGET_ELEMENTS = 50;
+/** Past this many, a description names the first few and counts the rest. */
+const NAMED_ELEMENTS_LIMIT = 12;
+/** Points sampled along each stretch of a curved line. */
+const CURVE_SAMPLES = 12;
+const FILLABLE_TYPES = new Set(["rectangle", "ellipse", "diamond"]);
 const FRAME_TYPES = new Set(["frame", "magicframe"]);
 const LINEAR_TYPES = new Set(["arrow", "line"]);
 
@@ -122,9 +132,11 @@ export function boundsBetween(
 }
 
 /**
- * The element a click at `point` (scene coordinates) lands on: the topmost
- * one, with a frame only when nothing inside it was hit. A shape's label
- * stands for its shape.
+ * The element a click at `point` (scene coordinates) lands on. A click on
+ * something drawn there (a line, text, an outline, a filled shape) takes the
+ * topmost such element; a shape's label stands for its shape. Only a click
+ * on the empty inside of a frame or a transparent shape falls back to the
+ * smallest one around it, so a box drawn around others never hides them.
  */
 export function findElementAtPoint(
   elements: readonly CanvasElement[],
@@ -132,24 +144,32 @@ export function findElementAtPoint(
   zoom: number,
 ): CanvasElement | null {
   const tolerance = HIT_TOLERANCE / zoom;
-  let frameHit: CanvasElement | null = null;
+  let enclosing: CanvasElement | null = null;
+  let enclosingArea = Infinity;
 
   for (let index = elements.length - 1; index >= 0; index -= 1) {
     const element = elements[index];
+    const hit = element && !element.isDeleted
+      ? hitElement(element, point, tolerance)
+      : null;
 
-    if (!element || element.isDeleted || !hitsElement(element, point, tolerance)) {
+    if (!element || hit === null) {
       continue;
     }
 
-    if (FRAME_TYPES.has(element.type)) {
-      frameHit ??= element;
-      continue;
+    if (hit === "drawn") {
+      return findContainer(elements, element) ?? element;
     }
 
-    return findContainer(elements, element) ?? element;
+    const { width, height } = readElementBounds(element);
+
+    if (width * height < enclosingArea) {
+      enclosing = element;
+      enclosingArea = width * height;
+    }
   }
 
-  return frameHit;
+  return enclosing;
 }
 
 /**
@@ -174,7 +194,9 @@ export function createCanvasTarget(
   area: CanvasBounds | null,
 ): CanvasTarget {
   return {
-    elementIds: picked.map((element) => element.id),
+    elementIds: picked
+      .slice(0, MAX_TARGET_ELEMENTS)
+      .map((element) => element.id),
     bounds: roundBounds(
       area ?? unionBounds(picked.map((element) => readElementBounds(element))),
     ),
@@ -193,9 +215,14 @@ export function describeCanvasElements(
     return "Empty area";
   }
 
-  const description = picked
+  const named = picked
+    .slice(0, NAMED_ELEMENTS_LIMIT)
     .map((element) => describeElement(elements, element))
     .join(", ");
+  const description =
+    picked.length > NAMED_ELEMENTS_LIMIT
+      ? `${named}, and ${picked.length - NAMED_ELEMENTS_LIMIT} more`
+      : named;
 
   return description.length > SELECTED_TEXT_LIMIT
     ? `${description.slice(0, SELECTED_TEXT_LIMIT - 1)}…`
@@ -309,11 +336,15 @@ function findContainer(
   );
 }
 
-function hitsElement(
+/**
+ * Whether `point` lands on something drawn for the element, or only inside
+ * the empty area of a frame or a transparent shape.
+ */
+function hitElement(
   element: CanvasElement,
   point: CanvasPoint,
   tolerance: number,
-): boolean {
+): "drawn" | "enclosed" | null {
   const box = readUnrotatedBox(element);
   // Testing the point turned back by the element's angle is the same as
   // testing it against the turned element.
@@ -321,27 +352,99 @@ function hitsElement(
 
   if (LINEAR_TYPES.has(element.type) && element.points && element.points.length > 1) {
     const reach = tolerance + (element.strokeWidth ?? 1) / 2;
+    const path = readLinePath(element);
 
-    return element.points.slice(1).some((end, index) => {
-      const start = element.points?.[index];
-
-      return (
-        start !== undefined &&
-        distanceToSegment(
-          local,
-          { x: element.x + start[0], y: element.y + start[1] },
-          { x: element.x + end[0], y: element.y + end[1] },
-        ) <= reach
-      );
-    });
+    return path.slice(1).some((end, index) => {
+      const start = path[index];
+      return start !== undefined && distanceToSegment(local, start, end) <= reach;
+    })
+      ? "drawn"
+      : null;
   }
 
+  if (!insideBox(local, box, tolerance)) {
+    return null;
+  }
+
+  // The outline of an empty shape is drawn; the space inside it is not.
+  const edge = tolerance + (element.strokeWidth ?? 1) / 2;
+  const isEmpty =
+    FRAME_TYPES.has(element.type) ||
+    (FILLABLE_TYPES.has(element.type) &&
+      (!element.backgroundColor || element.backgroundColor === "transparent"));
+
+  return isEmpty && insideBox(local, box, -edge) ? "enclosed" : "drawn";
+}
+
+function insideBox(
+  point: CanvasPoint,
+  box: CanvasBounds,
+  margin: number,
+): boolean {
   return (
-    local.x >= box.x - tolerance &&
-    local.x <= box.x + box.width + tolerance &&
-    local.y >= box.y - tolerance &&
-    local.y <= box.y + box.height + tolerance
+    point.x >= box.x - margin &&
+    point.x <= box.x + box.width + margin &&
+    point.y >= box.y - margin &&
+    point.y <= box.y + box.height + margin
   );
+}
+
+/**
+ * A line's points in scene coordinates. A curved line passes through them
+ * along a smooth curve, approximated here by points sampled along it.
+ */
+function readLinePath(element: CanvasElement): CanvasPoint[] {
+  const points = (element.points ?? []).map(([x, y]) => ({
+    x: element.x + x,
+    y: element.y + y,
+  }));
+
+  if (!element.roundness || points.length < 3) {
+    return points;
+  }
+
+  const path: CanvasPoint[] = [];
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const p0 = points[index - 1] ?? points[index];
+    const p1 = points[index];
+    const p2 = points[index + 1];
+    const p3 = points[index + 2] ?? p2;
+
+    if (!p0 || !p1 || !p2 || !p3) {
+      continue;
+    }
+
+    for (let step = 0; step < CURVE_SAMPLES; step += 1) {
+      path.push(catmullRom(p0, p1, p2, p3, step / CURVE_SAMPLES));
+    }
+  }
+
+  const last = points.at(-1);
+  return last ? [...path, last] : path;
+}
+
+/** The point at `t` on the curve from `p1` to `p2`, shaped by its neighbours. */
+function catmullRom(
+  p0: CanvasPoint,
+  p1: CanvasPoint,
+  p2: CanvasPoint,
+  p3: CanvasPoint,
+  t: number,
+): CanvasPoint {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const along = (a: number, b: number, c: number, d: number) =>
+    0.5 *
+    (2 * b +
+      (c - a) * t +
+      (2 * a - 5 * b + 4 * c - d) * t2 +
+      (3 * b - a - 3 * c + d) * t3);
+
+  return {
+    x: along(p0.x, p1.x, p2.x, p3.x),
+    y: along(p0.y, p1.y, p2.y, p3.y),
+  };
 }
 
 /**

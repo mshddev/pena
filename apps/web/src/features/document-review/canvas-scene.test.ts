@@ -130,6 +130,52 @@ describe("findElementAtPoint", () => {
     });
   });
 
+  it("lets a transparent box drawn over others enclose them, not hide them", () => {
+    const vpc: CanvasElement = { id: "vpc", type: "rectangle", x: -40, y: -40, width: 400, height: 200 };
+    const filledApi: CanvasElement = { ...api, backgroundColor: "#ffec99" };
+    // The VPC is listed last, so it is drawn on top of everything inside it.
+    const layered = [filledApi, apiLabel, database, vpc];
+
+    expect(findElementAtPoint(layered, { x: 10, y: 40 }, 1)?.id).toBe("api");
+    expect(findElementAtPoint(layered, { x: 340, y: 20 }, 1)?.id).toBe("db");
+    expect(findElementAtPoint(layered, { x: 150, y: 120 }, 1)?.id).toBe("vpc");
+    // Its outline is drawn, so a click on the edge picks it.
+    expect(findElementAtPoint(layered, { x: -40, y: 60 }, 1)?.id).toBe("vpc");
+    // A filled box on top hides what is under it, as on screen.
+    expect(
+      findElementAtPoint(
+        [filledApi, { ...vpc, backgroundColor: "#ffffff" }],
+        { x: 10, y: 40 },
+        1,
+      )?.id,
+    ).toBe("vpc");
+  });
+
+  it("follows a curved arrow along its curve", () => {
+    const curve: CanvasElement = {
+      id: "curve",
+      type: "arrow",
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 100,
+      roundness: { type: 2 },
+      points: [
+        [0, 0],
+        [100, 100],
+        [200, 0],
+      ],
+    };
+    // Between the first two points the curve bulges past the straight line
+    // toward the middle point's far side.
+    const onCurve = { x: 50, y: 64 };
+
+    expect(findElementAtPoint([curve], onCurve, 1)?.id).toBe("curve");
+    expect(
+      findElementAtPoint([{ ...curve, roundness: null }], onCurve, 1),
+    ).toBeNull();
+  });
+
   it("skips deleted elements", () => {
     expect(
       findElementAtPoint([{ ...api, isDeleted: true }], { x: 10, y: 10 }, 1),
@@ -162,6 +208,27 @@ describe("describeCanvasElements", () => {
       describeCanvasElements([], [{ ...api, id: "plain" }]),
     ).toBe("Rectangle");
     expect(describeCanvasElements(scene, [])).toBe("Empty area");
+  });
+});
+
+describe("many picked elements", () => {
+  it("keeps the first 50 ids, covers them all, and counts the rest by name", () => {
+    const boxes: CanvasElement[] = Array.from({ length: 60 }, (_, index) => ({
+      id: `box-${index}`,
+      type: "rectangle",
+      x: index * 10,
+      y: 0,
+      width: 5,
+      height: 5,
+    }));
+    const target = createCanvasTarget(boxes, null);
+
+    expect(target.elementIds).toHaveLength(50);
+    expect(target.elementIds.at(-1)).toBe("box-49");
+    expect(target.bounds).toEqual({ x: 0, y: 0, width: 595, height: 5 });
+    expect(describeCanvasElements(boxes, boxes)).toBe(
+      `${Array(12).fill("Rectangle").join(", ")}, and 48 more`,
+    );
   });
 });
 

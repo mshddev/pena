@@ -415,6 +415,21 @@ describe("doc publish", () => {
 
     expect(rejected.code).toBe(2);
     expect(rejected.stderr).toContain('Scene element 0 needs an "id"');
+
+    const typo = writeMarkdown(
+      "typo.excalidraw",
+      JSON.stringify({
+        type: "excalidraw",
+        elements: [
+          { id: "api", type: "rectangle", x: 0, y: 0 },
+          { id: "backend", type: "frame", children: ["apii"] },
+        ],
+      }),
+    );
+    const typoResult = await cli(["doc", "publish", typo, "--slug", "architecture", "--title", "Architecture"]);
+
+    expect(typoResult.code).toBe(2);
+    expect(typoResult.stderr).toContain('lists "apii" in "children"');
     expect((await cli(["--json", "doc", "show", "architecture"])).json().version).toBe(1);
   });
 

@@ -23,6 +23,11 @@ import {
   unionBounds,
   type CanvasElement,
 } from "./canvas-scene";
+import {
+  keepSavedBindings,
+  listBoundArrows,
+  readExpansionInput,
+} from "./mixed-scene";
 
 const FRAME_TYPES = new Set(["frame", "magicframe"]);
 /** Room around a frame's members, enough for text that widens on re-measure. */
@@ -71,28 +76,32 @@ export function prepareScene(scene: ExcalidrawScene): PreparedScene {
 
   // Saved elements go through conversion too, so a skeleton arrow can bind
   // to them, and are then swapped back for their restored originals, which
-  // conversion would otherwise redraw from scratch.
+  // conversion would otherwise redraw from scratch. Each shape then lists
+  // every arrow bound to it, saved or new.
   const restoredById = new Map(
-    restoreElements(
-      savedElements as unknown as ExcalidrawElement[],
-      null,
-      { repairBindings: true },
+    keepSavedBindings(
+      restoreElements(
+        savedElements as unknown as ExcalidrawElement[],
+        null,
+        { repairBindings: true },
+      ),
+      scene,
     ).map((element) => [element.id, element]),
   );
   const converted = convertToExcalidrawElements(
-    scene.elements as unknown as ExcalidrawElementSkeleton[],
+    readExpansionInput(scene) as unknown as ExcalidrawElementSkeleton[],
     { regenerateIds: false },
   );
-  const elements = converted.map((element) => {
-    const original = restoredById.get(element.id);
-
-    return original
-      ? withBoundElements(original, element)
-      : { ...element, seed: seedFromId(element.id) };
-  });
+  const elements = converted.map(
+    (element) =>
+      restoredById.get(element.id) ?? {
+        ...element,
+        seed: seedFromId(element.id),
+      },
+  );
 
   return {
-    elements: placeInFrames(scene, elements, restoredById),
+    elements: listBoundArrows(placeInFrames(scene, elements, restoredById)),
     appState: {
       viewBackgroundColor: readBackground(scene),
       // An arrow between two frames belongs to neither, so nothing is cut
@@ -107,24 +116,6 @@ export function prepareScene(scene: ExcalidrawScene): PreparedScene {
 export function serializeScene(scene: ExcalidrawScene): string {
   const { elements, appState, files } = prepareScene(scene);
   return serializeAsJSON(elements, appState, files, "local");
-}
-
-/** Keeps the arrows conversion bound to a saved shape. */
-function withBoundElements(
-  original: ExcalidrawElement,
-  converted: ExcalidrawElement,
-): ExcalidrawElement {
-  const bound = [...(original.boundElements ?? [])];
-
-  for (const added of converted.boundElements ?? []) {
-    if (!bound.some((existing) => existing.id === added.id)) {
-      bound.push(added);
-    }
-  }
-
-  return bound.length === (original.boundElements ?? []).length
-    ? original
-    : { ...original, boundElements: bound };
 }
 
 /**

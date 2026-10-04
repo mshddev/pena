@@ -58,6 +58,8 @@ const CURVE_SAMPLES = 12;
 const FILLABLE_TYPES = new Set(["rectangle", "ellipse", "diamond"]);
 const FRAME_TYPES = new Set(["frame", "magicframe"]);
 const LINEAR_TYPES = new Set(["arrow", "line"]);
+/** Elements drawn as a stroke through their points. */
+const STROKE_TYPES = new Set(["arrow", "line", "freedraw"]);
 
 export function sceneToViewport(
   point: CanvasPoint,
@@ -350,7 +352,7 @@ function hitElement(
   // testing it against the turned element.
   const local = rotate(point, boxCenter(box), -(element.angle ?? 0));
 
-  if (LINEAR_TYPES.has(element.type) && element.points && element.points.length > 1) {
+  if (STROKE_TYPES.has(element.type) && element.points && element.points.length > 1) {
     const reach = tolerance + (element.strokeWidth ?? 1) / 2;
     const path = readLinePath(element);
 
@@ -362,31 +364,53 @@ function hitElement(
       : null;
   }
 
-  if (!insideBox(local, box, tolerance)) {
+  const distance = distanceFromOutline(element.type, local, box);
+
+  if (distance > tolerance) {
     return null;
   }
 
-  // The outline of an empty shape is drawn; the space inside it is not.
+  // The outline is drawn; the space inside an empty shape is not.
   const edge = tolerance + (element.strokeWidth ?? 1) / 2;
   const isEmpty =
     FRAME_TYPES.has(element.type) ||
     (FILLABLE_TYPES.has(element.type) &&
       (!element.backgroundColor || element.backgroundColor === "transparent"));
 
-  return isEmpty && insideBox(local, box, -edge) ? "enclosed" : "drawn";
+  return isEmpty && distance < -edge ? "enclosed" : "drawn";
 }
 
-function insideBox(
+/**
+ * How far `point` lies outside the element's outline, negative inside. An
+ * ellipse or a diamond is measured against its own shape rather than its
+ * box, closely enough for picking.
+ */
+function distanceFromOutline(
+  type: string,
   point: CanvasPoint,
   box: CanvasBounds,
-  margin: number,
-): boolean {
-  return (
-    point.x >= box.x - margin &&
-    point.x <= box.x + box.width + margin &&
-    point.y >= box.y - margin &&
-    point.y <= box.y + box.height + margin
-  );
+): number {
+  const rx = box.width / 2;
+  const ry = box.height / 2;
+  const dx = point.x - (box.x + rx);
+  const dy = point.y - (box.y + ry);
+
+  if (rx > 0 && ry > 0 && type === "ellipse") {
+    return (Math.hypot(dx / rx, dy / ry) - 1) * Math.min(rx, ry);
+  }
+
+  if (rx > 0 && ry > 0 && type === "diamond") {
+    return (
+      (Math.abs(dx) / rx + Math.abs(dy) / ry - 1) * ((rx * ry) / Math.hypot(rx, ry))
+    );
+  }
+
+  const outsideX = Math.abs(dx) - rx;
+  const outsideY = Math.abs(dy) - ry;
+
+  return outsideX > 0 || outsideY > 0
+    ? Math.hypot(Math.max(outsideX, 0), Math.max(outsideY, 0))
+    : Math.max(outsideX, outsideY);
 }
 
 /**

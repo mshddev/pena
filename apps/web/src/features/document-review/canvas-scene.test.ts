@@ -151,6 +151,40 @@ describe("findElementAtPoint", () => {
     ).toBe("vpc");
   });
 
+  it("measures an ellipse by its outline, not its box", () => {
+    const ring: CanvasElement = { id: "ring", type: "ellipse", x: 0, y: 0, width: 200, height: 100 };
+    const corner: CanvasElement = { id: "corner", type: "rectangle", x: 0, y: 0, width: 30, height: 30, backgroundColor: "#ffec99" };
+    // The ring is drawn over the box, which sits in the ring's empty corner.
+    const layered = [corner, ring];
+
+    expect(findElementAtPoint(layered, { x: 10, y: 10 }, 1)?.id).toBe("corner");
+    expect(findElementAtPoint(layered, { x: 100, y: 1 }, 1)?.id).toBe("ring");
+    expect(findElementAtPoint(layered, { x: 100, y: 50 }, 1)?.id).toBe("ring");
+    expect(findElementAtPoint([ring], { x: 3, y: 3 }, 1)).toBeNull();
+  });
+
+  it("hits a freehand stroke on the stroke, not inside the loop it draws", () => {
+    const loop: CanvasElement = {
+      id: "loop",
+      type: "freedraw",
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 200,
+      points: [
+        [0, 0],
+        [200, 0],
+        [200, 200],
+        [0, 200],
+        [0, 0],
+      ],
+    };
+    const inside: CanvasElement = { ...api, x: 50, y: 50 };
+
+    expect(findElementAtPoint([inside, loop], { x: 60, y: 60 }, 1)?.id).toBe("api");
+    expect(findElementAtPoint([inside, loop], { x: 100, y: 2 }, 1)?.id).toBe("loop");
+  });
+
   it("follows a curved arrow along its curve", () => {
     const curve: CanvasElement = {
       id: "curve",

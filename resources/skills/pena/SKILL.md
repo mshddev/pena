@@ -116,8 +116,11 @@ has a `slug`, a `name`, and a `parentSlug` (`null` at the top level).
    :::
    ```
 
-   Use a unique lowercase, kebab-case ID and exactly two short plain-text
-   choices. Keep decision blocks top-level; do not nest them.
+   Use a unique lowercase, kebab-case ID and two to eight distinct, short
+   plain-text choices. Add more choices as `choice-c`, `choice-d`, and onward,
+   in order without skipping a letter, as in
+   `:::pena-decision{#cache-ttl choice-a="One minute" choice-b="Five minutes" choice-c="One hour"}`.
+   Keep decision blocks top-level; do not nest them.
 6. For a new slug, create the document without reading it first:
 
    ```bash

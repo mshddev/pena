@@ -180,6 +180,64 @@ describe("interactive decision review", () => {
     });
   });
 
+  it("offers and submits any of more than two choices", async () => {
+    const submittedBodies: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === "/api/collections") {
+          return collectionListResponse();
+        }
+
+        if (init?.method === "POST") {
+          submittedBodies.push(String(init.body));
+          return jsonResponse(
+            { id: 1, submittedAt: "2026-07-18T10:01:00.000Z" },
+            201,
+          );
+        }
+
+        if (url.endsWith("/feedback")) {
+          return jsonResponse({ latestBatchId: null, batches: [] });
+        }
+
+        return jsonResponse({
+          ...documentResponse,
+          content: [
+            ':::pena-decision{#request-cache choice-a="Apply" choice-b="Skip" choice-c="Defer"}',
+            "## Add request caching",
+            ":::",
+          ].join("\n"),
+        });
+      }),
+    );
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    const defer = await screen.findByRole("button", { name: "Defer" });
+    expect(
+      screen
+        .getByRole("group", { name: "Decision options for request-cache" })
+        .querySelectorAll("button"),
+    ).toHaveLength(3);
+
+    await user.click(defer);
+    expect(defer.getAttribute("aria-pressed")).toBe("true");
+    await user.click(screen.getByRole("button", { name: "Submit feedback" }));
+
+    await screen.findByText(
+      "1 feedback submitted. Ask Claude to read your Pena feedback.",
+    );
+    expect(JSON.parse(submittedBodies[0] ?? "{}").comments).toEqual([
+      expect.objectContaining({
+        comment: "[decision:request-cache] Defer",
+      }),
+    ]);
+  });
+
   // A server older than formats sends none, and its documents are Markdown.
   const { format: _format, ...documentWithoutFormat } = documentResponse;
 

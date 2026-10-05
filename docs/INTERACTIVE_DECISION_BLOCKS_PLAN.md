@@ -6,7 +6,7 @@ Pena — Interactive Decision Blocks ([Initial Specification](./INITIAL_SPEC.md)
 
 Add clickable decisions to Pena without changing its existing review model.
 
-An agent may include explicit decision blocks inside a Markdown document. Pena renders each block with two buttons. The selected answer joins the existing draft feedback and is submitted as a normal comment.
+An agent may include explicit decision blocks inside a Markdown document. Pena renders each block with one button per choice. The selected answer joins the existing draft feedback and is submitted as a normal comment.
 
 Everything else stays the same: Markdown publishing, text-selection comments, batch submission, manual feedback retrieval, refresh behavior, and persistent SQLite storage.
 
@@ -24,7 +24,7 @@ Rules:
 
 - Decision blocks must be top-level.
 - Every decision has a unique kebab-case ID.
-- Every decision has exactly two distinct, non-blank choices.
+- Every decision has two to eight distinct, non-blank choices, named `choice-a`, `choice-b`, `choice-c`, and onward in order without gaps.
 - Choice labels are short plain text.
 - The body supports normal Markdown.
 - The body remains selectable and commentable.
@@ -34,13 +34,13 @@ Rules:
 
 1. The agent publishes Markdown containing zero or more decision blocks.
 2. Pena renders each unanswered decision as an integrated callout.
-3. Both choices initially have equal visual weight.
+3. All choices initially have equal visual weight.
 4. Clicking a choice marks it as a draft.
 5. Clicking the selected choice again clears it.
 6. Clicking a decision does not close an active comment composer.
 7. Draft decisions and comments share the existing **Submit feedback** action.
 8. Partial submission is allowed.
-9. After submission, the decision remains visible in a read-only state, with the submitted choice highlighted and both controls disabled.
+9. After submission, the decision remains visible in a read-only state, with the submitted choice highlighted and every control disabled.
 10. The user asks the agent to read Pena feedback as usual.
 
 The draft bar distinguishes the pending input:
@@ -80,7 +80,7 @@ The web application loads the existing feedback batches and extracts comments ma
 [decision:<decision-id>] <choice>
 ```
 
-A matching decision ID means its controls have already been submitted. Pena renders the submitted choice as selected and disables both controls, including after refresh.
+A matching decision ID means its controls have already been submitted. Pena renders the submitted choice as selected and disables every control, including after refresh.
 
 For documents containing decisions, failure to load feedback fails the page instead of displaying potentially submitted decisions as unanswered.
 
@@ -121,12 +121,12 @@ Stale-submission protection and document revision tracking are not included.
 
 1. Existing Markdown-only documents behave unchanged.
 2. An agent can publish a document containing ten valid decision blocks.
-3. Each block renders two clickable choices.
+3. Each block renders one clickable button per choice.
 4. Only one choice may be selected per block.
 5. A selected choice can be changed or cleared before submission.
 6. Decisions and comments can be submitted together.
 7. Unanswered decisions do not block submission.
-8. Submitted decisions remain visible after refresh, with the submitted choice highlighted and both controls disabled.
+8. Submitted decisions remain visible after refresh, with the submitted choice highlighted and every control disabled.
 9. The feedback API returns decision answers as encoded comments.
 10. Replacing the document clears its submitted decisions.
 11. Malformed or duplicate decision directives reject publication without replacing the current document.
@@ -137,7 +137,6 @@ Stale-submission protection and document revision tracking are not included.
 - Revision history or stale-submission protection
 - Automatic agent notification
 - CLI, skill, plugin, or MCP integration
-- More than two choices
 - Multi-select decisions
 - Notes attached directly to choices
 - Conditional or nested decisions

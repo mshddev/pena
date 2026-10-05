@@ -470,8 +470,11 @@ function ReadOnlyMarkdownDocument({
                 {segment.decision.body}
               </MarkdownContent>
               <div className="decision-actions">
-                <span className="decision-choice">{segment.decision.choiceA}</span>
-                <span className="decision-choice">{segment.decision.choiceB}</span>
+                {segment.decision.choices.map((choice) => (
+                  <span className="decision-choice" key={choice}>
+                    {choice}
+                  </span>
+                ))}
               </div>
             </div>
           </Fragment>

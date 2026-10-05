@@ -1870,6 +1870,19 @@ describe("Pena API", () => {
     expect(response.statusCode).toBe(201);
   });
 
+  it("accepts a decision block with more than two choices", async () => {
+    const app = createApp();
+    const content = [
+      ':::pena-decision{#cache-ttl choice-a="One minute" choice-b="Five minutes" choice-c="One hour"}',
+      "Pick how long cached reads live.",
+      ":::",
+    ].join("\n");
+
+    const response = await publishDocument(app, DOCUMENT_URL, content);
+
+    expect(response.statusCode).toBe(201);
+  });
+
   it.each([
     {
       name: "malformed attributes",
@@ -1916,6 +1929,23 @@ describe("Pena API", () => {
       name: "identical choices",
       content:
         ':::pena-decision{#cache choice-a="Apply" choice-b="Apply"}\nReview caching.\n:::',
+    },
+    {
+      name: "skipped choice letters",
+      content:
+        ':::pena-decision{#cache choice-a="Apply" choice-c="Skip"}\nReview caching.\n:::',
+    },
+    {
+      name: "a repeated third choice",
+      content:
+        ':::pena-decision{#cache choice-a="Apply" choice-b="Skip" choice-c="Apply"}\nReview caching.\n:::',
+    },
+    {
+      name: "more than eight choices",
+      content: `:::pena-decision{#cache${Array.from(
+        "abcdefghi",
+        (letter) => ` choice-${letter}="Option ${letter}"`,
+      ).join("")}}\nReview caching.\n:::`,
     },
     {
       name: "missing closing marker",

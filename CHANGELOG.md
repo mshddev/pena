@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `doc publish` reads the format from the extension: `.html`/`.htm` is HTML, `.md`/`.markdown` is Markdown, and any other file keeps the document's current format; `--format` overrides. `doc show --version` and `doc versions` print the format
 - Excalidraw canvases. `pena doc publish diagram.excalidraw` (or `--format excalidraw`) publishes a scene, which the review UI draws in Excalidraw's view mode, loaded only for canvas documents. Click an element (a label counts as its shape) or Shift-drag over an area to comment; numbered markers follow the canvas through pan and zoom. A hand-written scene is a list of skeletons that keep their ids; a scene saved by Excalidraw loads as it is. Frames fill the outline, version compare lists the elements that changed, and Download saves a `.excalidraw` file. Excalidraw's fonts are served by Pena, so a canvas renders offline
 - A comment may carry a `target`: the ids of the canvas elements it points at and the area they cover. `feedback show` prints the ids. Publishing a scene checks its shape and that every element has a unique id, in the server and in `doc publish` (exit 2)
+- Decision blocks offer up to eight choices: add `choice-c`, `choice-d`, and onward after `choice-a` and `choice-b`, in order without gaps. Existing two-choice blocks are unchanged
 
 ### Changed
 

@@ -41,7 +41,7 @@ export function readSubmittedDecisions(
   const availableChoices = new Map(
     decisions.map((decision) => [
       decision.id,
-      new Set([decision.choiceA, decision.choiceB]),
+      new Set(decision.choices),
     ]),
   );
   const submitted: Record<string, string> = {};

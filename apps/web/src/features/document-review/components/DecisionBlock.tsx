@@ -70,7 +70,7 @@ export function DecisionBlock({
         role="group"
         aria-label={`Decision options for ${decision.id}`}
       >
-        {[decision.choiceA, decision.choiceB].map((choice) => {
+        {decision.choices.map((choice) => {
           const isSelected = selectedChoice === choice;
 
           return (

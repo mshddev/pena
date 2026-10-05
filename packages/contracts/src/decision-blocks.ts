@@ -1,12 +1,21 @@
 const DECISION_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const DECISION_ID_MAX_LENGTH = 64;
 const CHOICE_MAX_LENGTH = 80;
+const CHOICE_LETTERS = "abcdefgh";
+const MIN_CHOICES = 2;
+const MAX_CHOICES = CHOICE_LETTERS.length;
+const CHOICE_ATTRIBUTE = / choice-([a-z])="([^"\r\n]*)"/;
+const CHOICE_ATTRIBUTES = new RegExp(CHOICE_ATTRIBUTE.source, "g");
+// The choice attribute's own groups come after the ID and attribute groups.
+const OPENER_PATTERN = new RegExp(
+  `^:::pena-decision\\{#([a-z0-9]+(?:-[a-z0-9]+)*)((?:${CHOICE_ATTRIBUTE.source})*)\\}\\s*$`,
+);
 const BODY_MAX_LENGTH = 10_000;
 
 export interface DecisionBlock {
   id: string;
-  choiceA: string;
-  choiceB: string;
+  /** In the order of their letters, `choice-a` first. */
+  choices: string[];
   body: string;
 }
 
@@ -125,22 +134,17 @@ export function parseDecisionDocument(
 function parseOpener(
   line: string,
   lineIndex: number,
-): Pick<DecisionBlock, "id" | "choiceA" | "choiceB"> {
-  const match =
-    /^:::pena-decision\{#([a-z0-9]+(?:-[a-z0-9]+)*) choice-a="([^"\r\n]*)" choice-b="([^"\r\n]*)"\}\s*$/.exec(
-      line,
-    );
+): Pick<DecisionBlock, "id" | "choices"> {
+  const match = OPENER_PATTERN.exec(line);
 
   if (!match) {
     throw syntaxError(
       lineIndex,
-      'Use :::pena-decision{#decision-id choice-a="First" choice-b="Second"}.',
+      'Use :::pena-decision{#decision-id choice-a="First" choice-b="Second"}, adding choice-c and onward for more choices.',
     );
   }
 
-  const [, id = "", rawChoiceA = "", rawChoiceB = ""] = match;
-  const choiceA = rawChoiceA.trim();
-  const choiceB = rawChoiceB.trim();
+  const [, id = "", rawAttributes = ""] = match;
 
   if (!DECISION_ID_PATTERN.test(id) || id.length > DECISION_ID_MAX_LENGTH) {
     throw syntaxError(
@@ -149,25 +153,48 @@ function parseOpener(
     );
   }
 
-  if (!choiceA || !choiceB) {
+  const choices: string[] = [];
+
+  for (const [, letter = "", rawChoice = ""] of rawAttributes.matchAll(
+    CHOICE_ATTRIBUTES,
+  )) {
+    const expectedLetter = CHOICE_LETTERS[choices.length];
+
+    if (letter !== expectedLetter) {
+      throw syntaxError(
+        lineIndex,
+        expectedLetter
+          ? `Expected choice-${expectedLetter}; name choices choice-a, choice-b, and onward in order without gaps.`
+          : `Decision blocks offer at most ${MAX_CHOICES} choices.`,
+      );
+    }
+
+    choices.push(rawChoice.trim());
+  }
+
+  if (choices.length < MIN_CHOICES) {
+    throw syntaxError(
+      lineIndex,
+      'Decision blocks need at least choice-a="…" and choice-b="…".',
+    );
+  }
+
+  if (choices.some((choice) => !choice)) {
     throw syntaxError(lineIndex, "Decision choices must not be blank.");
   }
 
-  if (
-    choiceA.length > CHOICE_MAX_LENGTH ||
-    choiceB.length > CHOICE_MAX_LENGTH
-  ) {
+  if (choices.some((choice) => choice.length > CHOICE_MAX_LENGTH)) {
     throw syntaxError(
       lineIndex,
       `Decision choices must be ${CHOICE_MAX_LENGTH} characters or fewer.`,
     );
   }
 
-  if (choiceA === choiceB) {
+  if (new Set(choices).size !== choices.length) {
     throw syntaxError(lineIndex, "Decision choices must be distinct.");
   }
 
-  return { id, choiceA, choiceB };
+  return { id, choices };
 }
 
 function findClosingLine(

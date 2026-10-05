@@ -54,6 +54,7 @@ vi.mock("./components/ExcalidrawCanvas", async () => {
           zoomBy: vi.fn(),
           toContent: () => canvas.content,
           readSceneVersion: () => canvas.version,
+          isAsLaidOut: () => canvas.version === "v1",
         });
         canvas.reportChange = onSceneChange ?? null;
         onSceneChange?.();

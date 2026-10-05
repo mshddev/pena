@@ -87,7 +87,8 @@ export function DocumentEditor({
     canvasRef.current = handle;
   }, []);
   const handleCanvasChange = useCallback(() => {
-    if (!hasTouchedCanvasRef.current) {
+    // A re-layout after a touch that changed nothing is still not an edit.
+    if (!hasTouchedCanvasRef.current || canvasRef.current?.isAsLaidOut()) {
       canvasBaselineRef.current = canvasRef.current?.readSceneVersion() ?? null;
     }
 

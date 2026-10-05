@@ -590,7 +590,7 @@ export function attachHtmlTextEditing(
 
     // The composition's last input can follow its end event.
     window.setTimeout(() => {
-      if (composition) {
+      if (composition && !isDetached) {
         const { observer, records } = composition;
         records.push(...observer.takeRecords());
         observer.disconnect();
@@ -708,10 +708,13 @@ export function attachHtmlTextEditing(
     return edits;
   }
 
+  let isDetached = false;
+
   return {
     getContent: () => patchSource(source, runs, readEdits()),
     isDirty: () => readEdits().size > 0,
     detach: () => {
+      isDetached = true;
       frameDocument.removeEventListener("keydown", handleKeyDown, true);
       frameDocument.removeEventListener(
         "compositionstart",

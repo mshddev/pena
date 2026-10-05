@@ -38,6 +38,8 @@ export interface CanvasHandle {
   toContent: () => string;
   /** Changes whenever any element changes; cheap enough to read often. */
   readSceneVersion: () => string;
+  /** Whether the scene is still exactly as Pena last laid it out. */
+  isAsLaidOut: () => boolean;
 }
 
 interface ExcalidrawCanvasProps {
@@ -149,7 +151,7 @@ export default function ExcalidrawCanvas({
   const handleApi = useCallback(
     (api: ExcalidrawImperativeAPI) => {
       apiRef.current = api;
-      onReady?.(createHandle(api));
+      onReady?.(createHandle(api, laidOutVersionRef));
     },
     [onReady],
   );
@@ -195,7 +197,7 @@ export default function ExcalidrawCanvas({
       if (!hasFittedRef.current && elements.length > 0) {
         hasFittedRef.current = true;
         laidOutVersionRef.current = readSceneVersion(elements);
-        createHandle(api).fit();
+        createHandle(api, laidOutVersionRef).fit();
       }
 
       callbacksRef.current.onSceneChange?.();
@@ -258,7 +260,10 @@ const MAX_ZOOM = 30;
 /** Space kept around the scene when it is fitted to the canvas, in pixels. */
 const FIT_MARGIN = 32;
 
-function createHandle(api: ExcalidrawImperativeAPI): CanvasHandle {
+function createHandle(
+  api: ExcalidrawImperativeAPI,
+  laidOutVersionRef: { current: string | null },
+): CanvasHandle {
   function setCamera(zoom: number, center: { x: number; y: number }): void {
     const appState = api.getAppState();
     const value = Math.min(Math.max(zoom, MIN_ZOOM), MAX_ZOOM);
@@ -330,5 +335,7 @@ function createHandle(api: ExcalidrawImperativeAPI): CanvasHandle {
         "local",
       ),
     readSceneVersion: () => readSceneVersion(api.getSceneElements()),
+    isAsLaidOut: () =>
+      readSceneVersion(api.getSceneElements()) === laidOutVersionRef.current,
   };
 }

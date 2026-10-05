@@ -105,11 +105,13 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
       }
 
       const nextDocument = resource.document;
-      // Decision blocks are Markdown syntax; a page or a canvas has none.
+      // Decision blocks are Markdown syntax; a page or a canvas has none. A
+      // document from a server older than formats has no format, and is
+      // Markdown.
       const decisions =
-        nextDocument.format === "markdown"
-          ? parseDecisionDocument(nextDocument.content).decisions
-          : [];
+        nextDocument.format === "html" || nextDocument.format === "excalidraw"
+          ? []
+          : parseDecisionDocument(nextDocument.content).decisions;
       const nextSubmittedDecisions =
         decisions.length > 0
           ? readSubmittedDecisions(
@@ -510,13 +512,21 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
                 <button
                   className="download-document-button"
                   type="button"
-                  onClick={() =>
-                    void downloadDocument(
+                  onClick={() => {
+                    downloadDocument(
                       currentDocument.content,
                       currentDocument.format,
                       documentSlug,
-                    )
-                  }
+                    ).catch((error: unknown) =>
+                      setNotice({
+                        kind: "error",
+                        message:
+                          error instanceof Error
+                            ? `Could not download the document: ${error.message}`
+                            : "Could not download the document.",
+                      }),
+                    );
+                  }}
                 >
                   <DownloadIcon />
                   Download

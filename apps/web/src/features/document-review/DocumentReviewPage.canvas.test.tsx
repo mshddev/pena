@@ -189,6 +189,36 @@ describe("canvas review", () => {
     expect(window.location.hash).toBe("#pena-section-0");
   });
 
+  it("treats a two-finger pinch as zooming, not a click", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input) === "/api/collections"
+          ? jsonResponse({ collections: [] })
+          : jsonResponse(canvasDocument),
+      ),
+    );
+
+    render(<DocumentReviewPage documentSlug="architecture" />);
+
+    await canvasReady();
+
+    const surface = canvasSurface();
+    const touch = { button: 0, pointerType: "touch", clientX: 50, clientY: 25 };
+    fireEvent.pointerDown(surface, { ...touch, pointerId: 11, isPrimary: true });
+    fireEvent.pointerDown(surface, { ...touch, pointerId: 12, isPrimary: false });
+    fireEvent.pointerUp(surface, { ...touch, pointerId: 12 });
+    fireEvent.pointerUp(surface, { ...touch, pointerId: 11 });
+
+    expect(document.querySelector(".canvas-comment-popover")).toBeNull();
+
+    // The next single tap is a click again.
+    fireEvent.pointerDown(surface, { ...touch, pointerId: 13, isPrimary: true });
+    fireEvent.pointerUp(surface, { ...touch, pointerId: 13 });
+
+    expect(screen.getByText("API", { selector: "blockquote" })).toBeTruthy();
+  });
+
   it("explains a scene it cannot read", async () => {
     vi.stubGlobal(
       "fetch",

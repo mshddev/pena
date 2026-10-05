@@ -1,4 +1,4 @@
-import { Excalidraw } from "@excalidraw/excalidraw";
+import { Excalidraw, FONT_FAMILY } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type {
@@ -77,23 +77,43 @@ export default function ExcalidrawCanvas({
   }, [scene]);
 
   // Excalidraw adds its fonts only once a scene has loaded, so a hand-written
-  // scene is first laid out in a fallback font. When the fonts arrive it is
-  // expanded again, which wraps and sizes every label in the real font.
+  // scene is first laid out in a fallback font. When one of its fonts
+  // arrives the scene is expanded again, once per burst of loads, which
+  // wraps and sizes every label in the real font.
   useEffect(() => {
-    function handleFontsLoaded(): void {
+    let frame: number | null = null;
+
+    function handleFontsLoaded(event: Event): void {
+      const faces = (event as FontFaceSetLoadEvent).fontfaces ?? [];
       const scene = loadedSceneRef.current;
 
-      if (apiRef.current && !scene.elements.every(isSavedSceneElement)) {
-        apiRef.current.updateScene({ elements: prepareScene(scene).elements });
+      if (
+        frame !== null ||
+        scene.elements.every(isSavedSceneElement) ||
+        !faces.some((face) => SCENE_FONT_FAMILIES.has(unquote(face.family)))
+      ) {
+        return;
       }
+
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        apiRef.current?.updateScene({
+          elements: prepareScene(loadedSceneRef.current).elements,
+        });
+      });
     }
 
     window.document.fonts?.addEventListener("loadingdone", handleFontsLoaded);
-    return () =>
+    return () => {
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame);
+      }
+
       window.document.fonts?.removeEventListener(
         "loadingdone",
         handleFontsLoaded,
       );
+    };
   }, []);
 
   const handleApi = useCallback(
@@ -189,6 +209,13 @@ export default function ExcalidrawCanvas({
       }}
     />
   );
+}
+
+/** The families scene text is drawn in, with the fallback for CJK text. */
+const SCENE_FONT_FAMILIES = new Set([...Object.keys(FONT_FAMILY), "Xiaolai"]);
+
+function unquote(family: string): string {
+  return family.replace(/^["']|["']$/g, "");
 }
 
 const MIN_ZOOM = 0.1;

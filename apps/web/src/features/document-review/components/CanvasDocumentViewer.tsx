@@ -135,6 +135,7 @@ export function CanvasDocumentViewer({
   const boxRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<CanvasHandle | null>(null);
   const pressRef = useRef<PressState | null>(null);
+  const activePointersRef = useRef(new Set<number>());
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const pendingFeedbackPanelRef = useRef<HTMLElement>(null);
@@ -180,6 +181,15 @@ export function CanvasDocumentViewer({
     );
   }, [onOutlineChange, sections]);
 
+  const sectionBounds = useMemo(() => {
+    const byId = new Map(elements.map((element) => [element.id, element]));
+
+    return sections.map((section) => {
+      const frame = byId.get(section.elementId);
+      return frame ? readElementBounds(frame) : null;
+    });
+  }, [elements, sections]);
+
   // The frame under the middle of the canvas is the section being read.
   useEffect(() => {
     const box = boxRef.current;
@@ -193,23 +203,17 @@ export function CanvasDocumentViewer({
       { x: box.clientWidth / 2, y: box.clientHeight / 2 },
       viewport,
     );
-    const index = sections.findIndex((section) => {
-      const frame = elements.find(
-        (element) => element.id === section.elementId,
-      );
-      const bounds = frame ? readElementBounds(frame) : null;
-
-      return (
+    const index = sectionBounds.findIndex(
+      (bounds) =>
         bounds !== null &&
         center.x >= bounds.x &&
         center.x <= bounds.x + bounds.width &&
         center.y >= bounds.y &&
-        center.y <= bounds.y + bounds.height
-      );
-    });
+        center.y <= bounds.y + bounds.height,
+    );
 
     onActiveSectionChange(index === -1 ? null : `${SECTION_PREFIX}${index}`);
-  }, [elements, onActiveSectionChange, sections, viewport]);
+  }, [onActiveSectionChange, sectionBounds, viewport]);
 
   const showSection = useCallback(
     (sectionId: string): boolean => {
@@ -315,6 +319,22 @@ export function CanvasDocumentViewer({
       return;
     }
 
+    // A primary pointer starts a fresh gesture; a second finger turns it
+    // into a pinch, which pans and zooms rather than picks.
+    const activePointers = activePointersRef.current;
+
+    if (event.isPrimary) {
+      activePointers.clear();
+    }
+
+    activePointers.add(event.pointerId);
+
+    if (activePointers.size > 1) {
+      pressRef.current = null;
+      setArea(null);
+      return;
+    }
+
     const start = readBoxPoint(event);
     const isAreaSelection = event.shiftKey;
 
@@ -342,6 +362,7 @@ export function CanvasDocumentViewer({
   function handlePointerUpCapture(
     event: ReactPointerEvent<HTMLDivElement>,
   ): void {
+    activePointersRef.current.delete(event.pointerId);
     const press = pressRef.current;
 
     if (!press || press.pointerId !== event.pointerId || !viewport) {
@@ -370,7 +391,10 @@ export function CanvasDocumentViewer({
     }
   }
 
-  function handlePointerCancelCapture(): void {
+  function handlePointerCancelCapture(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void {
+    activePointersRef.current.delete(event.pointerId);
     pressRef.current = null;
     setArea(null);
   }
@@ -702,15 +726,30 @@ function useFitToWindow(boxRef: RefObject<HTMLElement | null>): void {
       }
 
       const top = box.getBoundingClientRect().top + window.scrollY;
-      box.style.height = `${Math.max(
+      const height = `${Math.max(
         CANVAS_MIN_HEIGHT,
         window.innerHeight - top - FEEDBACK_BAR_ROOM,
       )}px`;
+
+      // Setting the same height again would only wake the observer.
+      if (box.style.height !== height) {
+        box.style.height = height;
+      }
     }
 
     fit();
+    // Anything above the canvas moves its top: the canvas appearing after
+    // an error, a title wrapping, the move panel opening. Each changes the
+    // page's height, so watching the page catches them all.
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
+    observer?.observe(window.document.body);
     window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", fit);
+    };
   }, [boxRef]);
 }
 

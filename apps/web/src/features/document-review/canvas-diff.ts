@@ -6,6 +6,7 @@ import {
 import {
   canvasKindName,
   describeCanvasElements,
+  readBoundId,
   readCanvasElementText,
   type CanvasElement,
 } from "./canvas-scene";
@@ -80,6 +81,10 @@ export function diffCanvas(before: string, after: string): DiffLine[] {
       changed(previous, element, ["type"]) ? "changed kind" : null,
       changed(previous, element, GEOMETRY_FIELDS) ? "moved or resized" : null,
       changed(previous, element, STYLE_FIELDS) ? "restyled" : null,
+      readBoundId(previous, "start") !== readBoundId(element, "start") ||
+      readBoundId(previous, "end") !== readBoundId(element, "end")
+        ? "reconnected"
+        : null,
     ].filter((change) => change !== null);
 
     if (changes.length > 0) {

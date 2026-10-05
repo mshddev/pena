@@ -1,5 +1,4 @@
 const ELEMENT_ID_MAX_LENGTH = 100;
-const FRAME_TYPES = new Set(["frame", "magicframe"]);
 
 /**
  * One element of an Excalidraw scene. Pena reads only the fields it needs and
@@ -100,6 +99,11 @@ export function parseExcalidrawScene(content: string): ExcalidrawScene {
   return scene as ExcalidrawScene;
 }
 
+/** A frame groups other elements into a named section of the scene. */
+export function isFrameElementType(type: string): boolean {
+  return type === "frame" || type === "magicframe";
+}
+
 /**
  * Excalidraw writes a seed and a version on every element it saves. Any
  * other element is a skeleton, which Excalidraw expands when it loads.
@@ -117,12 +121,25 @@ function checkSkeletonReferences(
   index: number,
   elementIds: ReadonlySet<string>,
 ): void {
-  if (FRAME_TYPES.has(element.type as string)) {
+  if (isFrameElementType(element.type as string)) {
     if (
       !Array.isArray(element.children) ||
       !element.children.every((child) => typeof child === "string")
     ) {
       throw elementError(index, 'is a frame and needs a "children" array of element ids');
+    }
+
+    // A frame is sized around its children, so one without any must say
+    // where it goes.
+    const isSized = ["x", "y", "width", "height"].every(
+      (field) => typeof element[field] === "number",
+    );
+
+    if (element.children.length === 0 && !isSized) {
+      throw elementError(
+        index,
+        'is a frame with no "children", so it needs its own x, y, width, and height',
+      );
     }
 
     for (const child of element.children as string[]) {

@@ -1011,6 +1011,7 @@ describe("Pena API", () => {
           { id: "backend", type: "frame", children: ["apii"] },
         ],
         [{ id: "calls", type: "arrow", x: 0, y: 0, start: { id: "api" } }],
+        [{ id: "backend", type: "frame", children: [] }],
       ].map((elements) =>
         publishDocument(
           app,
@@ -1024,7 +1025,19 @@ describe("Pena API", () => {
       'Scene element 0 is a frame and needs a "children" array of element ids.',
       'Scene element 1 lists "apii" in "children", but no element has that id.',
       'Scene element 0 binds its start to "api", but no element has that id.',
+      'Scene element 0 is a frame with no "children", so it needs its own x, y, width, and height.',
     ]);
+
+    const placedEmptyFrame = await publishDocument(
+      app,
+      DOCUMENT_URL,
+      JSON.stringify({
+        type: "excalidraw",
+        elements: [{ id: "later", type: "frame", children: [], x: 0, y: 0, width: 200, height: 100 }],
+      }),
+    );
+
+    expect(placedEmptyFrame.statusCode).toBe(200);
 
     const savedWithDanglingBinding = await publishDocument(
       app,
@@ -1040,7 +1053,7 @@ describe("Pena API", () => {
     expect(savedWithDanglingBinding.statusCode).toBe(200);
     expect(
       (await app.inject({ method: "GET", url: DOCUMENT_URL })).json(),
-    ).toMatchObject({ format: "excalidraw", version: 2 });
+    ).toMatchObject({ format: "excalidraw", version: 3 });
   });
 
   it("keeps the first scene when a revision is rejected", async () => {

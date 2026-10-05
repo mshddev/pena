@@ -13,6 +13,7 @@ import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/tran
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
 import {
+  isFrameElementType,
   isSavedSceneElement,
   type ExcalidrawScene,
   type ExcalidrawSceneElement,
@@ -29,7 +30,6 @@ import {
   readExpansionInput,
 } from "./mixed-scene";
 
-const FRAME_TYPES = new Set(["frame", "magicframe"]);
 /** Room around a frame's members, enough for text that widens on re-measure. */
 const FRAME_PADDING = 24;
 
@@ -134,7 +134,7 @@ function placeInFrames(
   const sizedFrames = new Map<string, ExcalidrawSceneElement>();
 
   for (const skeleton of scene.elements) {
-    if (!FRAME_TYPES.has(skeleton.type) || isSavedSceneElement(skeleton)) {
+    if (!isFrameElementType(skeleton.type) || isSavedSceneElement(skeleton)) {
       continue;
     }
 
@@ -152,7 +152,7 @@ function placeInFrames(
   }
 
   const placed = elements.map((element) => {
-    if (FRAME_TYPES.has(element.type)) {
+    if (isFrameElementType(element.type)) {
       return element;
     }
 
@@ -168,7 +168,7 @@ function placeInFrames(
   });
 
   return placed.map((element) => {
-    if (!FRAME_TYPES.has(element.type) || savedById.has(element.id)) {
+    if (!isFrameElementType(element.type) || savedById.has(element.id)) {
       return element;
     }
 

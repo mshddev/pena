@@ -1,10 +1,10 @@
 import {
+  isFrameElementType,
   isSavedSceneElement,
   type ExcalidrawScene,
   type ExcalidrawSceneElement,
 } from "@pena/contracts";
 
-const FRAME_TYPES = new Set(["frame", "magicframe"]);
 
 /**
  * What a saved drawing revised by hand hands to Excalidraw's expansion.
@@ -16,7 +16,7 @@ export function readExpansionInput(
   scene: ExcalidrawScene,
 ): ExcalidrawSceneElement[] {
   return scene.elements.map((element) =>
-    FRAME_TYPES.has(element.type) &&
+    isFrameElementType(element.type) &&
     isSavedSceneElement(element) &&
     !Array.isArray(element.children)
       ? { ...element, children: [] }

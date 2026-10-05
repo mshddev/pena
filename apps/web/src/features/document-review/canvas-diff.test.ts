@@ -40,6 +40,32 @@ describe("diffCanvas", () => {
     ]);
   });
 
+  it("names hand-written arrows by their ends and notices them rewired", () => {
+    const cache = { id: "cache", type: "rectangle", x: 0, y: 200, label: { text: "Cache" } };
+    const before = scene([
+      api,
+      apiLabel,
+      db,
+      cache,
+      { id: "reads", type: "arrow", x: 0, y: 0, start: { id: "api" }, end: { id: "db" } },
+      { id: "writes", type: "arrow", x: 0, y: 0, start: { id: "api" }, end: { id: "db" }, label: { text: "SQL" } },
+    ]);
+    const after = scene([
+      api,
+      apiLabel,
+      db,
+      cache,
+      { id: "reads", type: "arrow", x: 0, y: 0, start: { id: "api" }, end: { id: "cache" } },
+      { id: "writes", type: "arrow", x: 0, y: 0, start: { id: "api" }, end: { id: "cache" }, label: { text: "SQL" } },
+    ]);
+
+    expect(diffCanvas(before, after)).toEqual([
+      { kind: "removed", text: "Arrow from “API” to “Database”" },
+      { kind: "added", text: "Arrow from “API” to “Cache”" },
+      { kind: "context", text: "Arrow “SQL” — reconnected" },
+    ]);
+  });
+
   it("says when no element changed, and falls back for non-scenes", () => {
     expect(diffCanvas(scene([api]), scene([api]))).toEqual([
       { kind: "context", text: "No element changed." },

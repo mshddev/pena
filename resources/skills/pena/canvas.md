@@ -79,11 +79,12 @@ A comment on a canvas carries a `target`:
 
 - `elementIds` are your scene's ids: the element the reader clicked, or
   every element wholly inside the area they dragged over. A label counts as
-  its shape. An area holds at most 50 ids; when it covered more,
-  `selectedText` ends with "and N more" and `bounds` covers them all, so
-  find the rest by position.
+  its shape. An area carries at most 50 ids, while `bounds` covers every
+  element picked: when `selectedText` counts more elements than
+  `elementIds` holds, find the rest by position.
 - `selectedText` names those elements as the reader saw them: their text,
-  or their kind (`Arrow from “API” to “Postgres”`).
+  or their kind (`Arrow from “API” to “Postgres”`). Past 12 it names the
+  first 12 and counts the rest: `..., and 8 more`.
 - An empty `elementIds` is a comment on empty canvas, and `bounds` (scene
   coordinates) says where, as in "add a cache here".
 - `pena feedback show` prints the ids: `"API gateway" [elements api]: ...`.

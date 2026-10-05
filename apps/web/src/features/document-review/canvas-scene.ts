@@ -1,4 +1,8 @@
-import type { CanvasBounds, CanvasTarget } from "@pena/contracts";
+import {
+  isFrameElementType,
+  type CanvasBounds,
+  type CanvasTarget,
+} from "@pena/contracts";
 
 /**
  * The fields Pena reads from an Excalidraw element. They are a subset of
@@ -26,6 +30,9 @@ export interface CanvasElement {
   readonly label?: { readonly text?: string } | null;
   readonly startBinding?: { readonly elementId: string } | null;
   readonly endBinding?: { readonly elementId: string } | null;
+  /** An arrow's ends in a hand-written scene, before Excalidraw binds them. */
+  readonly start?: { readonly id?: string } | null;
+  readonly end?: { readonly id?: string } | null;
 }
 
 /** Excalidraw's camera: scene point `p` sits at `(p + scroll) * zoom`. */
@@ -56,7 +63,6 @@ const NAMED_ELEMENTS_LIMIT = 12;
 /** Points sampled along each stretch of a curved line. */
 const CURVE_SAMPLES = 12;
 const FILLABLE_TYPES = new Set(["rectangle", "ellipse", "diamond"]);
-const FRAME_TYPES = new Set(["frame", "magicframe"]);
 const LINEAR_TYPES = new Set(["arrow", "line"]);
 /** Elements drawn as a stroke through their points. */
 const STROKE_TYPES = new Set(["arrow", "line", "freedraw"]);
@@ -236,7 +242,7 @@ export function readCanvasSections(
   elements: readonly CanvasElement[],
 ): CanvasSection[] {
   return elements
-    .filter((element) => !element.isDeleted && FRAME_TYPES.has(element.type))
+    .filter((element) => !element.isDeleted && isFrameElementType(element.type))
     .sort((first, second) => first.y - second.y || first.x - second.x)
     .map((frame, index) => ({
       elementId: frame.id,
@@ -255,8 +261,8 @@ function describeElement(
   }
 
   if (LINEAR_TYPES.has(element.type)) {
-    const start = readBoundName(elements, element.startBinding);
-    const end = readBoundName(elements, element.endBinding);
+    const start = readBoundName(elements, readBoundId(element, "start"));
+    const end = readBoundName(elements, readBoundId(element, "end"));
 
     if (start && end) {
       return `${canvasKindName(element)} from ${start} to ${end}`;
@@ -270,12 +276,21 @@ function describeElement(
   return canvasKindName(element);
 }
 
+/** The id of the shape an arrow's end is bound to, saved or hand-written. */
+export function readBoundId(
+  element: CanvasElement,
+  end: "start" | "end",
+): string | null {
+  const binding = end === "start" ? element.startBinding : element.endBinding;
+  return binding?.elementId ?? element[end]?.id ?? null;
+}
+
 function readBoundName(
   elements: readonly CanvasElement[],
-  binding: { readonly elementId: string } | null | undefined,
+  boundId: string | null,
 ): string | null {
-  const bound = binding
-    ? elements.find((element) => element.id === binding.elementId)
+  const bound = boundId
+    ? elements.find((element) => element.id === boundId)
     : undefined;
   const text = bound ? readCanvasElementText(elements, bound) : null;
 
@@ -291,7 +306,7 @@ export function readCanvasElementText(
     return normalizeText(element.originalText ?? element.text);
   }
 
-  if (FRAME_TYPES.has(element.type)) {
+  if (isFrameElementType(element.type)) {
     return normalizeText(element.name ?? undefined);
   }
 
@@ -373,7 +388,7 @@ function hitElement(
   // The outline is drawn; the space inside an empty shape is not.
   const edge = tolerance + (element.strokeWidth ?? 1) / 2;
   const isEmpty =
-    FRAME_TYPES.has(element.type) ||
+    isFrameElementType(element.type) ||
     (FILLABLE_TYPES.has(element.type) &&
       (!element.backgroundColor || element.backgroundColor === "transparent"));
 

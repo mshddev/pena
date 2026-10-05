@@ -1,4 +1,8 @@
-import { Excalidraw, FONT_FAMILY } from "@excalidraw/excalidraw";
+import {
+  Excalidraw,
+  FONT_FAMILY,
+  serializeAsJSON,
+} from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type {
@@ -30,10 +34,14 @@ export interface CanvasHandle {
   fit: () => void;
   /** Zooms by `factor` around the middle of the canvas. */
   zoomBy: (factor: number) => void;
+  /** The scene as it is now, in the `.excalidraw` form Pena stores. */
+  toContent: () => string;
 }
 
 interface ExcalidrawCanvasProps {
   scene: ExcalidrawScene;
+  /** Shows Excalidraw's tools so the reader can change the scene. */
+  editable?: boolean;
   onReady?: (handle: CanvasHandle) => void;
   /** Runs whenever the elements change: loaded, re-measured, or republished. */
   onSceneChange?: () => void;
@@ -42,10 +50,12 @@ interface ExcalidrawCanvasProps {
 
 /**
  * The scene in Excalidraw's view mode: the reader can pan and zoom but not
- * edit. Pena draws its own comment layer over it.
+ * edit. Pena draws its own comment layer over it. An `editable` canvas is
+ * Excalidraw's full editor instead.
  */
 export default function ExcalidrawCanvas({
   scene,
+  editable = false,
   onReady,
   onSceneChange,
   onViewportChange,
@@ -189,8 +199,8 @@ export default function ExcalidrawCanvas({
       initialData={initialData}
       onChange={handleChange}
       onScrollChange={handleScroll}
-      viewModeEnabled
-      zenModeEnabled
+      viewModeEnabled={!editable}
+      zenModeEnabled={!editable}
       gridModeEnabled={false}
       theme="light"
       handleKeyboardGlobally={false}
@@ -287,5 +297,12 @@ function createHandle(api: ExcalidrawImperativeAPI): CanvasHandle {
         y: appState.height / (2 * zoom) - appState.scrollY,
       });
     },
+    toContent: () =>
+      serializeAsJSON(
+        api.getSceneElements(),
+        api.getAppState(),
+        api.getFiles(),
+        "local",
+      ),
   };
 }

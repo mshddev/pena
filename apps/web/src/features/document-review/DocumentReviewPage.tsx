@@ -16,6 +16,7 @@ import {
   fetchDocument,
   fetchFeedback,
   moveDocument,
+  publishDocumentEdit,
   submitFeedback,
 } from "../../api";
 import {
@@ -27,6 +28,7 @@ import {
 import { formatClockTime, formatRelativeTime } from "../../format";
 import { isSubmitAllShortcut } from "../../shortcuts";
 import { CanvasDocumentViewer } from "./components/CanvasDocumentViewer";
+import { DocumentEditor } from "./components/DocumentEditor";
 import { DocumentViewer } from "./components/DocumentViewer";
 import { PenaLayout } from "./components/PenaLayout";
 import {
@@ -62,6 +64,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
   );
   const [documentEtag, setDocumentEtag] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [sections, setSections] = useState<OutlineSection[]>([]);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(documentSlug !== null);
@@ -172,10 +175,11 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
   }, [currentDocument, documentSlug]);
 
   // Claude republishes while the window sits in the background. Refetching on
-  // focus replaces the manual refresh button, but never discards a draft.
+  // focus replaces the manual refresh button, but never discards a draft or
+  // an edit in progress.
   useEffect(() => {
     function handleFocus(): void {
-      if (hasPendingFeedback) {
+      if (hasPendingFeedback || isEditing) {
         return;
       }
 
@@ -184,7 +188,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
 
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, [hasPendingFeedback, loadDocument]);
+  }, [hasPendingFeedback, isEditing, loadDocument]);
 
   // Sending everything is the one action worth reaching without the mouse, and
   // it stays available while a comment is still focused.
@@ -319,6 +323,43 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function beginEdit(): void {
+    if (hasPendingFeedback) {
+      setNotice({
+        kind: "error",
+        message: "Submit or remove the draft feedback before editing.",
+      });
+      return;
+    }
+
+    setIsHistoryOpen(false);
+    setIsMoveOpen(false);
+    setNotice(null);
+    setIsEditing(true);
+  }
+
+  async function saveEdit(content: string): Promise<void> {
+    if (!documentSlug || !currentDocument || !documentEtag) {
+      return;
+    }
+
+    const resource = await publishDocumentEdit(
+      documentSlug,
+      { title: currentDocument.title, content },
+      documentEtag,
+    );
+    // Feedback belongs to the version it was given on, so the new version
+    // starts with no decisions answered.
+    setCurrentDocument(resource.document);
+    setDocumentEtag(resource.etag);
+    setSubmittedDecisions({});
+    setIsEditing(false);
+    setNotice({
+      kind: "success",
+      message: `Saved your edit as version ${resource.document.version}.`,
+    });
   }
 
   async function handleArchive(): Promise<void> {
@@ -500,6 +541,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
                   type="button"
                   aria-expanded={isHistoryOpen}
                   onClick={() => setIsHistoryOpen((current) => !current)}
+                  disabled={isEditing}
                 >
                   v{currentDocument.version}
                 </button>
@@ -509,6 +551,17 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
               </div>
 
               <div className="document-actions">
+                {!currentDocument.archivedAt ? (
+                  <button
+                    className="edit-document-button"
+                    type="button"
+                    onClick={beginEdit}
+                    disabled={isEditing || isArchiving || isMoving}
+                  >
+                    <EditIcon />
+                    Edit
+                  </button>
+                ) : null}
                 <button
                   className="download-document-button"
                   type="button"
@@ -537,7 +590,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
                     className="move-document-button"
                     type="button"
                     onClick={beginMove}
-                    disabled={isArchiving || isMoving}
+                    disabled={isEditing || isArchiving || isMoving}
                   >
                     <MoveIcon />
                     Move
@@ -548,7 +601,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
                     className="archive-document-button"
                     type="button"
                     onClick={() => void handleArchive()}
-                    disabled={isArchiving || isMoving}
+                    disabled={isEditing || isArchiving || isMoving}
                   >
                     <ArchiveIcon />
                     {isArchiving ? "Archiving" : "Archive"}
@@ -612,6 +665,12 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
             <span className="loading-line short" />
             <span className="loading-line" />
           </div>
+        ) : currentDocument && documentEtag && isEditing ? (
+          <DocumentEditor
+            document={currentDocument}
+            onSave={saveEdit}
+            onCancel={() => setIsEditing(false)}
+          />
         ) : currentDocument && documentEtag && isHistoryOpen ? (
           <VersionHistory
             currentDocument={currentDocument}
@@ -738,6 +797,15 @@ function DocumentState({
       <h2>{title}</h2>
       <p>{description}</p>
     </div>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M10.5 2.5 13.5 5.5 6 13H3v-3z" />
+      <path d="m9 4 3 3" />
+    </svg>
   );
 }
 

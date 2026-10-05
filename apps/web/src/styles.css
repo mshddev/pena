@@ -481,6 +481,7 @@ button:disabled {
   gap: 8px;
 }
 
+.edit-document-button,
 .archive-document-button,
 .download-document-button,
 .move-document-button {
@@ -500,6 +501,7 @@ button:disabled {
     color 150ms ease;
 }
 
+.edit-document-button:hover:not(:disabled),
 .archive-document-button:hover:not(:disabled),
 .download-document-button:hover:not(:disabled),
 .move-document-button:hover:not(:disabled) {
@@ -507,6 +509,7 @@ button:disabled {
   color: var(--text);
 }
 
+.edit-document-button svg,
 .archive-document-button svg,
 .download-document-button svg,
 .move-document-button svg {
@@ -1420,6 +1423,83 @@ button:disabled {
   border-radius: 4px;
   font: inherit;
   font-size: 11px;
+}
+
+/* The reader's own edit replaces the view. The bar stays above the source
+   so saving never needs a scroll to the end of a long document. */
+.document-editor-bar {
+  position: sticky;
+  z-index: 5;
+  top: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 12px;
+  padding: 10px 0;
+  /* The stage is the card; the bar covers the source scrolling under it. */
+  background: inherit;
+}
+
+.document-editor-label {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.document-editor-bar .composer-hint {
+  margin: 0;
+}
+
+.document-editor-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.document-editor-error {
+  margin: 0 0 12px;
+}
+
+.document-editor-hint {
+  margin: 0 0 12px;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.document-source-editor {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: max(360px, calc(100dvh - 300px));
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  tab-size: 2;
+}
+
+.document-source-editor:focus {
+  border-color: var(--line-strong);
+  outline: none;
+}
+
+/* Excalidraw fills its box, and keeps its own tools while editing. */
+.canvas-editor {
+  position: relative;
+  height: max(360px, calc(100dvh - 400px));
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fff;
+  color: #1e1e1e;
+  color-scheme: light;
 }
 
 .canvas-loading {

@@ -4,6 +4,12 @@ const CHOICE_MAX_LENGTH = 80;
 const CHOICE_LETTERS = "abcdefgh";
 const MIN_CHOICES = 2;
 const MAX_CHOICES = CHOICE_LETTERS.length;
+const CHOICE_ATTRIBUTE = / choice-([a-z])="([^"\r\n]*)"/;
+const CHOICE_ATTRIBUTES = new RegExp(CHOICE_ATTRIBUTE.source, "g");
+// The choice attribute's own groups come after the ID and attribute groups.
+const OPENER_PATTERN = new RegExp(
+  `^:::pena-decision\\{#([a-z0-9]+(?:-[a-z0-9]+)*)((?:${CHOICE_ATTRIBUTE.source})*)\\}\\s*$`,
+);
 const BODY_MAX_LENGTH = 10_000;
 
 export interface DecisionBlock {
@@ -129,10 +135,7 @@ function parseOpener(
   line: string,
   lineIndex: number,
 ): Pick<DecisionBlock, "id" | "choices"> {
-  const match =
-    /^:::pena-decision\{#([a-z0-9]+(?:-[a-z0-9]+)*)((?: choice-[a-z]="[^"\r\n]*")*)\}\s*$/.exec(
-      line,
-    );
+  const match = OPENER_PATTERN.exec(line);
 
   if (!match) {
     throw syntaxError(
@@ -153,7 +156,7 @@ function parseOpener(
   const choices: string[] = [];
 
   for (const [, letter = "", rawChoice = ""] of rawAttributes.matchAll(
-    / choice-([a-z])="([^"\r\n]*)"/g,
+    CHOICE_ATTRIBUTES,
   )) {
     const expectedLetter = CHOICE_LETTERS[choices.length];
 

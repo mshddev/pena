@@ -3777,8 +3777,11 @@ button:disabled {
     padding-left: 16px;
   }
 
-  .decision-choice {
-    flex: 1 1 120px;
+  /* Equal columns, so a lone last choice keeps its width instead of
+     stretching across the row. */
+  .decision-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   }
 
   .feedback-bar {

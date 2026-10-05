@@ -1278,6 +1278,164 @@ button:disabled {
   animation: document-enter 320ms ease-out both;
 }
 
+/* A canvas pans and zooms inside its own box, so the box fills the window
+   below the bar instead of growing with its content. It stays light, like
+   a page in a frame: Excalidraw's dark theme inverts the drawing's colors. */
+.canvas-stage {
+  width: 100%;
+}
+
+.canvas-stage .document-page-title {
+  max-width: none;
+}
+
+.canvas-document {
+  position: relative;
+  /* The viewer fits the box to the window from where it starts; this is
+     only the height before it does. */
+  height: max(360px, calc(100dvh - 420px));
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fff;
+  color: #1e1e1e;
+  color-scheme: light;
+  animation: document-enter 320ms ease-out both;
+}
+
+.canvas-document-surface {
+  position: absolute;
+  inset: 0;
+}
+
+.canvas-document.selecting-area .canvas-document-surface {
+  cursor: crosshair;
+}
+
+/* Excalidraw's own interface is for editing, and it changes layout with
+   the canvas size, so it is hidden whole; Pena brings its zoom controls. */
+.canvas-document .excalidraw .layer-ui__wrapper,
+.canvas-document .excalidraw .App-bottom-bar,
+.canvas-document .excalidraw .welcome-screen-center {
+  display: none;
+}
+
+.canvas-zoom-controls {
+  position: absolute;
+  z-index: 6;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid #dfe1e6;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 8%);
+}
+
+.canvas-zoom-controls button {
+  min-width: 34px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: #3d4048;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.canvas-zoom-controls .canvas-zoom-level {
+  min-width: 58px;
+  border-inline: 1px solid #eceef2;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-zoom-controls button:hover {
+  background: #f1f3f7;
+}
+
+.canvas-annotations {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  pointer-events: none;
+}
+
+.canvas-target-outline {
+  position: absolute;
+  border-radius: 4px;
+  outline: 1.5px dashed rgb(79 107 237 / 60%);
+  outline-offset: 5px;
+  pointer-events: none;
+}
+
+.canvas-target-outline.active {
+  outline: 2px solid #4f6bed;
+  background: rgb(79 107 237 / 7%);
+}
+
+.canvas-area-selection {
+  position: absolute;
+  border: 1px solid #4f6bed;
+  background: rgb(79 107 237 / 9%);
+  pointer-events: none;
+}
+
+.canvas-document .canvas-comment-marker {
+  position: absolute;
+  z-index: 1;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #4f6bed;
+  box-shadow: 0 3px 10px rgb(35 58 145 / 30%);
+  color: #fff;
+  font-size: 9px;
+  pointer-events: auto;
+  translate: -4px -18px;
+}
+
+.canvas-comment-popover {
+  pointer-events: auto;
+}
+
+.canvas-hint {
+  position: absolute;
+  z-index: 4;
+  right: 12px;
+  bottom: 12px;
+  margin: 0;
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 90%);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+  color: #5c5f66;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.canvas-hint kbd {
+  padding: 0 4px;
+  border: 1px solid #d5d7dc;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+}
+
+.canvas-loading {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: #6b6f78;
+}
+
+.canvas-error {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--danger);
+}
+
 .document-review-layout {
   max-width: 980px;
   margin: 0 auto;

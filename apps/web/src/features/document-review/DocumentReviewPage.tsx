@@ -26,6 +26,7 @@ import {
 } from "../../collections";
 import { formatClockTime, formatRelativeTime } from "../../format";
 import { isSubmitAllShortcut } from "../../shortcuts";
+import { CanvasDocumentViewer } from "./components/CanvasDocumentViewer";
 import { DocumentViewer } from "./components/DocumentViewer";
 import { PenaLayout } from "./components/PenaLayout";
 import {
@@ -104,9 +105,11 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
       }
 
       const nextDocument = resource.document;
-      // Decision blocks are Markdown syntax; an HTML page has none.
+      // Decision blocks are Markdown syntax; a page or a canvas has none. A
+      // document from a server older than formats has no format, and is
+      // Markdown.
       const decisions =
-        nextDocument.format === "html"
+        nextDocument.format === "html" || nextDocument.format === "excalidraw"
           ? []
           : parseDecisionDocument(nextDocument.content).decisions;
       const nextSubmittedDecisions =
@@ -262,11 +265,12 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
             ? {}
             : { instruction: submittedInstruction }),
           comments: submittedDrafts.map(
-            ({ selectedText, comment, contextBefore, contextAfter }) => ({
+            ({ selectedText, comment, contextBefore, contextAfter, target }) => ({
               selectedText,
               comment,
               contextBefore,
               contextAfter,
+              ...(target ? { target } : {}),
             }),
           ),
         },
@@ -508,13 +512,21 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
                 <button
                   className="download-document-button"
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
                     downloadDocument(
                       currentDocument.content,
                       currentDocument.format,
                       documentSlug,
-                    )
-                  }
+                    ).catch((error: unknown) =>
+                      setNotice({
+                        kind: "error",
+                        message:
+                          error instanceof Error
+                            ? `Could not download the document: ${error.message}`
+                            : "Could not download the document.",
+                      }),
+                    );
+                  }}
                 >
                   <DownloadIcon />
                   Download
@@ -630,6 +642,32 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
               format={currentDocument.format}
             />
           </div>
+        ) : currentDocument?.format === "excalidraw" ? (
+          <CanvasDocumentViewer
+            document={currentDocument}
+            draftFeedback={draftFeedback}
+            feedbackInstruction={feedbackInstruction}
+            isInstructionComposerOpen={isInstructionComposerOpen}
+            isPendingFeedbackOpen={isPendingFeedbackOpen}
+            isSubmitting={isSubmitting}
+            notice={notice}
+            onDraftSaved={saveDraft}
+            onDraftDeleted={(draftId) =>
+              setDraftFeedback((drafts) =>
+                drafts.filter((draft) => draft.id !== draftId),
+              )
+            }
+            onNoticeClear={() => setNotice(null)}
+            onFeedbackInstructionChange={(instruction) => {
+              setFeedbackInstruction(instruction);
+              setNotice(null);
+            }}
+            onInstructionComposerOpenChange={setIsInstructionComposerOpen}
+            onPendingFeedbackOpenChange={setIsPendingFeedbackOpen}
+            onSubmitFeedback={() => void sendFeedback()}
+            onOutlineChange={handleOutlineChange}
+            onActiveSectionChange={handleActiveSectionChange}
+          />
         ) : currentDocument ? (
           <DocumentViewer
             document={currentDocument}

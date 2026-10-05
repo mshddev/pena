@@ -1,6 +1,11 @@
 /** Derives opening prose for document listings without returning the body. */
 
-import type { DocumentFormat } from "@pena/contracts";
+import {
+  ExcalidrawSceneSyntaxError,
+  parseExcalidrawScene,
+  readExcalidrawSceneText,
+  type DocumentFormat,
+} from "@pena/contracts";
 
 /** Roughly a short paragraph — enough to preview, far short of the document. */
 const EXCERPT_LIMIT = 320;
@@ -83,9 +88,31 @@ export function readDocumentExcerpt(
   content: string,
   format: DocumentFormat = "markdown",
 ): string {
-  return format === "html"
-    ? readHtmlExcerpt(content)
-    : readMarkdownExcerpt(content);
+  switch (format) {
+    case "html":
+      return readHtmlExcerpt(content);
+    case "excalidraw":
+      return readExcalidrawExcerpt(content);
+    case "markdown":
+      return readMarkdownExcerpt(content);
+  }
+}
+
+/** A scene's text in reading order. */
+function readExcalidrawExcerpt(content: string): string {
+  try {
+    return capAtWord(
+      readExcalidrawSceneText(parseExcalidrawScene(content)).join(" "),
+    );
+  } catch (error) {
+    // A stored scene was valid when published; this only guards listings
+    // against one that was not.
+    if (error instanceof ExcalidrawSceneSyntaxError) {
+      return "";
+    }
+
+    throw error;
+  }
 }
 
 function readMarkdownExcerpt(content: string): string {

@@ -9,10 +9,12 @@ import {
   DocumentSlugSchema,
   DocumentStatusSchema,
   DocumentUpdateRequestSchema,
+  ExcalidrawSceneSyntaxError,
   FeedbackReceiptSchema,
   FeedbackSubmissionSchema,
   FeedbackWaitResponseSchema,
   parseDecisionDocument,
+  parseExcalidrawScene,
   type FeedbackResponse,
   type FeedbackWaitResponse,
 } from "@pena/contracts";
@@ -365,7 +367,7 @@ export function buildApp(
       if (!parsedRequest.success) {
         return reply.code(400).send({
           error:
-            'The request body must contain a nonblank title of at most 200 characters, content, and optionally a format ("markdown" or "html") and a collection slug (or null).',
+            'The request body must contain a nonblank title of at most 200 characters, content, and optionally a format ("markdown", "html", or "excalidraw") and a collection slug (or null).',
         });
       }
 
@@ -391,6 +393,19 @@ export function buildApp(
           parseDecisionDocument(parsedRequest.data.content);
         } catch (error) {
           if (error instanceof DecisionBlockSyntaxError) {
+            return reply.code(400).send({ error: error.message });
+          }
+
+          throw error;
+        }
+      }
+
+      // Comments on a scene point at element ids, so every element needs one.
+      if (format === "excalidraw") {
+        try {
+          parseExcalidrawScene(parsedRequest.data.content);
+        } catch (error) {
+          if (error instanceof ExcalidrawSceneSyntaxError) {
             return reply.code(400).send({ error: error.message });
           }
 

@@ -56,7 +56,7 @@ import {
   type PenaStore,
 } from "./pena-store.js";
 
-const CURRENT_SCHEMA_VERSION = 11;
+const CURRENT_SCHEMA_VERSION = 12;
 const RESERVED_COLLECTION_SLUG = "root";
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
 
@@ -1162,6 +1162,11 @@ function migrateDatabase(database: Database.Database): void {
 
   if (schemaVersion < 11) {
     migrateToDocumentFormats(database);
+    schemaVersion = 11;
+  }
+
+  if (schemaVersion < 12) {
+    migrateToExcalidrawFormat(database);
   }
 }
 
@@ -1629,6 +1634,63 @@ function migrateToDocumentFormats(database: Database.Database): void {
 
     database.pragma("user_version = 11");
   })();
+}
+
+/**
+ * SQLite cannot widen a CHECK constraint in place, so the versions table is
+ * rebuilt to accept Excalidraw scenes. Feedback keeps pointing at the same
+ * version ids.
+ */
+function migrateToExcalidrawFormat(database: Database.Database): void {
+  database.pragma("foreign_keys = OFF");
+
+  try {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE document_versions_with_excalidraw (
+          id           INTEGER PRIMARY KEY,
+          document_id  INTEGER NOT NULL
+                       REFERENCES documents(id) ON DELETE CASCADE,
+          version      INTEGER NOT NULL CHECK (version >= 1),
+          content      TEXT NOT NULL,
+          published_at TEXT NOT NULL,
+          title        TEXT NOT NULL DEFAULT '',
+          format       TEXT NOT NULL DEFAULT 'markdown'
+                       CHECK (format IN ('markdown', 'html', 'excalidraw')),
+          UNIQUE (document_id, version)
+        ) STRICT;
+
+        INSERT INTO document_versions_with_excalidraw (
+          id,
+          document_id,
+          version,
+          content,
+          published_at,
+          title,
+          format
+        )
+        SELECT id, document_id, version, content, published_at, title, format
+        FROM document_versions;
+
+        DROP TABLE document_versions;
+        ALTER TABLE document_versions_with_excalidraw
+          RENAME TO document_versions;
+
+        CREATE INDEX document_versions_document_id_version
+          ON document_versions(document_id, version);
+
+        PRAGMA user_version = 12;
+      `);
+    })();
+  } finally {
+    database.pragma("foreign_keys = ON");
+  }
+
+  const foreignKeyViolations = database.pragma("foreign_key_check") as unknown[];
+
+  if (foreignKeyViolations.length > 0) {
+    throw new Error("The Excalidraw migration produced invalid foreign keys.");
+  }
 }
 
 function slugifyCollectionName(name: string): string {

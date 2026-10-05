@@ -394,7 +394,43 @@ describe("doc publish", () => {
 
     const invalid = await cli(["doc", "publish", html, "--slug", "page", "--title", "Page", "--format", "pdf"]);
     expect(invalid.code).toBe(2);
-    expect(invalid.stderr).toContain('"markdown" or "html"');
+    expect(invalid.stderr).toContain('"markdown", "html", or "excalidraw"');
+  });
+
+  it("publishes an .excalidraw file as a scene and checks it locally", async () => {
+    const scene = JSON.stringify({
+      type: "excalidraw",
+      elements: [{ id: "api", type: "rectangle", x: 0, y: 0, label: { text: "![x](missing.png)" } }],
+    });
+    const path = writeMarkdown("architecture.excalidraw", scene);
+    const result = await cli(["--json", "doc", "publish", path, "--slug", "architecture", "--title", "Architecture"]);
+
+    expect(result.code).toBe(0);
+    expect(result.json()).toMatchObject({ format: "excalidraw", uploadedImages: [] });
+    expect((await cli(["--json", "doc", "show", "architecture"])).json().content).toBe(scene);
+
+    // A revision without an extension keeps the scene format and its checks.
+    const withoutIds = writeMarkdown("revision.json", '{"type":"excalidraw","elements":[{"type":"text"}]}');
+    const rejected = await cli(["doc", "publish", withoutIds, "--slug", "architecture", "--title", "Architecture"]);
+
+    expect(rejected.code).toBe(2);
+    expect(rejected.stderr).toContain('Scene element 0 needs an "id"');
+
+    const typo = writeMarkdown(
+      "typo.excalidraw",
+      JSON.stringify({
+        type: "excalidraw",
+        elements: [
+          { id: "api", type: "rectangle", x: 0, y: 0 },
+          { id: "backend", type: "frame", children: ["apii"] },
+        ],
+      }),
+    );
+    const typoResult = await cli(["doc", "publish", typo, "--slug", "architecture", "--title", "Architecture"]);
+
+    expect(typoResult.code).toBe(2);
+    expect(typoResult.stderr).toContain('lists "apii" in "children"');
+    expect((await cli(["--json", "doc", "show", "architecture"])).json().version).toBe(1);
   });
 
   it("keeps a document's format when the file's extension names none", async () => {
@@ -520,6 +556,28 @@ describe("feedback", () => {
     const withEtag = await cli(["--json", "feedback", "show", "spec", "--etag", empty.json().etag]);
     expect(withEtag.code).toBe(0);
     expect(withEtag.json().latestBatchId).toBe(batch.id);
+  });
+
+  it("names the elements a canvas comment points at", async () => {
+    await createDocument(test, "spec");
+    const current = await test.app.inject({ method: "GET", url: "/api/docs/spec" });
+    const bounds = { x: 0, y: 0, width: 10, height: 10 };
+    const submitted = await test.app.inject({
+      method: "POST",
+      url: "/api/docs/spec/feedback",
+      headers: { "content-type": "application/json", "if-match": String(current.headers.etag) },
+      payload: {
+        comments: [
+          { selectedText: "API", comment: "Split it.", contextBefore: "", contextAfter: "", target: { elementIds: ["api", "db"], bounds } },
+          { selectedText: "Empty area", comment: "Add a cache.", contextBefore: "", contextAfter: "", target: { elementIds: [], bounds } },
+        ],
+      },
+    });
+    expect(submitted.statusCode).toBe(201);
+
+    const shown = await cli(["feedback", "show", "spec"]);
+    expect(shown.stdout).toContain('"API" [elements api, db]: Split it.');
+    expect(shown.stdout).toContain('"Empty area" [empty area]: Add a cache.');
   });
 
   it("waits for feedback and exits 4 on timeout", async () => {

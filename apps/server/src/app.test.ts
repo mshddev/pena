@@ -960,7 +960,158 @@ describe("Pena API", () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json().error).toContain('"markdown" or "html"');
+    expect(response.json().error).toContain(
+      '"markdown", "html", or "excalidraw"',
+    );
+  });
+
+  it("publishes an Excalidraw scene and rejects one without element ids", async () => {
+    const app = createApp();
+    const scene = JSON.stringify({
+      type: "excalidraw",
+      elements: [{ id: "api", type: "rectangle", x: 0, y: 0 }],
+    });
+    const created = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: { "content-type": "application/json", "if-none-match": "*" },
+      payload: { title: "Architecture", content: scene, format: "excalidraw" },
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ format: "excalidraw", version: 1 });
+
+    // Omitting the format keeps Excalidraw, so the scene is checked again.
+    const withoutIds = await publishDocument(
+      app,
+      DOCUMENT_URL,
+      JSON.stringify({
+        type: "excalidraw",
+        elements: [{ type: "rectangle", x: 0, y: 0 }],
+      }),
+    );
+
+    expect(withoutIds.statusCode).toBe(400);
+    expect(withoutIds.json().error).toBe(
+      'Scene element 0 needs an "id" of 1 to 100 characters.',
+    );
+
+    const notJson = await publishDocument(app, DOCUMENT_URL, "## Heading");
+
+    expect(notJson.statusCode).toBe(400);
+    expect(notJson.json().error).toMatch(/^Excalidraw content must be JSON/);
+
+    // A skeleton's references must name real elements, or expanding it
+    // fails in the browser; a saved element's are Excalidraw's own.
+    const rejections = await Promise.all(
+      [
+        [{ id: "backend", type: "frame", name: "Backend" }],
+        [
+          { id: "api", type: "rectangle", x: 0, y: 0 },
+          { id: "backend", type: "frame", children: ["apii"] },
+        ],
+        [{ id: "calls", type: "arrow", x: 0, y: 0, start: { id: "api" } }],
+        [{ id: "backend", type: "frame", children: [] }],
+      ].map((elements) =>
+        publishDocument(
+          app,
+          DOCUMENT_URL,
+          JSON.stringify({ type: "excalidraw", elements }),
+        ),
+      ),
+    );
+
+    expect(rejections.map((response) => response.json().error)).toEqual([
+      'Scene element 0 is a frame and needs a "children" array of element ids.',
+      'Scene element 1 lists "apii" in "children", but no element has that id.',
+      'Scene element 0 binds its start to "api", but no element has that id.',
+      'Scene element 0 is a frame with no "children", so it needs its own x, y, width, and height.',
+    ]);
+
+    const placedEmptyFrame = await publishDocument(
+      app,
+      DOCUMENT_URL,
+      JSON.stringify({
+        type: "excalidraw",
+        elements: [{ id: "later", type: "frame", children: [], x: 0, y: 0, width: 200, height: 100 }],
+      }),
+    );
+
+    expect(placedEmptyFrame.statusCode).toBe(200);
+
+    const savedWithDanglingBinding = await publishDocument(
+      app,
+      DOCUMENT_URL,
+      JSON.stringify({
+        type: "excalidraw",
+        elements: [
+          { id: "calls", type: "arrow", x: 0, y: 0, seed: 1, version: 3, start: { id: "gone" } },
+        ],
+      }),
+    );
+
+    expect(savedWithDanglingBinding.statusCode).toBe(200);
+    expect(
+      (await app.inject({ method: "GET", url: DOCUMENT_URL })).json(),
+    ).toMatchObject({ format: "excalidraw", version: 3 });
+  });
+
+  it("keeps the first scene when a revision is rejected", async () => {
+    const app = createApp();
+    const scene = JSON.stringify({
+      type: "excalidraw",
+      elements: [{ id: "api", type: "rectangle", x: 0, y: 0 }],
+    });
+    await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: { "content-type": "application/json", "if-none-match": "*" },
+      payload: { title: "Architecture", content: scene, format: "excalidraw" },
+    });
+    await publishDocument(app, DOCUMENT_URL, "## Heading");
+
+    expect(
+      (await app.inject({ method: "GET", url: DOCUMENT_URL })).json(),
+    ).toMatchObject({ content: scene, format: "excalidraw", version: 1 });
+  });
+
+  it("stores the canvas target of a comment on a scene", async () => {
+    const app = createApp();
+    const published = await app.inject({
+      method: "PUT",
+      url: DOCUMENT_URL,
+      headers: { "content-type": "application/json", "if-none-match": "*" },
+      payload: {
+        title: "Architecture",
+        content: JSON.stringify({
+          type: "excalidraw",
+          elements: [{ id: "api", type: "rectangle", x: 0, y: 0 }],
+        }),
+        format: "excalidraw",
+      },
+    });
+    const comment = {
+      selectedText: "API",
+      comment: "Split this service.",
+      contextBefore: "",
+      contextAfter: "",
+      target: {
+        elementIds: ["api"],
+        bounds: { x: 0, y: 0, width: 120, height: 60 },
+      },
+    };
+    const submitted = await app.inject({
+      method: "POST",
+      url: FEEDBACK_URL,
+      headers: { "if-match": requiredEtag(published) },
+      payload: { comments: [comment] },
+    });
+
+    expect(submitted.statusCode).toBe(201);
+    expect(
+      (await app.inject({ method: "GET", url: FEEDBACK_URL })).json().batches[0]
+        .comments,
+    ).toEqual([comment]);
   });
 
   it("stores multiple comments in one feedback batch", async () => {

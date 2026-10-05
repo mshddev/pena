@@ -7,6 +7,15 @@ export {
   type DecisionDocumentSegment,
   type ParsedDecisionDocument,
 } from "./decision-blocks.js";
+export {
+  ExcalidrawSceneSyntaxError,
+  isFrameElementType,
+  isSavedSceneElement,
+  parseExcalidrawScene,
+  readExcalidrawSceneText,
+  type ExcalidrawScene,
+  type ExcalidrawSceneElement,
+} from "./excalidraw-scene.js";
 
 const NonBlankStringSchema = z
   .string()
@@ -96,9 +105,10 @@ export type CollectionUpdateRequest = z.infer<
 
 /**
  * How a document's content is read. Markdown renders in Pena's own styling;
- * HTML is a complete page that runs its own CSS and scripts in a frame.
+ * HTML is a complete page that runs its own CSS and scripts in a frame;
+ * Excalidraw is a scene drawn on a canvas the reviewer pans and zooms.
  */
-export const DocumentFormatSchema = z.enum(["markdown", "html"]);
+export const DocumentFormatSchema = z.enum(["markdown", "html", "excalidraw"]);
 
 export type DocumentFormat = z.infer<typeof DocumentFormatSchema>;
 
@@ -201,11 +211,39 @@ export type DocumentListResponse = z.infer<
   typeof DocumentListResponseSchema
 >;
 
+/** A rectangle in an Excalidraw scene's own coordinates. */
+export const CanvasBoundsSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number().nonnegative(),
+  height: z.number().nonnegative(),
+});
+
+export type CanvasBounds = z.infer<typeof CanvasBoundsSchema>;
+
+/**
+ * What a comment on an Excalidraw scene points at: the elements the reviewer
+ * picked, by id, and the area they cover. An area with no elements is a
+ * comment on empty canvas.
+ */
+export const CanvasTargetSchema = z.object({
+  elementIds: z.array(z.string().min(1).max(100)).max(50),
+  bounds: CanvasBoundsSchema,
+});
+
+export type CanvasTarget = z.infer<typeof CanvasTargetSchema>;
+
 export const CommentInputSchema = z.object({
+  /**
+   * The passage the comment is about. On a canvas it is the picked elements'
+   * text, or their kinds when they have none.
+   */
   selectedText: NonBlankStringSchema.max(10_000),
   comment: NonBlankStringSchema.max(10_000),
   contextBefore: z.string().max(500),
   contextAfter: z.string().max(500),
+  /** Set only on a comment about an Excalidraw scene. */
+  target: CanvasTargetSchema.optional(),
 });
 
 export type CommentInput = z.infer<typeof CommentInputSchema>;

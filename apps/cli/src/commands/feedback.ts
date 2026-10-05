@@ -59,8 +59,13 @@ export const feedbackShow: CommandHandler = async (context) => {
     }
 
     for (const comment of batch.comments) {
+      // A comment on a canvas names the elements it points at.
+      const target = comment.target
+        ? ` [${comment.target.elementIds.length > 0 ? `elements ${comment.target.elementIds.join(", ")}` : "empty area"}]`
+        : "";
+
       lines.push(
-        `  - ${JSON.stringify(comment.selectedText)}: ${comment.comment}`,
+        `  - ${JSON.stringify(comment.selectedText)}${target}: ${comment.comment}`,
       );
     }
   }

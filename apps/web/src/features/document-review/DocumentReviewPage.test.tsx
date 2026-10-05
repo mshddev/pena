@@ -180,7 +180,13 @@ describe("interactive decision review", () => {
     });
   });
 
-  it("restores submitted decisions as disabled choices", async () => {
+  // A server older than formats sends none, and its documents are Markdown.
+  const { format: _format, ...documentWithoutFormat } = documentResponse;
+
+  it.each([
+    ["a Markdown document", documentResponse],
+    ["a document without a format", documentWithoutFormat],
+  ])("restores submitted decisions as disabled choices in %s", async (_name, document) => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) =>
@@ -204,7 +210,7 @@ describe("interactive decision review", () => {
                 },
               ],
             })
-          : jsonResponse(documentResponse),
+          : jsonResponse(document),
       ),
     );
 

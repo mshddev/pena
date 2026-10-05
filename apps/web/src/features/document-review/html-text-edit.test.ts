@@ -243,6 +243,59 @@ describe("attachHtmlTextEditing", () => {
     expect(editing.isDirty()).toBe(false);
   });
 
+  it("keeps a composition in a matched run and undoes one elsewhere", async () => {
+    const source = "<body><p>Hello</p><p id=drawn></p></body>";
+    const frameDocument = loadPage(source);
+    frameDocument.getElementById("drawn")!.textContent = "Drawn";
+    const onBlocked = vi.fn();
+    const editing = attachHtmlTextEditing(frameDocument, source, {
+      onChange: vi.fn(),
+      onBlocked,
+    });
+    const [hello, drawn] = frameDocument.querySelectorAll("p");
+
+    // The browser writes composed text itself.
+    frameDocument.dispatchEvent(new CompositionEvent("compositionstart"));
+    (hello!.firstChild as Text).data = "Hello こんにちは";
+    frameDocument.dispatchEvent(new CompositionEvent("compositionend"));
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(editing.getContent()).toBe(
+      "<body><p>Hello こんにちは</p><p id=drawn></p></body>",
+    );
+
+    frameDocument.dispatchEvent(new CompositionEvent("compositionstart"));
+    (drawn!.firstChild as Text).data = "Drawn 字";
+    drawn!.append(frameDocument.createTextNode("新"));
+    frameDocument.dispatchEvent(new CompositionEvent("compositionend"));
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(drawn!.textContent).toBe("Drawn");
+    expect(onBlocked).toHaveBeenCalledWith("unmatched");
+
+    input(frameDocument, "historyUndo");
+    expect(editing.isDirty()).toBe(false);
+  });
+
+  it("puts a matched node back when a composition replaces it", async () => {
+    const source = "<body><p>Hello</p></body>";
+    const frameDocument = loadPage(source);
+    const editing = attachHtmlTextEditing(frameDocument, source, {
+      onChange: vi.fn(),
+      onBlocked: vi.fn(),
+    });
+    const paragraph = frameDocument.querySelector("p")!;
+    const original = paragraph.firstChild!;
+
+    frameDocument.dispatchEvent(new CompositionEvent("compositionstart"));
+    original.replaceWith(frameDocument.createTextNode("Hello 世界"));
+    frameDocument.dispatchEvent(new CompositionEvent("compositionend"));
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(paragraph.firstChild).toBe(original);
+    expect(editing.getContent()).toBe("<body><p>Hello 世界</p></body>");
+  });
+
   it("ignores text a script removed and restores the page on detach", () => {
     const source = "<body><p>One</p><p>Two</p></body>";
     const frameDocument = loadPage(source);

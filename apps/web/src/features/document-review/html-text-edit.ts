@@ -436,7 +436,7 @@ export function attachHtmlTextEditing(
     const input = event as InputEvent;
 
     // A composition's text arrives as it is typed and cannot be refused;
-    // it lands inside the node the caret is in.
+    // it is settled when the composition ends.
     if (input.inputType === "insertCompositionText") {
       return;
     }
@@ -558,6 +558,125 @@ export function attachHtmlTextEditing(
     onChange();
   }
 
+  // The browser writes a composition's text itself, possibly into a new
+  // node or one Pena cannot save. Watching the page while it lasts lets
+  // Pena keep it in a matched node and undo it everywhere else.
+  let composing: { observer: MutationObserver; records: MutationRecord[] } | null =
+    null;
+
+  function handleCompositionStart(): void {
+    composing?.observer.disconnect();
+
+    if (!body) {
+      return;
+    }
+
+    const records: MutationRecord[] = [];
+    composing = {
+      observer: new MutationObserver((batch) => records.push(...batch)),
+      records,
+    };
+    composing.observer.observe(body, {
+      characterData: true,
+      characterDataOldValue: true,
+      childList: true,
+      subtree: true,
+    });
+  }
+
+  function handleCompositionEnd(): void {
+    const composition = composing;
+    composing = null;
+
+    // The composition's last input can follow its end event.
+    window.setTimeout(() => {
+      if (composition) {
+        const { observer, records } = composition;
+        records.push(...observer.takeRecords());
+        observer.disconnect();
+        settleComposition(records);
+      }
+    });
+  }
+
+  function settleComposition(records: MutationRecord[]): void {
+    const before = new Map<Text, string>();
+    const added = new Set<Text>();
+
+    for (const record of records) {
+      if (record.type === "characterData") {
+        const node = record.target as Text;
+
+        if (!before.has(node)) {
+          before.set(node, record.oldValue ?? "");
+        }
+
+        continue;
+      }
+
+      record.addedNodes.forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          added.add(node as Text);
+        }
+      });
+
+      // A matched node the browser swapped for a new one takes the new
+      // node's text and its place back.
+      record.removedNodes.forEach((node) => {
+        const matched = node as Text;
+        const replacement = [...record.addedNodes].find(
+          (candidate): candidate is Text =>
+            candidate.nodeType === Node.TEXT_NODE && added.has(candidate as Text),
+        );
+
+        if (!editable.has(matched) || !replacement?.isConnected) {
+          return;
+        }
+
+        if (!before.has(matched)) {
+          before.set(matched, matched.data);
+        }
+
+        matched.data = replacement.data;
+        replacement.replaceWith(matched);
+        added.delete(replacement);
+      });
+    }
+
+    let changed = false;
+    let refused = false;
+
+    for (const [node, data] of before) {
+      if (editable.has(node) && node.isConnected) {
+        if (node.data !== data) {
+          undoStack.push({ node, data, caret: node.data.length });
+          redoStack.length = 0;
+          changed = true;
+        }
+      } else if (node.data !== data) {
+        node.data = data;
+        refused = true;
+      }
+    }
+
+    for (const node of added) {
+      if (node.isConnected && !editable.has(node)) {
+        node.remove();
+        refused = true;
+      }
+    }
+
+    typing = null;
+
+    if (refused) {
+      onBlocked("unmatched");
+    }
+
+    if (changed || refused) {
+      onChange();
+    }
+  }
+
   // Following a link would open it; while editing a click only places the
   // caret. The page's own handlers still run, so tabs still switch.
   function handleClick(event: MouseEvent): void {
@@ -569,6 +688,8 @@ export function attachHtmlTextEditing(
   }
 
   frameDocument.addEventListener("keydown", handleKeyDown, true);
+  frameDocument.addEventListener("compositionstart", handleCompositionStart, true);
+  frameDocument.addEventListener("compositionend", handleCompositionEnd, true);
   frameDocument.addEventListener("beforeinput", handleBeforeInput, true);
   frameDocument.addEventListener("input", handleInput, true);
   frameDocument.addEventListener("click", handleClick, true);
@@ -592,6 +713,17 @@ export function attachHtmlTextEditing(
     isDirty: () => readEdits().size > 0,
     detach: () => {
       frameDocument.removeEventListener("keydown", handleKeyDown, true);
+      frameDocument.removeEventListener(
+        "compositionstart",
+        handleCompositionStart,
+        true,
+      );
+      frameDocument.removeEventListener(
+        "compositionend",
+        handleCompositionEnd,
+        true,
+      );
+      composing?.observer.disconnect();
       frameDocument.removeEventListener("beforeinput", handleBeforeInput, true);
       frameDocument.removeEventListener("input", handleInput, true);
       frameDocument.removeEventListener("click", handleClick, true);

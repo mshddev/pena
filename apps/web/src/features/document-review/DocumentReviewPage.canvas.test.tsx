@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -24,6 +25,9 @@ const canvas = vi.hoisted(() => ({
   showBounds: vi.fn(),
   /** What the canvas serializes to; a test changes it to stand for an edit. */
   content: "",
+  version: "v1",
+  /** Lets a test report a change, as Excalidraw does after each edit. */
+  reportChange: null as (() => void) | null,
 }));
 
 vi.mock("./components/ExcalidrawCanvas", async () => {
@@ -49,7 +53,9 @@ vi.mock("./components/ExcalidrawCanvas", async () => {
           fit: vi.fn(),
           zoomBy: vi.fn(),
           toContent: () => canvas.content,
+          readSceneVersion: () => canvas.version,
         });
+        canvas.reportChange = onSceneChange ?? null;
         onSceneChange?.();
         onViewportChange?.({ scrollX: 0, scrollY: 0, zoom: 1 });
       }, [onReady, onSceneChange, onViewportChange]);
@@ -268,6 +274,7 @@ describe("canvas editing", () => {
     const fetchMock = editFetchMock();
     vi.stubGlobal("fetch", fetchMock);
     canvas.content = '{"type":"excalidraw","elements":[]}';
+    canvas.version = "v1";
     const user = userEvent.setup();
 
     render(<DocumentReviewPage documentSlug="architecture" />);
@@ -280,6 +287,12 @@ describe("canvas editing", () => {
     // touching the canvas is.
     fireEvent.pointerDown(editor);
     canvas.content = '{"type":"excalidraw","elements":[{"id":"new"}]}';
+    canvas.version = "v2";
+    act(() => canvas.reportChange?.());
+
+    // A drawn change is unsaved work, so leaving it takes a deliberate
+    // discard.
+    expect(screen.getByRole("button", { name: "Discard" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Save version" }));
 
     expect(await screen.findByText("Saved your edit as version 2.")).toBeTruthy();
@@ -297,6 +310,7 @@ describe("canvas editing", () => {
     const fetchMock = editFetchMock();
     vi.stubGlobal("fetch", fetchMock);
     canvas.content = '{"type":"excalidraw","elements":[]}';
+    canvas.version = "v1";
     const user = userEvent.setup();
 
     render(<DocumentReviewPage documentSlug="architecture" />);

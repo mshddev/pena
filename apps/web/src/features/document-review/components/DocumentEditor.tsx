@@ -59,9 +59,21 @@ export function DocumentEditor({
   // the reader does after first touching it counts as an edit.
   const canvasBaselineRef = useRef<string | null>(null);
   const hasTouchedCanvasRef = useRef(false);
+  const [isCanvasDirty, setIsCanvasDirty] = useState(false);
   const isDirty = isHtml
     ? isPageDirty
-    : !isCanvas && text !== document.content;
+    : isCanvas
+      ? isCanvasDirty
+      : text !== document.content;
+
+  function readCanvasEdited(): boolean {
+    const canvas = canvasRef.current;
+    return (
+      hasTouchedCanvasRef.current &&
+      canvas !== null &&
+      canvas.readSceneVersion() !== canvasBaselineRef.current
+    );
+  }
 
   const handlePageReady = useCallback((handle: HtmlPageHandle) => {
     pageRef.current = handle;
@@ -76,8 +88,10 @@ export function DocumentEditor({
   }, []);
   const handleCanvasChange = useCallback(() => {
     if (!hasTouchedCanvasRef.current) {
-      canvasBaselineRef.current = canvasRef.current?.toContent() ?? null;
+      canvasBaselineRef.current = canvasRef.current?.readSceneVersion() ?? null;
     }
+
+    setIsCanvasDirty(readCanvasEdited());
   }, []);
   const handleCanvasTouch = useCallback(() => {
     hasTouchedCanvasRef.current = true;
@@ -119,16 +133,12 @@ export function DocumentEditor({
     } else if (isCanvas) {
       const canvas = canvasRef.current;
 
-      if (!canvas) {
+      if (!canvas || !readCanvasEdited()) {
+        onCancel();
         return;
       }
 
       content = canvas.toContent();
-
-      if (content === canvasBaselineRef.current) {
-        onCancel();
-        return;
-      }
     } else if (!isDirty) {
       onCancel();
       return;

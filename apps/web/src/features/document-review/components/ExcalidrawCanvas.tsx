@@ -36,6 +36,8 @@ export interface CanvasHandle {
   zoomBy: (factor: number) => void;
   /** The scene as it is now, in the `.excalidraw` form Pena stores. */
   toContent: () => string;
+  /** Changes whenever any element changes; cheap enough to read often. */
+  readSceneVersion: () => string;
 }
 
 interface ExcalidrawCanvasProps {
@@ -67,9 +69,14 @@ export default function ExcalidrawCanvas({
   const canvasSizeRef = useRef<{ width: number; height: number } | null>(null);
   const [initialData] = useState(() => prepareScene(scene));
   const callbacksRef = useRef({ onSceneChange, onViewportChange });
+  const editableRef = useRef(editable);
+  // The scene as Pena last laid it out. An editable scene that differs has
+  // the reader's changes, which a re-layout must not throw away.
+  const laidOutVersionRef = useRef<string | null>(null);
 
   useEffect(() => {
     callbacksRef.current = { onSceneChange, onViewportChange };
+    editableRef.current = editable;
   });
 
   // A republished version replaces the elements and keeps the reader's view.
@@ -84,6 +91,7 @@ export default function ExcalidrawCanvas({
     const next = prepareScene(scene);
     api.addFiles(Object.values(next.files));
     api.updateScene({ elements: next.elements, appState: next.appState });
+    laidOutVersionRef.current = readSceneVersion(api.getSceneElements());
   }, [scene]);
 
   // Excalidraw adds its fonts only once a scene has loaded, so a hand-written
@@ -107,9 +115,21 @@ export default function ExcalidrawCanvas({
 
       frame = window.requestAnimationFrame(() => {
         frame = null;
-        apiRef.current?.updateScene({
+        const api = apiRef.current;
+
+        if (
+          !api ||
+          (editableRef.current &&
+            readSceneVersion(api.getSceneElements()) !==
+              laidOutVersionRef.current)
+        ) {
+          return;
+        }
+
+        api.updateScene({
           elements: prepareScene(loadedSceneRef.current).elements,
         });
+        laidOutVersionRef.current = readSceneVersion(api.getSceneElements());
       });
     }
 
@@ -174,6 +194,7 @@ export default function ExcalidrawCanvas({
 
       if (!hasFittedRef.current && elements.length > 0) {
         hasFittedRef.current = true;
+        laidOutVersionRef.current = readSceneVersion(elements);
         createHandle(api).fit();
       }
 
@@ -219,6 +240,10 @@ export default function ExcalidrawCanvas({
       }}
     />
   );
+}
+
+function readSceneVersion(elements: readonly ExcalidrawElement[]): string {
+  return elements.map((element) => `${element.id}:${element.version}`).join();
 }
 
 /** The families scene text is drawn in, with the fallback for CJK text. */
@@ -304,5 +329,6 @@ function createHandle(api: ExcalidrawImperativeAPI): CanvasHandle {
         api.getFiles(),
         "local",
       ),
+    readSceneVersion: () => readSceneVersion(api.getSceneElements()),
   };
 }

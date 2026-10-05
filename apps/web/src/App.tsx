@@ -21,7 +21,14 @@ export function App() {
   }
 
   if (route.kind === "document") {
-    return <DocumentReviewPage documentSlug={route.documentSlug} />;
+    // A new document starts from a fresh page, never inside the last one's
+    // edit.
+    return (
+      <DocumentReviewPage
+        key={route.documentSlug}
+        documentSlug={route.documentSlug}
+      />
+    );
   }
 
   return (

@@ -1046,6 +1046,194 @@ describe("saved document index", () => {
   });
 });
 
+describe("editing", () => {
+  const plainDocument = {
+    ...documentResponse,
+    content: "Keep this sentence. Drop this one.",
+  };
+
+  function editFetchMock(
+    putResponse: () => Response = () =>
+      jsonResponse(
+        { ...plainDocument, content: undefined, version: 2 },
+        200,
+        '"pena-test-2"',
+      ),
+  ) {
+    return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url === "/api/collections") {
+        return collectionListResponse();
+      }
+
+      if (url === DOCUMENT_URL && init?.method === "PUT") {
+        return putResponse();
+      }
+
+      return jsonResponse(plainDocument);
+    });
+  }
+
+  it("publishes the reader's edit to the source as the next version", async () => {
+    const fetchMock = editFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    const source = screen.getByRole("textbox", { name: "Markdown source" });
+    expect((source as HTMLTextAreaElement).value).toBe(plainDocument.content);
+
+    await user.clear(source);
+    await user.type(source, "Keep this sentence.");
+    await user.click(screen.getByRole("button", { name: "Save version" }));
+
+    expect(
+      await screen.findByText("Saved your edit as version 2."),
+    ).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Markdown source" })).toBeNull();
+    expect(screen.getByText("Keep this sentence.")).toBeTruthy();
+    expect(screen.queryByText(/Drop this one/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Version 2" })).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith(DOCUMENT_URL, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        "if-match": '"pena-test-1"',
+      },
+      body: JSON.stringify({ title: "Review", content: "Keep this sentence." }),
+    });
+  });
+
+  it("leaves an unchanged edit without publishing", async () => {
+    const fetchMock = editFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    await user.click(screen.getByRole("button", { name: "Save version" }));
+
+    expect(screen.queryByRole("textbox", { name: "Markdown source" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("textbox", { name: "Markdown source" })).toBeNull();
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === "PUT"),
+    ).toBe(false);
+  });
+
+  it("keeps the edit open when a newer version was published", async () => {
+    vi.stubGlobal(
+      "fetch",
+      editFetchMock(() =>
+        jsonResponse(
+          { error: "The document changed after it was read.", currentVersion: 2 },
+          412,
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    const source = screen.getByRole("textbox", { name: "Markdown source" });
+    await user.type(source, " More.");
+    await user.click(screen.getByRole("button", { name: "Save version" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "A newer version was published while you were editing.",
+    );
+    expect((source as HTMLTextAreaElement).value).toBe(
+      `${plainDocument.content} More.`,
+    );
+  });
+
+  it("does not refresh over an edit in progress", async () => {
+    let documentFetchCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) === DOCUMENT_URL) {
+          documentFetchCount += 1;
+          return jsonResponse(plainDocument);
+        }
+
+        return collectionListResponse();
+      }),
+    );
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    window.dispatchEvent(new Event("focus"));
+
+    expect(documentFetchCount).toBe(1);
+    expect(
+      screen.getByRole("textbox", { name: "Markdown source" }),
+    ).toBeTruthy();
+  });
+
+  it("edits an HTML page's text on the page, not as source", async () => {
+    const page = "<p>Page text</p>";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input) === "/api/collections"
+          ? collectionListResponse()
+          : jsonResponse({ ...documentResponse, content: page, format: "html" }),
+      ),
+    );
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+
+    expect(screen.getByText("Editing page text")).toBeTruthy();
+    expect(screen.getByTitle("Review").getAttribute("srcdoc")).toBe(page);
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("asks for draft feedback to be sent before editing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+
+        if (url.endsWith("/feedback")) {
+          return jsonResponse({ latestBatchId: null, batches: [] });
+        }
+
+        if (url === "/api/collections") {
+          return collectionListResponse();
+        }
+
+        return jsonResponse(documentResponse);
+      }),
+    );
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await user.click(await screen.findByRole("button", { name: "Apply" }));
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    expect(
+      await screen.findByText(
+        "Submit or remove the draft feedback before editing.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Markdown source" })).toBeNull();
+  });
+});
+
 function collectionListResponse(
   collections: unknown[] = [],
 ): Response {

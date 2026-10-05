@@ -2,6 +2,7 @@ import type {
   Collection,
   CollectionListResponse,
   CollectionUpdateRequest,
+  DocumentMetadata,
   DocumentListResponse,
   DocumentSummary,
   DocumentStatus,
@@ -141,6 +142,38 @@ export async function restoreDocumentVersion(
   }
 
   return { document, etag: nextEtag };
+}
+
+/**
+ * Publishes the reader's own edit as the next version. The format and the
+ * collection stay as they are; `etag` keeps a version published meanwhile
+ * from being overwritten.
+ */
+export async function publishDocumentEdit(
+  documentSlug: string,
+  edit: { title: string; content: string },
+  etag: string,
+): Promise<DocumentResource> {
+  const response = await fetch(documentUrl(documentSlug), {
+    method: "PUT",
+    headers: { "content-type": "application/json", "if-match": etag },
+    body: JSON.stringify(edit),
+  });
+
+  if (response.status === 412) {
+    throw new Error(
+      "A newer version was published while you were editing. Copy your changes, cancel, and edit the newer version.",
+    );
+  }
+
+  const metadata = await parseResponse<DocumentMetadata>(response);
+  const nextEtag = response.headers.get("etag");
+
+  if (!nextEtag) {
+    throw new Error("Pena did not return a document ETag.");
+  }
+
+  return { document: { ...metadata, content: edit.content }, etag: nextEtag };
 }
 
 export async function fetchDocuments(

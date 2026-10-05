@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -22,6 +23,11 @@ const canvas = vi.hoisted(() => ({
     { id: "db", type: "ellipse", x: 200, y: 0, width: 100, height: 50 },
   ],
   showBounds: vi.fn(),
+  /** What the canvas serializes to; a test changes it to stand for an edit. */
+  content: "",
+  version: "v1",
+  /** Lets a test report a change, as Excalidraw does after each edit. */
+  reportChange: null as (() => void) | null,
 }));
 
 vi.mock("./components/ExcalidrawCanvas", async () => {
@@ -29,10 +35,14 @@ vi.mock("./components/ExcalidrawCanvas", async () => {
 
   return {
     default: function FakeExcalidrawCanvas({
+      editable,
       onReady,
+      onSceneChange,
       onViewportChange,
     }: {
+      editable?: boolean;
       onReady?: (handle: unknown) => void;
+      onSceneChange?: () => void;
       onViewportChange?: (viewport: unknown) => void;
     }) {
       useEffect(() => {
@@ -42,11 +52,20 @@ vi.mock("./components/ExcalidrawCanvas", async () => {
           showBounds: canvas.showBounds,
           fit: vi.fn(),
           zoomBy: vi.fn(),
+          toContent: () => canvas.content,
+          readSceneVersion: () => canvas.version,
+          isAsLaidOut: () => canvas.version === "v1",
         });
+        canvas.reportChange = onSceneChange ?? null;
+        onSceneChange?.();
         onViewportChange?.({ scrollX: 0, scrollY: 0, zoom: 1 });
-      }, [onReady, onViewportChange]);
+      }, [onReady, onSceneChange, onViewportChange]);
 
-      return <div data-testid="excalidraw" />;
+      return (
+        <div
+          data-testid={editable ? "excalidraw-editor" : "excalidraw"}
+        />
+      );
     },
   };
 });
@@ -234,6 +253,79 @@ describe("canvas review", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(
       'This canvas could not be read: Excalidraw content must be a scene object with "type": "excalidraw".',
     );
+  });
+});
+
+describe("canvas editing", () => {
+  function editFetchMock() {
+    return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/collections") {
+        return jsonResponse({ collections: [] });
+      }
+
+      if (init?.method === "PUT") {
+        return jsonResponse({ ...canvasDocument, content: undefined, version: 2 });
+      }
+
+      return jsonResponse(canvasDocument);
+    });
+  }
+
+  it("publishes the scene the reader drew as the next version", async () => {
+    const fetchMock = editFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    canvas.content = '{"type":"excalidraw","elements":[]}';
+    canvas.version = "v1";
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="architecture" />);
+
+    await canvasReady();
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const editor = await screen.findByTestId("excalidraw-editor");
+
+    // Loading the scene is not an edit; what the reader draws after
+    // touching the canvas is.
+    fireEvent.pointerDown(editor);
+    canvas.content = '{"type":"excalidraw","elements":[{"id":"new"}]}';
+    canvas.version = "v2";
+    act(() => canvas.reportChange?.());
+
+    // A drawn change is unsaved work, so leaving it takes a deliberate
+    // discard.
+    expect(screen.getByRole("button", { name: "Discard" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Save version" }));
+
+    expect(await screen.findByText("Saved your edit as version 2.")).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith("/api/docs/architecture", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        "if-match": '"pena-test-1"',
+      },
+      body: JSON.stringify({ title: "Architecture", content: canvas.content }),
+    });
+  });
+
+  it("leaves a canvas the reader did not change without publishing", async () => {
+    const fetchMock = editFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    canvas.content = '{"type":"excalidraw","elements":[]}';
+    canvas.version = "v1";
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="architecture" />);
+
+    await canvasReady();
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.pointerDown(await screen.findByTestId("excalidraw-editor"));
+    await user.click(screen.getByRole("button", { name: "Save version" }));
+
+    await canvasReady();
+    expect(screen.queryByTestId("excalidraw-editor")).toBeNull();
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === "PUT"),
+    ).toBe(false);
   });
 });
 

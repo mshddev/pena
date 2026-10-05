@@ -1,4 +1,8 @@
-import { Excalidraw, FONT_FAMILY } from "@excalidraw/excalidraw";
+import {
+  Excalidraw,
+  FONT_FAMILY,
+  serializeAsJSON,
+} from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type {
@@ -30,10 +34,18 @@ export interface CanvasHandle {
   fit: () => void;
   /** Zooms by `factor` around the middle of the canvas. */
   zoomBy: (factor: number) => void;
+  /** The scene as it is now, in the `.excalidraw` form Pena stores. */
+  toContent: () => string;
+  /** Changes whenever any element changes; cheap enough to read often. */
+  readSceneVersion: () => string;
+  /** Whether the scene is still exactly as Pena last laid it out. */
+  isAsLaidOut: () => boolean;
 }
 
 interface ExcalidrawCanvasProps {
   scene: ExcalidrawScene;
+  /** Shows Excalidraw's tools so the reader can change the scene. */
+  editable?: boolean;
   onReady?: (handle: CanvasHandle) => void;
   /** Runs whenever the elements change: loaded, re-measured, or republished. */
   onSceneChange?: () => void;
@@ -42,10 +54,12 @@ interface ExcalidrawCanvasProps {
 
 /**
  * The scene in Excalidraw's view mode: the reader can pan and zoom but not
- * edit. Pena draws its own comment layer over it.
+ * edit. Pena draws its own comment layer over it. An `editable` canvas is
+ * Excalidraw's full editor instead.
  */
 export default function ExcalidrawCanvas({
   scene,
+  editable = false,
   onReady,
   onSceneChange,
   onViewportChange,
@@ -57,9 +71,14 @@ export default function ExcalidrawCanvas({
   const canvasSizeRef = useRef<{ width: number; height: number } | null>(null);
   const [initialData] = useState(() => prepareScene(scene));
   const callbacksRef = useRef({ onSceneChange, onViewportChange });
+  const editableRef = useRef(editable);
+  // The scene as Pena last laid it out. An editable scene that differs has
+  // the reader's changes, which a re-layout must not throw away.
+  const laidOutVersionRef = useRef<string | null>(null);
 
   useEffect(() => {
     callbacksRef.current = { onSceneChange, onViewportChange };
+    editableRef.current = editable;
   });
 
   // A republished version replaces the elements and keeps the reader's view.
@@ -74,6 +93,7 @@ export default function ExcalidrawCanvas({
     const next = prepareScene(scene);
     api.addFiles(Object.values(next.files));
     api.updateScene({ elements: next.elements, appState: next.appState });
+    laidOutVersionRef.current = readSceneVersion(api.getSceneElements());
   }, [scene]);
 
   // Excalidraw adds its fonts only once a scene has loaded, so a hand-written
@@ -97,9 +117,21 @@ export default function ExcalidrawCanvas({
 
       frame = window.requestAnimationFrame(() => {
         frame = null;
-        apiRef.current?.updateScene({
+        const api = apiRef.current;
+
+        if (
+          !api ||
+          (editableRef.current &&
+            readSceneVersion(api.getSceneElements()) !==
+              laidOutVersionRef.current)
+        ) {
+          return;
+        }
+
+        api.updateScene({
           elements: prepareScene(loadedSceneRef.current).elements,
         });
+        laidOutVersionRef.current = readSceneVersion(api.getSceneElements());
       });
     }
 
@@ -119,7 +151,7 @@ export default function ExcalidrawCanvas({
   const handleApi = useCallback(
     (api: ExcalidrawImperativeAPI) => {
       apiRef.current = api;
-      onReady?.(createHandle(api));
+      onReady?.(createHandle(api, laidOutVersionRef));
     },
     [onReady],
   );
@@ -164,7 +196,8 @@ export default function ExcalidrawCanvas({
 
       if (!hasFittedRef.current && elements.length > 0) {
         hasFittedRef.current = true;
-        createHandle(api).fit();
+        laidOutVersionRef.current = readSceneVersion(elements);
+        createHandle(api, laidOutVersionRef).fit();
       }
 
       callbacksRef.current.onSceneChange?.();
@@ -189,8 +222,8 @@ export default function ExcalidrawCanvas({
       initialData={initialData}
       onChange={handleChange}
       onScrollChange={handleScroll}
-      viewModeEnabled
-      zenModeEnabled
+      viewModeEnabled={!editable}
+      zenModeEnabled={!editable}
       gridModeEnabled={false}
       theme="light"
       handleKeyboardGlobally={false}
@@ -211,6 +244,10 @@ export default function ExcalidrawCanvas({
   );
 }
 
+function readSceneVersion(elements: readonly ExcalidrawElement[]): string {
+  return elements.map((element) => `${element.id}:${element.version}`).join();
+}
+
 /** The families scene text is drawn in, with the fallback for CJK text. */
 const SCENE_FONT_FAMILIES = new Set([...Object.keys(FONT_FAMILY), "Xiaolai"]);
 
@@ -223,7 +260,10 @@ const MAX_ZOOM = 30;
 /** Space kept around the scene when it is fitted to the canvas, in pixels. */
 const FIT_MARGIN = 32;
 
-function createHandle(api: ExcalidrawImperativeAPI): CanvasHandle {
+function createHandle(
+  api: ExcalidrawImperativeAPI,
+  laidOutVersionRef: { current: string | null },
+): CanvasHandle {
   function setCamera(zoom: number, center: { x: number; y: number }): void {
     const appState = api.getAppState();
     const value = Math.min(Math.max(zoom, MIN_ZOOM), MAX_ZOOM);
@@ -287,5 +327,15 @@ function createHandle(api: ExcalidrawImperativeAPI): CanvasHandle {
         y: appState.height / (2 * zoom) - appState.scrollY,
       });
     },
+    toContent: () =>
+      serializeAsJSON(
+        api.getSceneElements(),
+        api.getAppState(),
+        api.getFiles(),
+        "local",
+      ),
+    readSceneVersion: () => readSceneVersion(api.getSceneElements()),
+    isAsLaidOut: () =>
+      readSceneVersion(api.getSceneElements()) === laidOutVersionRef.current,
   };
 }

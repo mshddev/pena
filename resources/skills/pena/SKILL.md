@@ -44,6 +44,11 @@ ETag as `--etag` when republishing so a concurrent change surfaces as exit 3.
 The ETag includes its surrounding double quotes; pass it verbatim, for
 example `--etag '"pena-..."'`. The CLI also accepts the bare value.
 
+The user can also edit a document in the browser, which publishes the next
+version with no feedback. That is why a publish can fail with exit 3 when no
+feedback arrived: run `pena doc show <slug>`, use that content as the base,
+and keep the user's edits; never restore over them.
+
 A document lives at the root or inside one collection. Collections nest; each
 has a `slug`, a `name`, and a `parentSlug` (`null` at the top level).
 

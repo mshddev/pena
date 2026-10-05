@@ -713,6 +713,52 @@ export function ReadOnlyCanvas({ content }: { content: string }) {
 }
 
 /**
+ * A scene the reader edits with Excalidraw's own tools. `onTouch` fires on
+ * the reader's first pointer or key press, which tells their changes apart
+ * from the scene loading.
+ */
+export function EditableCanvas({
+  content,
+  onReady,
+  onSceneChange,
+  onTouch,
+}: {
+  content: string;
+  onReady: (handle: CanvasHandle) => void;
+  onSceneChange: () => void;
+  onTouch: () => void;
+}) {
+  const parsed = useMemo(() => readScene(content), [content]);
+
+  if (parsed.error !== null) {
+    return (
+      <p className="canvas-error" role="alert">
+        This canvas could not be read: {parsed.error}
+      </p>
+    );
+  }
+
+  return (
+    <div
+      className="canvas-editor"
+      onPointerDownCapture={onTouch}
+      onKeyDownCapture={onTouch}
+    >
+      <CanvasErrorBoundary scene={parsed.scene}>
+        <Suspense fallback={<CanvasLoading />}>
+          <ExcalidrawCanvas
+            scene={parsed.scene}
+            editable
+            onReady={onReady}
+            onSceneChange={onSceneChange}
+          />
+        </Suspense>
+      </CanvasErrorBoundary>
+    </div>
+  );
+}
+
+/**
  * Ends the canvas just above the feedback bar, so the whole canvas shows
  * without scrolling the page however tall the title wraps.
  */

@@ -9,9 +9,16 @@ import {
 
 /** How long the bar stays after the pointer leaves the top of the window. */
 export const REVIEW_BAR_HIDE_DELAY_MS = 2000;
+/** How close to the top edge the pointer brings a hidden bar back. */
+const REVEAL_EDGE = 16;
 
 interface ReviewBarProps {
   children: ReactNode;
+  /**
+   * The document is drawn in a frame, which keeps pointer moves from the
+   * window, so a strip laid over the top edge watches for the pointer.
+   */
+  hasFrame?: boolean;
   /** Keeps the bar in view, for example while one of its menus is open. */
   isPinned: boolean;
   /** Shown on the pull tab while the bar is hidden. */
@@ -24,17 +31,29 @@ interface ReviewBarProps {
  * pointer reaching the top edge, the pull tab, or keyboard focus brings it
  * back.
  *
- * Pointer events over an HTML page's frame or an Excalidraw surface never
- * reach the window, so leaving is read off the bar itself and arriving off a
- * strip laid over the top edge.
+ * Leaving is read off the bar itself. Arriving is read off the window's
+ * pointer moves, except over an HTML page's frame, which keeps them; there a
+ * strip over the top edge watches instead, at the cost of clicks on the
+ * page's top 16 pixels while the bar is away.
  */
-export function ReviewBar({ children, isPinned, title }: ReviewBarProps) {
+export function ReviewBar({
+  children,
+  hasFrame = false,
+  isPinned,
+  title,
+}: ReviewBarProps) {
   const [isHidden, setIsHidden] = useState(false);
   const barRef = useRef<HTMLElement>(null);
   const hideTimerRef = useRef<number | null>(null);
   const isHoveredRef = useRef(false);
   const isPinnedRef = useRef(isPinned);
+  const isHiddenRef = useRef(isHidden);
+  const tabPointerTypeRef = useRef("mouse");
   const isShown = isPinned || !isHidden;
+
+  useEffect(() => {
+    isHiddenRef.current = isHidden;
+  }, [isHidden]);
 
   const cancelHide = useCallback(() => {
     if (hideTimerRef.current !== null) {
@@ -98,6 +117,20 @@ export function ReviewBar({ children, isPinned, title }: ReviewBarProps) {
     return () => window.removeEventListener("pointerdown", handlePointerDown);
   }, [scheduleHide]);
 
+  // A canvas or a Markdown page lets pointer moves through, so the top edge
+  // needs no strip that would take the clicks meant for the document.
+  useEffect(() => {
+    function handlePointerMove(event: PointerEvent): void {
+      if (isHiddenRef.current && event.clientY <= REVEAL_EDGE) {
+        reveal();
+        scheduleHide();
+      }
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    return () => window.removeEventListener("pointermove", handlePointerMove);
+  }, [reveal, scheduleHide]);
+
   function handleBlur(event: FocusEvent<HTMLElement>): void {
     if (
       !isPinnedRef.current &&
@@ -132,20 +165,33 @@ export function ReviewBar({ children, isPinned, title }: ReviewBarProps) {
 
       {isShown ? null : (
         <>
-          <div
-            aria-hidden="true"
-            className="review-bar-reveal-zone"
-            onPointerEnter={() => {
-              reveal();
-              scheduleHide();
-            }}
-          />
+          {hasFrame ? (
+            <div
+              aria-hidden="true"
+              className="review-bar-reveal-zone"
+              onPointerEnter={() => {
+                reveal();
+                scheduleHide();
+              }}
+            />
+          ) : null}
           {/* Keyboard focus reaches the bar itself, so the tab is for the
               pointer only. */}
           <button
             aria-label="Show document bar"
             className="review-bar-tab"
-            onClick={reveal}
+            onPointerDown={(event) => {
+              tabPointerTypeRef.current = event.pointerType;
+            }}
+            onClick={() => {
+              reveal();
+
+              // A mouse leaving the bar starts the countdown; a finger never
+              // leaves it, so the tap starts it.
+              if (tabPointerTypeRef.current !== "mouse") {
+                scheduleHide();
+              }
+            }}
             tabIndex={-1}
             title="Show document bar"
             type="button"

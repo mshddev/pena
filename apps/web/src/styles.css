@@ -473,6 +473,10 @@ button:disabled {
   .review-bar-tab {
     animation: none;
   }
+
+  .canvas-zoom-controls {
+    transition: none;
+  }
 }
 
 .review-shell .review-layout {
@@ -494,8 +498,9 @@ button:disabled {
   padding-top: 0;
 }
 
-/* A page scrolls, so its end can rise above the fixed feedback bar. */
-.review-shell .document-pane.document-pane-html {
+/* While the full feedback bar is out, a page's end can scroll clear of it.
+   The pill leaves a page that fits the window unscrolled. */
+.review-shell .document-pane.document-pane-html.has-feedback-bar {
   padding-bottom: 110px;
 }
 
@@ -1538,6 +1543,7 @@ button:disabled {
   z-index: 6;
   bottom: 12px;
   left: 12px;
+  transition: bottom 180ms ease;
   display: flex;
   overflow: hidden;
   border: 1px solid #dfe1e6;
@@ -1630,6 +1636,13 @@ button:disabled {
   color: #5c5f66;
   font-size: 12px;
   pointer-events: none;
+}
+
+/* The canvas runs under the fixed feedback bar, so while the full bar is out
+   the canvas's own controls sit above it. */
+.canvas-document.under-feedback-bar .canvas-zoom-controls,
+.canvas-document.under-feedback-bar .canvas-hint {
+  bottom: 96px;
 }
 
 .canvas-hint kbd {
@@ -4051,6 +4064,11 @@ button:disabled {
     right: 12px;
     width: auto;
     padding: 0;
+  }
+
+  .canvas-document.under-feedback-bar .canvas-zoom-controls,
+  .canvas-document.under-feedback-bar .canvas-hint {
+    bottom: 160px;
   }
 
   .feedback-bar-main {

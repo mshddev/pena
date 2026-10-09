@@ -875,7 +875,7 @@ describe("saved document index", () => {
     render(<DocumentReviewPage documentSlug="review" />);
 
     await openMoreActions(user);
-    expect(screen.getByRole("button", { name: "Archive" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Archive document" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Move" })).toBeNull();
   });
 
@@ -919,7 +919,7 @@ describe("saved document index", () => {
     render(<DocumentReviewPage documentSlug="review" />);
 
     await openMoreActions(user);
-    await user.click(screen.getByRole("button", { name: "Archive" }));
+    await user.click(screen.getByRole("button", { name: "Archive document" }));
 
     await waitFor(() =>
       expect(assign).toHaveBeenCalledWith("/collections/research"),
@@ -965,7 +965,7 @@ describe("saved document index", () => {
     render(<DocumentReviewPage documentSlug="review" />);
 
     await openMoreActions(user);
-    await user.click(screen.getByRole("button", { name: "Archive" }));
+    await user.click(screen.getByRole("button", { name: "Archive document" }));
 
     await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
   });
@@ -1042,7 +1042,7 @@ describe("saved document index", () => {
     // The archive link in the ⋯ menu is scoped to the same collection.
     await openMoreActions(user);
     expect(
-      screen.getByRole("link", { name: "Archive" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Archived documents" }).getAttribute("href"),
     ).toBe("/archive?collection=payments");
   });
 
@@ -1071,7 +1071,7 @@ describe("saved document index", () => {
     expect(crumbs).toEqual([["All documents", "/"]]);
     await openMoreActions(user);
     expect(
-      screen.getByRole("link", { name: "Archive" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Archived documents" }).getAttribute("href"),
     ).toBe("/archive");
   });
 });

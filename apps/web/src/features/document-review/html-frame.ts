@@ -1,6 +1,6 @@
 import {
   readNodeWindow,
-  readTopBarBottom,
+  readTopBarReserve,
   toViewportRect,
 } from "./frame-geometry";
 
@@ -255,14 +255,14 @@ export function scrollToReadingPosition(element: Element): void {
     element,
     window.document,
   );
-  const topBarBottom = readTopBarBottom();
+  const topBarReserve = readTopBarReserve();
 
   // Rounding up lands the element on the reading line rather than a
   // fraction of a pixel below it, where it would not count as active yet.
   window.scrollTo({
     top: Math.max(
       0,
-      Math.ceil(window.scrollY + rect.top - topBarBottom - READING_OFFSET),
+      Math.ceil(window.scrollY + rect.top - topBarReserve - READING_OFFSET),
     ),
     behavior: "auto",
   });
@@ -270,9 +270,9 @@ export function scrollToReadingPosition(element: Element): void {
 
 /** Tall enough that a page sized to its viewport fills the screen. */
 export function readInitialFrameHeight(): number {
-  const topBarBottom = readTopBarBottom();
+  const topBarReserve = readTopBarReserve();
 
-  return Math.max(MIN_FRAME_HEIGHT, window.innerHeight - topBarBottom);
+  return Math.max(MIN_FRAME_HEIGHT, window.innerHeight - topBarReserve);
 }
 
 /** An HTML link, or an SVG one using either `href` or `xlink:href`. */

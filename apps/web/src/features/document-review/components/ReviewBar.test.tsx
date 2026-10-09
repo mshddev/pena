@@ -14,9 +14,9 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function renderBar(isPinned = false) {
+function renderBar(isPinned = false, hasFrame = false) {
   return render(
-    <ReviewBar isPinned={isPinned} title="Checkout flow">
+    <ReviewBar hasFrame={hasFrame} isPinned={isPinned} title="Checkout flow">
       <button type="button">Edit</button>
     </ReviewBar>,
   );
@@ -73,15 +73,59 @@ describe("ReviewBar", () => {
     const { container } = renderBar();
 
     waitOutDelay();
+    // Without a frame the window sees the pointer, so no strip covers the
+    // document's top edge.
+    expect(
+      container.ownerDocument.querySelector(".review-bar-reveal-zone"),
+    ).toBeNull();
+
+    fireEvent.pointerMove(window, { clientY: 40 });
+    expect(bar().className).toContain("is-hidden");
+
+    fireEvent.pointerMove(window, { clientY: 10 });
+    expect(bar().className).not.toContain("is-hidden");
+    // Reaching the edge without moving onto the bar hides it again.
+    waitOutDelay();
+    expect(bar().className).toContain("is-hidden");
+  });
+
+  it("watches the top edge with a strip over a frame", () => {
+    const { container } = renderBar(false, true);
+
+    waitOutDelay();
     const zone = container.ownerDocument.querySelector(
       ".review-bar-reveal-zone",
     ) as HTMLElement;
     fireEvent.pointerEnter(zone);
 
     expect(bar().className).not.toContain("is-hidden");
-    // Reaching the edge without moving onto the bar hides it again.
     waitOutDelay();
     expect(bar().className).toContain("is-hidden");
+  });
+
+  it("hides again after a tap on the pull tab", () => {
+    renderBar();
+
+    waitOutDelay();
+    const tab = screen.getByRole("button", { name: "Show document bar" });
+    fireEvent.pointerDown(tab, { pointerType: "touch" });
+    fireEvent.click(tab);
+
+    expect(bar().className).not.toContain("is-hidden");
+    waitOutDelay();
+    expect(bar().className).toContain("is-hidden");
+  });
+
+  it("stays after a mouse click on the pull tab until the pointer leaves", () => {
+    renderBar();
+
+    waitOutDelay();
+    const tab = screen.getByRole("button", { name: "Show document bar" });
+    fireEvent.pointerDown(tab, { pointerType: "mouse" });
+    fireEvent.click(tab);
+    waitOutDelay();
+
+    expect(bar().className).not.toContain("is-hidden");
   });
 
   it("comes back when focus moves into it", () => {

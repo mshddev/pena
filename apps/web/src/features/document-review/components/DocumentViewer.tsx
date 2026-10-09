@@ -44,7 +44,7 @@ import {
   initialCommentEditorState,
 } from "../editor-state";
 import { createDraftDecision } from "../decision-feedback";
-import { readTopBarBottom, toViewportRect } from "../frame-geometry";
+import { readTopBarReserve, toViewportRect } from "../frame-geometry";
 import { scrollToReadingPosition } from "../html-frame";
 import { createAnnotatedMarkdownComponents } from "../markdown-components";
 import type {
@@ -428,9 +428,9 @@ export function DocumentViewer({
     }
 
     const popoverRect = popover.getBoundingClientRect();
-    const topBarBottom = readTopBarBottom();
+    const topBarReserve = readTopBarReserve();
     const viewportPadding = 12;
-    const minimumTop = topBarBottom + viewportPadding;
+    const minimumTop = topBarReserve + viewportPadding;
     const maximumTop = Math.max(
       minimumTop,
       window.innerHeight - popoverRect.height - viewportPadding,
@@ -934,9 +934,9 @@ function scrollRangeToEditorPosition(range: Range): void {
     range.startContainer,
     window.document,
   );
-  const topBarBottom = readTopBarBottom();
+  const topBarReserve = readTopBarReserve();
   const viewportPadding = 28;
-  const desiredTop = topBarBottom + viewportPadding;
+  const desiredTop = topBarReserve + viewportPadding;
 
   if (Math.abs(anchorRect.top - desiredTop) < 1) {
     return;

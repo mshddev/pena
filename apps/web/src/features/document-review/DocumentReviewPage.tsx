@@ -616,7 +616,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
                   disabled={isEditing || isArchiving || isMoving}
                 >
                   <ArchiveIcon />
-                  {isArchiving ? "Archiving" : "Archive"}
+                  {isArchiving ? "Archiving" : "Archive document"}
                 </button>
               ) : null}
               <hr className="overflow-menu-separator" />
@@ -633,7 +633,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
               className="overflow-menu-item"
               href={archiveHref(currentCollectionSlug)}
             >
-              Archive
+              Archived documents
             </a>
           </nav>
         </OverflowMenu>
@@ -693,6 +693,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
       activeSectionId={activeSectionId}
       bar={bar}
       barTitle={currentDocument?.title ?? documentSlug}
+      hasFrame={currentDocument?.format === "html"}
       isBarPinned={isMenuOpen || isMoveOpen}
       sections={sections}
     >
@@ -701,7 +702,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
           fullBleedFormat
             ? ` document-pane-full-bleed document-pane-${fullBleedFormat}`
             : ""
-        }${
+        }${isFeedbackMinimized ? "" : " has-feedback-bar"}${
           draftFeedback.length > 0 && isPendingFeedbackOpen
             ? " has-pending-feedback"
             : ""

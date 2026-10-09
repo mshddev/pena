@@ -45,12 +45,13 @@ function readFrameElement(ownerDocument: Document): Element | null {
 }
 
 /**
- * Where the bar fixed to the top of the window ends. The review bar floats
- * over the page, which keeps room for it at the top, so its height counts
- * whether or not it is slid into view; that keeps reading positions steady
- * as it comes and goes. Elsewhere it is the utility bar.
+ * The room kept at the top of the window for its fixed bar. The review bar
+ * floats over the page and can come back at any moment, so its full height
+ * counts even while it is slid away: reading positions stay steady as it
+ * comes and goes, and nothing placed below the reserve is covered when it
+ * returns. Elsewhere it is where the utility bar ends.
  */
-export function readTopBarBottom(): number {
+export function readTopBarReserve(): number {
   const reviewBar = window.document.querySelector<HTMLElement>(".review-bar");
 
   if (reviewBar) {

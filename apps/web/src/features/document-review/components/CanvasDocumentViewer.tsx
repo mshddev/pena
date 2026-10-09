@@ -517,6 +517,9 @@ export function CanvasDocumentViewer({
   }
 
   const box = boxRef.current;
+  // The canvas runs under the feedback bar, so its own controls move up
+  // while the full bar is out.
+  const isUnderFeedbackBar = !editor && !(isFeedbackMinimized ?? false);
   const editorBounds =
     editor && viewport ? boundsToViewport(editor.target.bounds, viewport) : null;
 
@@ -534,7 +537,9 @@ export function CanvasDocumentViewer({
             </p>
           ) : (
             <div
-              className={`canvas-document${area ? " selecting-area" : ""}`}
+              className={`canvas-document${area ? " selecting-area" : ""}${
+                isUnderFeedbackBar ? " under-feedback-bar" : ""
+              }`}
               ref={boxRef}
             >
               <div

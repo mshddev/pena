@@ -38,7 +38,6 @@ import {
 import type { OutlineSection } from "../outline";
 import type { DraftComment, DraftFeedback, Notice } from "../types";
 import { CommentComposer } from "./CommentComposer";
-import { DocumentPageTitle } from "./DocumentPageTitle";
 import type { CanvasHandle } from "./ExcalidrawCanvas";
 import { FeedbackBar } from "./FeedbackBar";
 import { PendingFeedbackPanel } from "./PendingFeedbackPanel";
@@ -69,8 +68,6 @@ const POPOVER_EDGE = 12;
 const POPOVER_RESERVED_HEIGHT = 300;
 const SECTION_PREFIX = "pena-section-";
 const CANVAS_MIN_HEIGHT = 360;
-/** The fixed feedback bar and the gap above it. */
-const FEEDBACK_BAR_ROOM = 104;
 const ZOOM_STEP = 1.25;
 
 interface CanvasEditor {
@@ -101,6 +98,8 @@ interface CanvasDocumentViewerProps {
   onInstructionComposerOpenChange: (isOpen: boolean) => void;
   onPendingFeedbackOpenChange: (isOpen: boolean) => void;
   onSubmitFeedback: () => void;
+  isFeedbackMinimized?: boolean;
+  onFeedbackMinimizedChange?: (isMinimized: boolean) => void;
   onOutlineChange: (sections: OutlineSection[]) => void;
   onActiveSectionChange: (sectionId: string | null) => void;
 }
@@ -125,6 +124,8 @@ export function CanvasDocumentViewer({
   onInstructionComposerOpenChange,
   onPendingFeedbackOpenChange,
   onSubmitFeedback,
+  isFeedbackMinimized,
+  onFeedbackMinimizedChange,
   onOutlineChange,
   onActiveSectionChange,
 }: CanvasDocumentViewerProps) {
@@ -527,7 +528,6 @@ export function CanvasDocumentViewer({
         }`}
       >
         <div className="document-stage canvas-stage">
-          <DocumentPageTitle title={penaDocument.title} />
           {parsed.error !== null ? (
             <p className="canvas-error" role="alert">
               This canvas could not be read: {parsed.error}
@@ -680,6 +680,8 @@ export function CanvasDocumentViewer({
           onInstructionComposerOpenChange={onInstructionComposerOpenChange}
           onSubmit={onSubmitFeedback}
           onViewPending={viewPendingFeedback}
+          isMinimized={isFeedbackMinimized}
+          onMinimizedChange={onFeedbackMinimizedChange}
           commentHint="click an element"
         />
       ) : null}
@@ -759,8 +761,28 @@ export function EditableCanvas({
 }
 
 /**
- * Ends the canvas just above the feedback bar, so the whole canvas shows
- * without scrolling the page however tall the title wraps.
+ * The element's distance from the top of the page as laid out. Unlike its
+ * bounding box this ignores transforms, so the canvas's entrance animation
+ * cannot leave it short.
+ */
+function readLayoutTop(element: HTMLElement): number {
+  let top = 0;
+
+  for (
+    let node: HTMLElement | null = element;
+    node;
+    node = node.offsetParent as HTMLElement | null
+  ) {
+    top += node.offsetTop;
+  }
+
+  return top;
+}
+
+/**
+ * Ends the canvas at the bottom of the window, so the whole canvas shows
+ * without scrolling the page. The review bar and the feedback bar float over
+ * it rather than taking room from it.
  */
 function useFitToWindow(boxRef: RefObject<HTMLElement | null>): void {
   useLayoutEffect(() => {
@@ -771,10 +793,10 @@ function useFitToWindow(boxRef: RefObject<HTMLElement | null>): void {
         return;
       }
 
-      const top = box.getBoundingClientRect().top + window.scrollY;
+      const top = readLayoutTop(box);
       const height = `${Math.max(
         CANVAS_MIN_HEIGHT,
-        window.innerHeight - top - FEEDBACK_BAR_ROOM,
+        window.innerHeight - top,
       )}px`;
 
       // Setting the same height again would only wake the observer.
@@ -785,7 +807,7 @@ function useFitToWindow(boxRef: RefObject<HTMLElement | null>): void {
 
     fit();
     // Anything above the canvas moves its top: the canvas appearing after
-    // an error, a title wrapping, the move panel opening. Each changes the
+    // an error, the outline strip on a narrow window. Each changes the
     // page's height, so watching the page catches them all.
     const observer =
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);

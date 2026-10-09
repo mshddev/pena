@@ -1,4 +1,4 @@
-import { toViewportRect } from "./frame-geometry";
+import { readTopBarBottom, toViewportRect } from "./frame-geometry";
 
 /**
  * One heading in the rendered document. The outline is read back off the DOM
@@ -75,10 +75,7 @@ export function readActiveSection(
     ...surface.querySelectorAll<HTMLElement>(selector),
     ...(frameSurface?.querySelectorAll<HTMLElement>(selector) ?? []),
   ];
-  const readLine =
-    (window.document
-      .querySelector<HTMLElement>(".utility-bar")
-      ?.getBoundingClientRect().bottom ?? 0) + 24;
+  const readLine = readTopBarBottom() + 24;
   let active = headings[0]?.getAttribute(OUTLINE_SECTION_ATTRIBUTE) ?? null;
 
   for (const heading of headings) {

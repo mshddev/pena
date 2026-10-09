@@ -133,6 +133,8 @@ describe("canvas review", () => {
 
     await canvasReady();
     expect(window.EXCALIDRAW_ASSET_PATH).toBe("/excalidraw-assets/");
+    // The feedback bar starts as a pill so it does not cover the canvas.
+    await user.click(screen.getByRole("button", { name: "Expand feedback widget" }));
     expect(screen.getByText("Add an instruction or click an element to comment.")).toBeTruthy();
 
     // A click on the label lands on its shape.
@@ -196,6 +198,7 @@ describe("canvas review", () => {
 
     expect(screen.getByText("Empty area", { selector: "blockquote" })).toBeTruthy();
 
+    await user.click(screen.getByRole("button", { name: "Document outline" }));
     const frameLink = await screen.findByRole("link", { name: "Backend" });
     await user.click(frameLink);
 

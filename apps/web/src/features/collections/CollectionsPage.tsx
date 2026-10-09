@@ -24,6 +24,7 @@ import {
 import { UtilityBar } from "../../components/UtilityBar";
 import { formatRelativeTime } from "../../format";
 import { isSearchShortcut, searchShortcutLabel } from "../../shortcuts";
+import { useDismiss } from "../../use-dismiss";
 import { archiveHref, collectionHref } from "../document-review/routing";
 import type { Notice } from "../document-review/types";
 
@@ -93,67 +94,17 @@ export function CollectionsPage() {
     }
   }, [isCreating]);
 
-  useEffect(() => {
-    if (!isCreating) {
-      return;
-    }
+  useDismiss({
+    isOpen: isCreating,
+    onDismiss: () => setIsCreating(false),
+    isInside: (target) => target.closest(".collection-create") !== null,
+  });
 
-    function handleDismiss(event: MouseEvent | KeyboardEvent): void {
-      if (event instanceof KeyboardEvent) {
-        if (event.key === "Escape") {
-          setIsCreating(false);
-        }
-        return;
-      }
-
-      const target = event.target;
-
-      if (
-        !(target instanceof Element) ||
-        !target.closest(".collection-create")
-      ) {
-        setIsCreating(false);
-      }
-    }
-
-    window.addEventListener("pointerdown", handleDismiss);
-    window.addEventListener("keydown", handleDismiss);
-    return () => {
-      window.removeEventListener("pointerdown", handleDismiss);
-      window.removeEventListener("keydown", handleDismiss);
-    };
-  }, [isCreating]);
-
-  useEffect(() => {
-    if (!openMenuSlug) {
-      return;
-    }
-
-    function handleDismiss(event: MouseEvent | KeyboardEvent): void {
-      if (event instanceof KeyboardEvent) {
-        if (event.key === "Escape") {
-          setOpenMenuSlug(null);
-        }
-        return;
-      }
-
-      const target = event.target;
-
-      if (
-        !(target instanceof Element) ||
-        !target.closest(".collection-card-menu")
-      ) {
-        setOpenMenuSlug(null);
-      }
-    }
-
-    window.addEventListener("pointerdown", handleDismiss);
-    window.addEventListener("keydown", handleDismiss);
-    return () => {
-      window.removeEventListener("pointerdown", handleDismiss);
-      window.removeEventListener("keydown", handleDismiss);
-    };
-  }, [openMenuSlug]);
+  useDismiss({
+    isOpen: openMenuSlug !== null,
+    onDismiss: () => setOpenMenuSlug(null),
+    isInside: (target) => target.closest(".collection-card-menu") !== null,
+  });
 
   const tree = useMemo(() => buildCollectionTree(collections), [collections]);
   const orderedNodes = useMemo(() => flattenCollectionTree(tree), [tree]);

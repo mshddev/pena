@@ -232,6 +232,12 @@ button:disabled {
     padding 180ms ease;
 }
 
+.review-shell .document-index {
+  top: 0;
+  height: 100vh;
+  padding-top: calc(var(--review-bar-height) + 28px);
+}
+
 .review-layout.outline-collapsed .document-index {
   overflow: hidden;
   padding-right: 0;
@@ -263,7 +269,7 @@ button:disabled {
 }
 
 .outline-collapse-button,
-.outline-restore-button {
+.outline-toggle-button {
   display: grid;
   place-items: center;
   border: 0;
@@ -282,39 +288,32 @@ button:disabled {
   margin: -6px -6px -6px 0;
 }
 
+.outline-toggle-button {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+}
+
+.outline-toggle-button[aria-expanded="true"] {
+  color: var(--text-soft);
+}
+
 .outline-collapse-button:hover,
 .outline-collapse-button:focus-visible,
-.outline-restore-button:hover,
-.outline-restore-button:focus-visible {
+.outline-toggle-button:hover,
+.outline-toggle-button:focus-visible {
   background: rgb(111 140 255 / 10%);
   color: var(--accent-bright);
 }
 
 .outline-collapse-button svg,
-.outline-restore-button svg {
+.outline-toggle-button svg {
   width: 15px;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.35;
-}
-
-.outline-restore-button {
-  position: absolute;
-  z-index: 4;
-  top: 18px;
-  left: 18px;
-  display: flex;
-  height: 32px;
-  align-items: center;
-  gap: 7px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  background: rgb(18 21 28 / 90%);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
-  backdrop-filter: blur(14px);
-  font-size: 11px;
 }
 
 .document-outline {
@@ -372,72 +371,229 @@ button:disabled {
     padding-left 180ms ease;
 }
 
-/* Location, status, and document actions share one compact command row. The
-   document's human-readable title is rendered inside the reading surface. */
-.document-meta {
-  display: grid;
-  max-width: 980px;
-  grid-template-columns: minmax(0, 1fr) auto;
+/* The review page's only chrome: one slim bar floating over the document.
+   It slides away a moment after the pointer leaves it (see ReviewBar), so
+   the page keeps room for it at the top instead of moving when it comes. */
+.review-shell {
+  --review-bar-height: 36px;
+  --bar-height: var(--review-bar-height);
+}
+
+.review-bar {
+  position: fixed;
+  z-index: 20;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  height: var(--review-bar-height);
   align-items: center;
-  gap: 24px;
-  margin: 0 auto 40px;
-  padding-bottom: 22px;
+  gap: 10px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--line);
+  background: rgb(13 15 20 / 82%);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 26%);
+  backdrop-filter: blur(18px) saturate(130%);
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.review-bar.is-hidden {
+  box-shadow: none;
+  transform: translateY(-100%);
+}
+
+/* Laid over the top edge only while the bar is away and the pointer is over
+   an HTML page's frame, which keeps pointer moves from the window. Anywhere
+   else, a canvas included, the window's own pointer moves bring the bar back. */
+.review-bar-reveal-zone {
+  position: fixed;
+  z-index: 19;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 16px;
+}
+
+.review-bar-tab {
+  position: fixed;
+  z-index: 21;
+  top: 0;
+  left: 50%;
+  display: flex;
+  max-width: min(360px, calc(100vw - 32px));
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 5px 12px;
+  border: 1px solid var(--line-strong);
+  border-top: 0;
+  border-radius: 0 0 9px 9px;
+  background: rgb(26 30 40 / 92%);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 22%);
+  backdrop-filter: blur(14px);
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 11px;
+  transform: translateX(-50%);
+  animation: review-bar-tab-enter 200ms ease-out both;
+}
+
+.review-bar-tab span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-bar-tab svg {
+  width: 12px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.review-bar-tab:hover {
+  color: var(--text);
+}
+
+@keyframes review-bar-tab-enter {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .review-bar {
+    transition: none;
+  }
+
+  .review-bar-tab {
+    animation: none;
+  }
+
+  .canvas-zoom-controls {
+    transition: none;
+  }
+}
+
+.review-shell .review-layout {
+  min-height: 100vh;
+}
+
+.review-shell .document-pane {
+  padding-top: calc(var(--review-bar-height) + 28px);
+}
+
+/* A live HTML page or canvas fills the window: no frame, no padding, no
+   rounded corners. A page keeps room for the bar so its top shows; a canvas
+   runs under it, since the bar is away most of the time. */
+.review-shell .document-pane.document-pane-full-bleed {
+  padding: var(--review-bar-height) 0 0;
+}
+
+.review-shell .document-pane.document-pane-excalidraw {
+  padding-top: 0;
+}
+
+/* While the full feedback bar is out, a page's end can scroll clear of it.
+   The pill leaves a page that fits the window unscrolled. */
+.review-shell .document-pane.document-pane-html.has-feedback-bar {
+  padding-bottom: 110px;
+}
+
+.document-pane-full-bleed .document-review-layout,
+.document-pane-full-bleed .document-review-layout.with-pending-feedback {
+  max-width: none;
+}
+
+.document-pane-full-bleed .document-review-layout.with-pending-feedback {
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 278px);
+  gap: 0;
+}
+
+.document-pane-full-bleed .pending-feedback-panel {
+  margin-top: 24px;
+  padding-right: 16px;
+}
+
+.document-pane-full-bleed .document-stage {
+  max-width: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.document-pane-full-bleed .html-document-frame,
+.document-pane-full-bleed .canvas-document {
+  border-radius: 0;
 }
 
 .document-breadcrumb {
   display: flex;
+  flex: 1 1 auto;
   min-width: 0;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  margin: 0;
   color: var(--text-faint);
   font-size: 12px;
-  margin: 0;
+  white-space: nowrap;
+}
+
+.review-bar .document-breadcrumb-step {
+  flex-wrap: nowrap;
+  gap: 6px;
 }
 
 .document-breadcrumb-collection {
-  padding: 3px 9px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--text-soft);
+  padding: 2px 5px;
+  border-radius: 5px;
+  color: var(--text-faint);
   text-decoration: none;
   transition:
-    border-color 150ms ease,
+    background 150ms ease,
     color 150ms ease;
 }
 
 .document-breadcrumb-collection:hover,
 .document-breadcrumb-collection:focus-visible {
-  border-color: var(--line-strong);
+  background: rgb(255 255 255 / 5%);
   color: var(--text);
 }
 
 .document-breadcrumb-current {
   overflow: hidden;
+  min-width: 0;
   color: var(--text);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.document-version,
-.document-meta time {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: 12px;
-}
-
-.document-version,
-.document-meta time {
+.document-utilities time {
   flex: 0 0 auto;
+  margin: 0 4px 0 0;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  white-space: nowrap;
 }
 
 .document-version {
-  padding: 3px 8px;
+  flex: 0 0 auto;
+  padding: 2px 8px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: transparent;
+  color: var(--text-faint);
   cursor: pointer;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
   transition:
     border-color 150ms ease,
     background 150ms ease,
@@ -452,46 +608,22 @@ button:disabled {
   color: var(--accent-bright);
 }
 
-.document-identity {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 14px;
-}
-
-.document-version-meta {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 10px;
-}
-
 .document-utilities {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: flex-end;
-  gap: 18px;
+  gap: 6px;
 }
 
-.document-actions {
-  display: flex;
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.edit-document-button,
-.archive-document-button,
-.download-document-button,
-.move-document-button {
+.edit-document-button {
   display: inline-flex;
-  min-height: 30px;
+  height: 26px;
   align-items: center;
   gap: 6px;
-  padding: 0 11px;
+  padding: 0 10px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   color: var(--text-soft);
   cursor: pointer;
@@ -501,19 +633,15 @@ button:disabled {
     color 150ms ease;
 }
 
-.edit-document-button:hover:not(:disabled),
-.archive-document-button:hover:not(:disabled),
-.download-document-button:hover:not(:disabled),
-.move-document-button:hover:not(:disabled) {
+.edit-document-button:hover:not(:disabled) {
   border-color: var(--line-strong);
   color: var(--text);
 }
 
 .edit-document-button svg,
-.archive-document-button svg,
-.download-document-button svg,
-.move-document-button svg {
+.overflow-menu-item svg {
   width: 13px;
+  flex: 0 0 auto;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -521,19 +649,108 @@ button:disabled {
   stroke-width: 1.25;
 }
 
-.move-document-panel {
+.overflow-menu {
+  position: relative;
+}
+
+.overflow-menu-trigger {
   display: grid;
-  max-width: 980px;
-  grid-template-columns: minmax(220px, 1fr) 220px auto;
-  gap: 24px;
-  align-items: end;
-  margin: -24px auto 46px;
-  padding: 18px 0 18px 18px;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.overflow-menu-trigger:hover,
+.overflow-menu-trigger:focus-visible,
+.overflow-menu-trigger[aria-expanded="true"] {
+  border-color: var(--line);
+  background: rgb(255 255 255 / 4%);
+  color: var(--text);
+}
+
+.overflow-menu-trigger svg {
+  width: 15px;
+  fill: currentColor;
+}
+
+.overflow-menu-panel {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  min-width: 190px;
+  flex-direction: column;
+  padding: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 45%);
+  animation: composer-enter 140ms ease-out both;
+}
+
+.overflow-menu-links {
+  display: flex;
+  flex-direction: column;
+}
+
+.overflow-menu-item {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+  text-decoration: none;
+}
+
+.overflow-menu-item:hover:not(:disabled),
+.overflow-menu-item:focus-visible {
+  background: rgb(255 255 255 / 6%);
+  color: var(--text);
+  outline: none;
+}
+
+.overflow-menu-separator {
+  width: 100%;
+  margin: 5px 0;
+  border: 0;
   border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+}
+
+.move-document-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 8px;
+  display: grid;
+  width: min(420px, calc(100vw - 16px));
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line-strong);
   border-left: 2px solid var(--accent);
-  background: rgb(217 164 65 / 3%);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 45%);
   animation: delete-confirmation-enter 180ms ease-out both;
+}
+
+.move-document-actions {
+  justify-content: flex-end;
 }
 
 .move-document-title {
@@ -1258,15 +1475,11 @@ button:disabled {
   margin: 0 auto;
 }
 
-/* An HTML page brings its own design, so it takes the stage's full width
-   and the title lines up with it. The frame's white canvas stands in for a
-   browser's default, which a page without a background expects. */
-.html-stage .document-page-title {
-  max-width: none;
-}
-
-/* Beside the pending feedback panel the stage shrinks to fit its content,
-   and a frame's intrinsic width is only 300px, so it fills its column. */
+/* An HTML page brings its own design, so it takes the stage's full width.
+   Beside the pending feedback panel the stage shrinks to fit its content,
+   and a frame's intrinsic width is only 300px, so it fills its column. The
+   frame's white canvas stands in for a browser's default, which a page
+   without a background expects. */
 .html-stage {
   width: 100%;
 }
@@ -1288,15 +1501,11 @@ button:disabled {
   width: 100%;
 }
 
-.canvas-stage .document-page-title {
-  max-width: none;
-}
-
 .canvas-document {
   position: relative;
   /* The viewer fits the box to the window from where it starts; this is
      only the height before it does. */
-  height: max(360px, calc(100dvh - 420px));
+  height: max(360px, 100dvh);
   overflow: hidden;
   border-radius: 10px;
   background: #fff;
@@ -1327,6 +1536,7 @@ button:disabled {
   z-index: 6;
   bottom: 12px;
   left: 12px;
+  transition: bottom 180ms ease;
   display: flex;
   overflow: hidden;
   border: 1px solid #dfe1e6;
@@ -1402,11 +1612,15 @@ button:disabled {
   pointer-events: auto;
 }
 
+/* Centered, so the zoom controls keep the left corner and the feedback pill
+   the right one. */
 .canvas-hint {
   position: absolute;
   z-index: 4;
-  right: 12px;
   bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
   margin: 0;
   padding: 5px 10px;
   border-radius: 7px;
@@ -1415,6 +1629,13 @@ button:disabled {
   color: #5c5f66;
   font-size: 12px;
   pointer-events: none;
+}
+
+/* The canvas runs under the fixed feedback bar, so while the full bar is out
+   the canvas's own controls sit above it. */
+.canvas-document.under-feedback-bar .canvas-zoom-controls,
+.canvas-document.under-feedback-bar .canvas-hint {
+  bottom: 96px;
 }
 
 .canvas-hint kbd {
@@ -1526,7 +1747,6 @@ button:disabled {
   padding-left: clamp(24px, 3vw, 48px);
 }
 
-.document-pane.has-pending-feedback .document-meta,
 .document-review-layout.with-pending-feedback {
   max-width: 1290px;
 }
@@ -3097,16 +3317,6 @@ button:disabled {
     var(--bg);
 }
 
-.document-meta {
-  max-width: 980px;
-  margin-bottom: 24px;
-  padding: 0 2px 16px;
-}
-
-.document-identity {
-  gap: 14px;
-}
-
 /* 860px of text plus room either side for the comment markers to live in. */
 .document-stage {
   max-width: 980px;
@@ -3132,9 +3342,6 @@ button:disabled {
  * dense content can use the full pane once both are out of the way.
  */
 .review-layout.outline-collapsed
-  .document-pane:not(.has-pending-feedback)
-  .document-meta,
-.review-layout.outline-collapsed
   .document-review-layout:not(.with-pending-feedback),
 .review-layout.outline-collapsed
   .document-review-layout:not(.with-pending-feedback)
@@ -3148,7 +3355,8 @@ button:disabled {
   max-width: none;
 }
 
-.review-layout.outline-collapsed .feedback-bar {
+/* The pill keeps its corner; only the full bar recenters. */
+.review-layout.outline-collapsed .feedback-bar:not(.feedback-bar-minimized) {
   left: 0;
 }
 
@@ -3596,8 +3804,24 @@ button:disabled {
     border-bottom-width: 0;
   }
 
-  .review-layout.outline-collapsed .document-pane {
-    padding-top: 68px;
+  /* The outline becomes a strip above the document, so the layout itself
+     keeps room for the floating bar. */
+  .review-shell .review-layout {
+    padding-top: var(--review-bar-height);
+  }
+
+  .review-shell .document-index {
+    top: auto;
+    height: auto;
+    padding-top: 22px;
+  }
+
+  .review-shell .document-pane {
+    padding-top: 28px;
+  }
+
+  .review-shell .document-pane.document-pane-full-bleed {
+    padding-top: 0;
   }
 
   /* The rail becomes a strip above the document, so the outline scrolls
@@ -3637,14 +3861,6 @@ button:disabled {
     display: none;
   }
 
-  .move-document-panel {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .move-document-panel > div:first-child {
-    grid-column: 1 / -1;
-  }
-
   .delete-confirmation {
     align-items: flex-start;
     flex-direction: column;
@@ -3667,15 +3883,8 @@ button:disabled {
 }
 
 @media (max-width: 760px) {
-  .document-meta {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-  }
-
-  .document-utilities {
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    gap: 12px 16px;
+  .document-utilities time {
+    display: none;
   }
 
   .document-review-layout.with-pending-feedback {
@@ -3738,34 +3947,8 @@ button:disabled {
     border-radius: 11px;
   }
 
-  .document-meta {
-    margin-bottom: 34px;
-  }
-
-  .document-identity {
-    flex-wrap: wrap;
-    gap: 10px 14px;
-    margin: 0;
-  }
-
-  .document-breadcrumb {
-    flex: 1 1 200px;
-  }
-
-  .move-document-panel {
-    display: block;
-    margin-top: -16px;
-    padding: 18px 0 18px 14px;
-  }
-
-  .move-document-panel label {
-    display: block;
-    margin-top: 18px;
-  }
-
-  .move-document-actions {
-    justify-content: flex-end;
-    margin-top: 12px;
+  .review-bar .document-breadcrumb-step {
+    display: none;
   }
 
   .archive-main {
@@ -3874,6 +4057,11 @@ button:disabled {
     right: 12px;
     width: auto;
     padding: 0;
+  }
+
+  .canvas-document.under-feedback-bar .canvas-zoom-controls,
+  .canvas-document.under-feedback-bar .canvas-hint {
+    bottom: 160px;
   }
 
   .feedback-bar-main {

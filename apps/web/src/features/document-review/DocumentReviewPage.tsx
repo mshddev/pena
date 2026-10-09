@@ -6,6 +6,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -27,9 +28,11 @@ import {
 } from "../../collections";
 import { formatClockTime, formatRelativeTime } from "../../format";
 import { isSubmitAllShortcut } from "../../shortcuts";
+import { useDismiss } from "../../use-dismiss";
 import { CanvasDocumentViewer } from "./components/CanvasDocumentViewer";
 import { DocumentEditor } from "./components/DocumentEditor";
 import { DocumentViewer } from "./components/DocumentViewer";
+import { OverflowMenu } from "./components/OverflowMenu";
 import { PenaLayout } from "./components/PenaLayout";
 import {
   ReadOnlyDocument,
@@ -41,7 +44,7 @@ import {
 } from "./decision-feedback";
 import { downloadDocument } from "./document-download";
 import type { OutlineSection } from "./outline";
-import { collectionHref } from "./routing";
+import { archiveHref, collectionHref } from "./routing";
 import type {
   DraftComment,
   DraftDecision,
@@ -75,6 +78,12 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
   const [isArchiving, setIsArchiving] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
   const [isMoveOpen, setIsMoveOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const movePanelRef = useRef<HTMLDivElement>(null);
+  // The feedback bar starts as a pill so it does not cover the document. A
+  // new draft or a notice opens it.
+  const [isFeedbackMinimized, setIsFeedbackMinimized] = useState(true);
   const [moveDestination, setMoveDestination] = useState(ROOT_DESTINATION);
   const [collections, setCollections] = useState<CollectionSummary[]>([]);
   const [draftFeedback, setDraftFeedback] = useState<DraftFeedback[]>([]);
@@ -174,6 +183,13 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
     }
   }, [currentDocument, documentSlug]);
 
+  // Notices are written into the feedback bar, so it opens to show them.
+  useEffect(() => {
+    if (notice) {
+      setIsFeedbackMinimized(false);
+    }
+  }, [notice]);
+
   // Claude republishes while the window sits in the background. Refetching on
   // focus replaces the manual refresh button, but never discards a draft or
   // an edit in progress.
@@ -211,6 +227,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
   });
 
   function saveDraft(nextDraft: DraftComment): void {
+    setIsFeedbackMinimized(false);
     setDraftFeedback((drafts) => {
       const draftExists = drafts.some((draft) => draft.id === nextDraft.id);
       return draftExists
@@ -225,6 +242,10 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
     decisionId: string,
     nextDraft: DraftDecision | null,
   ): void {
+    if (nextDraft) {
+      setIsFeedbackMinimized(false);
+    }
+
     setDraftFeedback((drafts) => {
       const existingIndex = drafts.findIndex(
         (draft) =>
@@ -485,180 +506,236 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
   ];
   const breadcrumbPath = collectionPath(collections, currentCollectionSlug);
 
+  // The move panel hangs off the bar like the menu it came from, so it closes
+  // the same ways, except while the move is under way.
+  useDismiss({
+    isOpen: isMoveOpen,
+    onDismiss: () => {
+      if (!isMoving) {
+        cancelMove();
+      }
+    },
+    isInside: (target) => movePanelRef.current?.contains(target) ?? false,
+    returnFocusTo: menuTriggerRef,
+    closeOnFrameClick: true,
+  });
+  // A live page or canvas runs edge to edge; editing, history, and archived
+  // views keep the reading frame.
+  const fullBleedFormat =
+    currentDocument &&
+    !isEditing &&
+    !isHistoryOpen &&
+    !currentDocument.archivedAt &&
+    (currentDocument.format === "html" ||
+      currentDocument.format === "excalidraw")
+      ? currentDocument.format
+      : null;
+
+  // Only the live viewers mount the feedback bar.
+  const hasFeedbackBar =
+    !isFeedbackMinimized &&
+    currentDocument !== null &&
+    !isEditing &&
+    !isHistoryOpen &&
+    !currentDocument.archivedAt;
+
+  const bar = (
+    <>
+      <nav className="document-breadcrumb" aria-label="Breadcrumb">
+        <a className="document-breadcrumb-collection" href="/">
+          All documents
+        </a>
+        {breadcrumbPath.map((collection) => (
+          <span className="document-breadcrumb-step" key={collection.slug}>
+            <span aria-hidden="true">/</span>
+            <a
+              className="document-breadcrumb-collection"
+              href={collectionHref(collection.slug)}
+            >
+              {collection.name}
+            </a>
+          </span>
+        ))}
+        <span aria-hidden="true">/</span>
+        <span className="document-breadcrumb-current" title={documentSlug}>
+          {currentDocument?.title ?? documentSlug}
+        </span>
+      </nav>
+
+      <div className="document-utilities">
+        {currentDocument ? (
+          <>
+            <time dateTime={currentDocument.updatedAt}>
+              {`Updated ${formatRelativeTime(currentDocument.updatedAt)}, ${formatClockTime(currentDocument.updatedAt)}`}
+            </time>
+            <button
+              className="document-version"
+              aria-label={`Version ${currentDocument.version}`}
+              type="button"
+              aria-expanded={isHistoryOpen}
+              onClick={() => setIsHistoryOpen((current) => !current)}
+              disabled={isEditing}
+            >
+              v{currentDocument.version}
+            </button>
+            {currentDocument.archivedAt ? (
+              <span className="archived-document-label">Archived</span>
+            ) : (
+              <button
+                className="edit-document-button"
+                type="button"
+                onClick={beginEdit}
+                disabled={isEditing || isArchiving || isMoving}
+              >
+                <EditIcon />
+                Edit
+              </button>
+            )}
+          </>
+        ) : null}
+
+        <OverflowMenu
+          isOpen={isMenuOpen}
+          label="More actions"
+          onOpenChange={setIsMenuOpen}
+          triggerRef={menuTriggerRef}
+        >
+          {currentDocument ? (
+            <>
+              <button
+                className="overflow-menu-item"
+                type="button"
+                onClick={() => {
+                  downloadDocument(
+                    currentDocument.content,
+                    currentDocument.format,
+                    documentSlug,
+                  ).catch((error: unknown) =>
+                    setNotice({
+                      kind: "error",
+                      message:
+                        error instanceof Error
+                          ? `Could not download the document: ${error.message}`
+                          : "Could not download the document.",
+                    }),
+                  );
+                }}
+              >
+                <DownloadIcon />
+                Download
+              </button>
+              {!currentDocument.archivedAt && moveDestinations.length > 0 ? (
+                <button
+                  className="overflow-menu-item"
+                  type="button"
+                  onClick={beginMove}
+                  disabled={isEditing || isArchiving || isMoving}
+                >
+                  <MoveIcon />
+                  Move
+                </button>
+              ) : null}
+              {!currentDocument.archivedAt ? (
+                <button
+                  className="overflow-menu-item"
+                  type="button"
+                  onClick={() => void handleArchive()}
+                  disabled={isEditing || isArchiving || isMoving}
+                >
+                  <ArchiveIcon />
+                  {isArchiving ? "Archiving" : "Archive document"}
+                </button>
+              ) : null}
+              <hr className="overflow-menu-separator" />
+            </>
+          ) : null}
+          <nav className="overflow-menu-links" aria-label="Global navigation">
+            <a className="overflow-menu-item" href="/">
+              Dashboard
+            </a>
+            <a className="overflow-menu-item" href="/collections">
+              Collections
+            </a>
+            <a
+              className="overflow-menu-item"
+              href={archiveHref(currentCollectionSlug)}
+            >
+              Archived documents
+            </a>
+          </nav>
+        </OverflowMenu>
+      </div>
+
+      {isMoveOpen && currentDocument ? (
+        <div
+          className="move-document-panel"
+          role="group"
+          aria-label="Move document"
+          ref={movePanelRef}
+        >
+          <div>
+            <p className="move-document-title">Move this document</p>
+            <p>Feedback and version history move with it.</p>
+          </div>
+          <label>
+            <span>Destination collection</span>
+            <select
+              aria-label="Destination collection"
+              value={moveDestination}
+              onChange={(event) => setMoveDestination(event.target.value)}
+              disabled={isMoving}
+              autoFocus
+            >
+              {moveDestinations.map((destination) => (
+                <option value={destination.value} key={destination.value}>
+                  {destination.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="move-document-actions">
+            <button
+              className="quiet-button"
+              type="button"
+              onClick={cancelMove}
+              disabled={isMoving}
+            >
+              Cancel
+            </button>
+            <button
+              className="confirm-move-button"
+              type="button"
+              onClick={() => void handleMove()}
+              disabled={isMoving}
+            >
+              {isMoving ? "Moving" : "Move document"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+
   return (
     <PenaLayout
       activeSectionId={activeSectionId}
+      bar={bar}
+      barTitle={currentDocument?.title ?? documentSlug}
+      isBarPinned={isMenuOpen || isMoveOpen}
       sections={sections}
-      collectionSlug={currentCollectionSlug}
     >
       <section
         className={`document-pane${
+          fullBleedFormat
+            ? ` document-pane-full-bleed document-pane-${fullBleedFormat}`
+            : ""
+        }${hasFeedbackBar ? " has-feedback-bar" : ""}${
           draftFeedback.length > 0 && isPendingFeedbackOpen
             ? " has-pending-feedback"
             : ""
         }`}
         aria-label="Document"
       >
-        <header className="document-meta">
-          <div className="document-identity">
-            <nav className="document-breadcrumb" aria-label="Breadcrumb">
-              <a className="document-breadcrumb-collection" href="/">
-                All documents
-              </a>
-              {breadcrumbPath.map((collection) => (
-                <span
-                  className="document-breadcrumb-step"
-                  key={collection.slug}
-                >
-                  <span aria-hidden="true">/</span>
-                  <a
-                    className="document-breadcrumb-collection"
-                    href={collectionHref(collection.slug)}
-                  >
-                    {collection.name}
-                  </a>
-                </span>
-              ))}
-              <span aria-hidden="true">/</span>
-              <span
-                className="document-breadcrumb-current"
-                title={documentSlug}
-              >
-                {documentSlug}
-              </span>
-            </nav>
-          </div>
-
-          {currentDocument ? (
-            <div className="document-utilities">
-              <div className="document-version-meta">
-                <time dateTime={currentDocument.updatedAt}>
-                  {`Updated ${formatRelativeTime(currentDocument.updatedAt)}, ${formatClockTime(currentDocument.updatedAt)}`}
-                </time>
-                <button
-                  className="document-version"
-                  aria-label={`Version ${currentDocument.version}`}
-                  type="button"
-                  aria-expanded={isHistoryOpen}
-                  onClick={() => setIsHistoryOpen((current) => !current)}
-                  disabled={isEditing}
-                >
-                  v{currentDocument.version}
-                </button>
-                {currentDocument.archivedAt ? (
-                  <span className="archived-document-label">Archived</span>
-                ) : null}
-              </div>
-
-              <div className="document-actions">
-                {!currentDocument.archivedAt ? (
-                  <button
-                    className="edit-document-button"
-                    type="button"
-                    onClick={beginEdit}
-                    disabled={isEditing || isArchiving || isMoving}
-                  >
-                    <EditIcon />
-                    Edit
-                  </button>
-                ) : null}
-                <button
-                  className="download-document-button"
-                  type="button"
-                  onClick={() => {
-                    downloadDocument(
-                      currentDocument.content,
-                      currentDocument.format,
-                      documentSlug,
-                    ).catch((error: unknown) =>
-                      setNotice({
-                        kind: "error",
-                        message:
-                          error instanceof Error
-                            ? `Could not download the document: ${error.message}`
-                            : "Could not download the document.",
-                      }),
-                    );
-                  }}
-                >
-                  <DownloadIcon />
-                  Download
-                </button>
-                {!currentDocument.archivedAt &&
-                moveDestinations.length > 0 ? (
-                  <button
-                    className="move-document-button"
-                    type="button"
-                    onClick={beginMove}
-                    disabled={isEditing || isArchiving || isMoving}
-                  >
-                    <MoveIcon />
-                    Move
-                  </button>
-                ) : null}
-                {!currentDocument.archivedAt ? (
-                  <button
-                    className="archive-document-button"
-                    type="button"
-                    onClick={() => void handleArchive()}
-                    disabled={isEditing || isArchiving || isMoving}
-                  >
-                    <ArchiveIcon />
-                    {isArchiving ? "Archiving" : "Archive"}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-        </header>
-
-        {isMoveOpen && currentDocument ? (
-          <div
-            className="move-document-panel"
-            role="group"
-            aria-label="Move document"
-          >
-            <div>
-              <p className="move-document-title">Move this document</p>
-              <p>Feedback and version history move with it.</p>
-            </div>
-            <label>
-              <span>Destination collection</span>
-              <select
-                aria-label="Destination collection"
-                value={moveDestination}
-                onChange={(event) => setMoveDestination(event.target.value)}
-                disabled={isMoving}
-                autoFocus
-              >
-                {moveDestinations.map((destination) => (
-                  <option value={destination.value} key={destination.value}>
-                    {destination.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="move-document-actions">
-              <button
-                className="quiet-button"
-                type="button"
-                onClick={cancelMove}
-                disabled={isMoving}
-              >
-                Cancel
-              </button>
-              <button
-                className="confirm-move-button"
-                type="button"
-                onClick={() => void handleMove()}
-                disabled={isMoving}
-              >
-                {isMoving ? "Moving" : "Move document"}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
         {isLoading && !currentDocument ? (
           <div className="document-state" aria-live="polite">
             <span className="loading-line" />
@@ -724,6 +801,8 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
             onInstructionComposerOpenChange={setIsInstructionComposerOpen}
             onPendingFeedbackOpenChange={setIsPendingFeedbackOpen}
             onSubmitFeedback={() => void sendFeedback()}
+            isFeedbackMinimized={isFeedbackMinimized}
+            onFeedbackMinimizedChange={setIsFeedbackMinimized}
             onOutlineChange={handleOutlineChange}
             onActiveSectionChange={handleActiveSectionChange}
           />
@@ -752,6 +831,8 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
             onInstructionComposerOpenChange={setIsInstructionComposerOpen}
             onPendingFeedbackOpenChange={setIsPendingFeedbackOpen}
             onSubmitFeedback={() => void sendFeedback()}
+            isFeedbackMinimized={isFeedbackMinimized}
+            onFeedbackMinimizedChange={setIsFeedbackMinimized}
             onOutlineChange={handleOutlineChange}
             onActiveSectionChange={handleActiveSectionChange}
           />

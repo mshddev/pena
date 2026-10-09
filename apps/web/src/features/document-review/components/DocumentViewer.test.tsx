@@ -309,9 +309,9 @@ describe("DocumentViewer", () => {
 
       const { frameDocument } = loadFrame();
 
+      // The page's own headings only: its title lives in the review bar.
       expect(onOutlineChange).toHaveBeenLastCalledWith([
-        { id: "pena-section-0", text: "Highlight Test", depth: 0 },
-        { id: "pena-section-1", text: "Plans", depth: 1 },
+        { id: "pena-section-0", text: "Plans", depth: 0 },
       ]);
       // The page keeps its own heading ids.
       expect(frameDocument.querySelector("h2")?.id).toBe("plans");

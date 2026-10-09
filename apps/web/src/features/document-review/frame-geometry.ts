@@ -43,3 +43,24 @@ function readFrameElement(ownerDocument: Document): Element | null {
     return null;
   }
 }
+
+/**
+ * The room kept at the top of the window for its fixed bar. The review bar
+ * floats over the page and can come back at any moment, so its full height
+ * counts even while it is slid away: reading positions stay steady as it
+ * comes and goes, and nothing placed below the reserve is covered when it
+ * returns. Elsewhere it is where the utility bar ends.
+ */
+export function readTopBarReserve(): number {
+  const reviewBar = window.document.querySelector<HTMLElement>(".review-bar");
+
+  if (reviewBar) {
+    return reviewBar.offsetHeight;
+  }
+
+  return (
+    window.document
+      .querySelector<HTMLElement>(".utility-bar")
+      ?.getBoundingClientRect().bottom ?? 0
+  );
+}

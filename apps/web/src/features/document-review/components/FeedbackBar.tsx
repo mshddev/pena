@@ -17,6 +17,9 @@ interface FeedbackBarProps {
   onViewPending: () => void;
   /** How to start a comment, shown while nothing is drafted. */
   commentHint?: string;
+  /** Set with `onMinimizedChange` when the page decides; otherwise local. */
+  isMinimized?: boolean;
+  onMinimizedChange?: (isMinimized: boolean) => void;
 }
 
 export function FeedbackBar({
@@ -32,8 +35,12 @@ export function FeedbackBar({
   onSubmit,
   onViewPending,
   commentHint = "select text",
+  isMinimized: controlledIsMinimized,
+  onMinimizedChange,
 }: FeedbackBarProps) {
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [localIsMinimized, setLocalIsMinimized] = useState(false);
+  const isMinimized = controlledIsMinimized ?? localIsMinimized;
+  const setIsMinimized = onMinimizedChange ?? setLocalIsMinimized;
   const feedbackCount = commentCount + decisionCount;
   const hasInstruction = instruction.trim().length > 0;
   const draftCount = feedbackCount + (hasInstruction ? 1 : 0);

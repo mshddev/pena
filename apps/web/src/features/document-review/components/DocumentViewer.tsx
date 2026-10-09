@@ -44,7 +44,7 @@ import {
   initialCommentEditorState,
 } from "../editor-state";
 import { createDraftDecision } from "../decision-feedback";
-import { toViewportRect } from "../frame-geometry";
+import { readTopBarReserve, toViewportRect } from "../frame-geometry";
 import { scrollToReadingPosition } from "../html-frame";
 import { createAnnotatedMarkdownComponents } from "../markdown-components";
 import type {
@@ -96,6 +96,8 @@ interface DocumentViewerProps {
   onInstructionComposerOpenChange: (isOpen: boolean) => void;
   onPendingFeedbackOpenChange: (isOpen: boolean) => void;
   onSubmitFeedback: () => void;
+  isFeedbackMinimized?: boolean;
+  onFeedbackMinimizedChange?: (isMinimized: boolean) => void;
   onOutlineChange: (sections: OutlineSection[]) => void;
   onActiveSectionChange: (sectionId: string | null) => void;
 }
@@ -117,6 +119,8 @@ export function DocumentViewer({
   onInstructionComposerOpenChange,
   onPendingFeedbackOpenChange,
   onSubmitFeedback,
+  isFeedbackMinimized,
+  onFeedbackMinimizedChange,
   onOutlineChange,
   onActiveSectionChange,
 }: DocumentViewerProps) {
@@ -424,12 +428,9 @@ export function DocumentViewer({
     }
 
     const popoverRect = popover.getBoundingClientRect();
-    const utilityBarBottom =
-      window.document
-        .querySelector<HTMLElement>(".utility-bar")
-        ?.getBoundingClientRect().bottom ?? 0;
+    const topBarReserve = readTopBarReserve();
     const viewportPadding = 12;
-    const minimumTop = utilityBarBottom + viewportPadding;
+    const minimumTop = topBarReserve + viewportPadding;
     const maximumTop = Math.max(
       minimumTop,
       window.innerHeight - popoverRect.height - viewportPadding,
@@ -721,7 +722,8 @@ export function DocumentViewer({
           className={`document-stage${isHtml ? " html-stage" : ""}`}
           ref={documentStageRef}
         >
-          <DocumentPageTitle title={penaDocument.title} />
+          {/* A page is its own design; its title lives in the review bar. */}
+          {isHtml ? null : <DocumentPageTitle title={penaDocument.title} />}
           {isHtml ? (
             <HtmlDocumentFrame
               content={penaDocument.content}
@@ -867,6 +869,8 @@ export function DocumentViewer({
           onInstructionComposerOpenChange={onInstructionComposerOpenChange}
           onSubmit={onSubmitFeedback}
           onViewPending={viewPendingFeedback}
+          isMinimized={isFeedbackMinimized}
+          onMinimizedChange={onFeedbackMinimizedChange}
         />
       ) : null}
     </>
@@ -930,12 +934,9 @@ function scrollRangeToEditorPosition(range: Range): void {
     range.startContainer,
     window.document,
   );
-  const utilityBarBottom =
-    window.document
-      .querySelector<HTMLElement>(".utility-bar")
-      ?.getBoundingClientRect().bottom ?? 0;
+  const topBarReserve = readTopBarReserve();
   const viewportPadding = 28;
-  const desiredTop = utilityBarBottom + viewportPadding;
+  const desiredTop = topBarReserve + viewportPadding;
 
   if (Math.abs(anchorRect.top - desiredTop) < 1) {
     return;

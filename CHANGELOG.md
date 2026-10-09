@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The review page gives the document the window. One 36px bar replaces the utility bar, the document row, and the page title: an outline toggle, the breadcrumb ending in the document's title, the update time, the version, Edit, and a ⋯ menu with Download, Move, Archive, and the Dashboard, Collections, and Archive links. The bar floats over the document and slides away 2 seconds after the pointer leaves it; the top edge, a pull tab with the title, or keyboard focus brings it back, and it stays while a menu or the move panel is open. HTML pages and canvases run edge to edge, and a canvas fills the window. The outline starts folded until you open it, and the feedback bar starts as its pill and opens for a new draft or a notice
 - **Restart a running server after upgrading** (`pena server stop && pena server start`): an older server rejects the `format` field the new CLI sends, so every publish fails until it restarts
 - The database migrates to schema 11: every existing version becomes Markdown
 - The database migrates to schema 12, rebuilding the versions table so a version can be an Excalidraw scene

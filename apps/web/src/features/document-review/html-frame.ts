@@ -1,4 +1,8 @@
-import { readNodeWindow, toViewportRect } from "./frame-geometry";
+import {
+  readNodeWindow,
+  readTopBarReserve,
+  toViewportRect,
+} from "./frame-geometry";
 
 /**
  * The frame runs the page's scripts with Pena's origin, which the page needs
@@ -251,17 +255,14 @@ export function scrollToReadingPosition(element: Element): void {
     element,
     window.document,
   );
-  const utilityBarBottom =
-    window.document
-      .querySelector<HTMLElement>(".utility-bar")
-      ?.getBoundingClientRect().bottom ?? 0;
+  const topBarReserve = readTopBarReserve();
 
   // Rounding up lands the element on the reading line rather than a
   // fraction of a pixel below it, where it would not count as active yet.
   window.scrollTo({
     top: Math.max(
       0,
-      Math.ceil(window.scrollY + rect.top - utilityBarBottom - READING_OFFSET),
+      Math.ceil(window.scrollY + rect.top - topBarReserve - READING_OFFSET),
     ),
     behavior: "auto",
   });
@@ -269,12 +270,9 @@ export function scrollToReadingPosition(element: Element): void {
 
 /** Tall enough that a page sized to its viewport fills the screen. */
 export function readInitialFrameHeight(): number {
-  const utilityBarBottom =
-    window.document
-      .querySelector<HTMLElement>(".utility-bar")
-      ?.getBoundingClientRect().bottom ?? 0;
+  const topBarReserve = readTopBarReserve();
 
-  return Math.max(MIN_FRAME_HEIGHT, window.innerHeight - utilityBarBottom);
+  return Math.max(MIN_FRAME_HEIGHT, window.innerHeight - topBarReserve);
 }
 
 /** An HTML link, or an SVG one using either `href` or `xlink:href`. */

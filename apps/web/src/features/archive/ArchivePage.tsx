@@ -17,6 +17,7 @@ import {
 import { UtilityBar } from "../../components/UtilityBar";
 import { formatRelativeTime } from "../../format";
 import { isSearchShortcut, searchShortcutLabel } from "../../shortcuts";
+import { useDismiss } from "../../use-dismiss";
 import {
   archiveHref,
   collectionHref,
@@ -87,31 +88,11 @@ export function ArchivePage({ collectionSlug }: ArchivePageProps) {
     return () => window.removeEventListener("keydown", handleShortcut);
   }, []);
 
-  useEffect(() => {
-    if (!isScopeOpen) {
-      return;
-    }
-
-    function handleDismiss(event: MouseEvent | KeyboardEvent): void {
-      if (event instanceof KeyboardEvent) {
-        if (event.key === "Escape") {
-          setIsScopeOpen(false);
-        }
-        return;
-      }
-
-      if (!scopeRef.current?.contains(event.target as Node)) {
-        setIsScopeOpen(false);
-      }
-    }
-
-    window.addEventListener("pointerdown", handleDismiss);
-    window.addEventListener("keydown", handleDismiss);
-    return () => {
-      window.removeEventListener("pointerdown", handleDismiss);
-      window.removeEventListener("keydown", handleDismiss);
-    };
-  }, [isScopeOpen]);
+  useDismiss({
+    isOpen: isScopeOpen,
+    onDismiss: () => setIsScopeOpen(false),
+    isInside: (target) => scopeRef.current?.contains(target) ?? false,
+  });
 
   const scopeOptions = useMemo(
     () => flattenCollectionTree(buildCollectionTree(collections)),

@@ -8,29 +8,38 @@ import {
   type ReactNode,
 } from "react";
 
-import { UtilityBar } from "../../../components/UtilityBar";
-
 import type { OutlineSection } from "../outline";
 import { DocumentOutline } from "./DocumentOutline";
+import { ReviewBar } from "./ReviewBar";
 
 const OUTLINE_WIDTH_STORAGE_KEY = "pena:outline-width";
-const OUTLINE_VISIBILITY_STORAGE_KEY = "pena:outline-visibility";
+// The older key was written on every visit, so it holds no real choice. This
+// one is written only when the reader folds or opens the outline.
+const OUTLINE_VISIBILITY_STORAGE_KEY = "pena:outline-open";
+const LEGACY_OUTLINE_VISIBILITY_STORAGE_KEY = "pena:outline-visibility";
 const MIN_OUTLINE_WIDTH = 214;
 const MAX_OUTLINE_WIDTH = 420;
 const OUTLINE_WIDTH_STEP = 12;
 
 interface PenaLayoutProps {
   activeSectionId: string | null;
+  /** The bar's content after the outline toggle. */
+  bar: ReactNode;
+  /** The document's name, shown on the bar's pull tab while it is hidden. */
+  barTitle: string;
   children: ReactNode;
+  /** Keeps the bar in view while something in it is open. */
+  isBarPinned?: boolean;
   sections: OutlineSection[];
-  collectionSlug: string | null;
 }
 
 export function PenaLayout({
   activeSectionId,
+  bar,
+  barTitle,
   children,
+  isBarPinned = false,
   sections,
-  collectionSlug,
 }: PenaLayoutProps) {
   const [outlineWidth, setOutlineWidth] = useState<number | null>(
     readSavedOutlineWidth,
@@ -70,14 +79,24 @@ export function PenaLayout({
 
   useEffect(() => {
     try {
+      window.localStorage.removeItem(LEGACY_OUTLINE_VISIBILITY_STORAGE_KEY);
+    } catch {
+      // Nothing to tidy when storage is unavailable.
+    }
+  }, []);
+
+  function setOutlineOpen(isOpen: boolean): void {
+    setIsOutlineOpen(isOpen);
+
+    try {
       window.localStorage.setItem(
         OUTLINE_VISIBILITY_STORAGE_KEY,
-        isOutlineOpen ? "open" : "closed",
+        isOpen ? "open" : "closed",
       );
     } catch {
       // Folding still works when storage is unavailable.
     }
-  }, [isOutlineOpen]);
+  }
 
   function handleResizeStart(event: PointerEvent<HTMLDivElement>): void {
     if (event.button !== 0) {
@@ -146,8 +165,21 @@ export function PenaLayout({
   }
 
   return (
-    <div className="app-shell">
-      <UtilityBar current={null} collectionSlug={collectionSlug} />
+    <div className="app-shell review-shell">
+      <ReviewBar isPinned={isBarPinned} title={barTitle}>
+        <button
+          aria-controls="document-outline-panel"
+          aria-expanded={isOutlineOpen}
+          aria-label="Document outline"
+          className="outline-toggle-button"
+          onClick={() => setOutlineOpen(!isOutlineOpen)}
+          title={isOutlineOpen ? "Hide outline" : "Show outline"}
+          type="button"
+        >
+          <OutlineIcon />
+        </button>
+        {bar}
+      </ReviewBar>
 
       <main
         className={`review-layout${isResizingOutline ? " resizing-outline" : ""}${
@@ -159,7 +191,7 @@ export function PenaLayout({
         <DocumentOutline
           activeSectionId={activeSectionId}
           isOpen={isOutlineOpen}
-          onCollapse={() => setIsOutlineOpen(false)}
+          onCollapse={() => setOutlineOpen(false)}
           sections={sections}
         />
         {isOutlineOpen ? (
@@ -181,20 +213,7 @@ export function PenaLayout({
             tabIndex={0}
             title="Drag to resize. Double-click to reset."
           />
-        ) : (
-          <button
-            aria-controls="document-outline-panel"
-            aria-expanded="false"
-            aria-label="Show document outline"
-            className="outline-restore-button"
-            onClick={() => setIsOutlineOpen(true)}
-            title="Show document outline"
-            type="button"
-          >
-            <ExpandOutlineIcon />
-            <span>Outline</span>
-          </button>
-        )}
+        ) : null}
         {children}
       </main>
     </div>
@@ -232,20 +251,19 @@ function readSavedOutlineWidth(): number | null {
   }
 }
 
+/** The outline starts folded so the document gets the width. */
 function readSavedOutlineVisibility(): boolean {
   try {
-    return (
-      window.localStorage.getItem(OUTLINE_VISIBILITY_STORAGE_KEY) !== "closed"
-    );
+    return window.localStorage.getItem(OUTLINE_VISIBILITY_STORAGE_KEY) === "open";
   } catch {
-    return true;
+    return false;
   }
 }
 
-function ExpandOutlineIcon() {
+function OutlineIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 16 16">
-      <path d="M3 3h10v10H3zM7 3v10M9 6l2 2-2 2" />
+      <path d="M3 3h10v10H3zM7 3v10" />
     </svg>
   );
 }

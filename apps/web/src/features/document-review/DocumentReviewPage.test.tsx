@@ -52,6 +52,14 @@ const writingCollection = {
   childCount: 0,
 };
 
+/** Download, Move, Archive, and the app's pages sit behind the ⋯ button. */
+async function openMoreActions(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  await screen.findByRole("button", { name: /^Version / });
+  await user.click(screen.getByRole("button", { name: "More actions" }));
+}
+
 beforeEach(() => {
   vi.stubGlobal(
     "ResizeObserver",
@@ -112,9 +120,11 @@ describe("interactive decision review", () => {
     const skip = screen.getByRole("button", { name: "Skip" });
 
     expect(screen.getByText("v1")).toBeTruthy();
-    const documentSlug = screen.getAllByText("review", { exact: true });
-    expect(documentSlug).toHaveLength(1);
-    expect(documentSlug[0]?.getAttribute("title")).toBe("review");
+    // The bar names the document by its title; the slug is the tooltip.
+    const currentCrumb = screen.getByText("Review", {
+      selector: ".document-breadcrumb-current",
+    });
+    expect(currentCrumb.getAttribute("title")).toBe("review");
     const updatedAt = screen.getByText(/^Updated /);
     const expectedClockTime = new Intl.DateTimeFormat(undefined, {
       hour: "2-digit",
@@ -126,7 +136,10 @@ describe("interactive decision review", () => {
       name: "Version 1",
     }))).toBe(true);
     expect(documentUtilities?.contains(screen.getByRole("button", {
-      name: "Download",
+      name: "Edit",
+    }))).toBe(true);
+    expect(documentUtilities?.contains(screen.getByRole("button", {
+      name: "More actions",
     }))).toBe(true);
     expect(
       updatedAt.compareDocumentPosition(screen.getByRole("button", {
@@ -140,12 +153,11 @@ describe("interactive decision review", () => {
     expect(screen.queryByLabelText("Document title")).toBeNull();
     expect(apply.getAttribute("aria-pressed")).toBe("false");
     expect(skip.getAttribute("aria-pressed")).toBe("false");
-    // The feedback dock stays visible, but cannot submit an empty batch.
+    // The feedback bar waits as a pill until the first draft opens it.
     expect(
-      (screen.getByRole("button", {
-        name: "Submit feedback",
-      }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+      screen.getByRole("button", { name: "Expand feedback widget" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Submit feedback" })).toBeNull();
 
     await user.click(apply);
     expect(screen.getByText("1 item ready to submit")).toBeTruthy();
@@ -385,10 +397,8 @@ describe("interactive decision review", () => {
     ).toBeTruthy();
     expect(screen.queryByText("Decision required")).toBeNull();
     expect(
-      (screen.getByRole("button", {
-        name: "Submit feedback",
-      }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+      screen.getByRole("button", { name: "Expand feedback widget" }),
+    ).toBeTruthy();
     // The document and the collection list — nothing else is fetched.
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock).toHaveBeenCalledWith(DOCUMENT_URL);
@@ -625,9 +635,8 @@ describe("saved document index", () => {
 
     render(<DocumentReviewPage documentSlug="review" />);
 
-    await user.click(
-      await screen.findByRole("button", { name: "Download" }),
-    );
+    await openMoreActions(user);
+    await user.click(screen.getByRole("button", { name: "Download" }));
 
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     const markdownBlob = createObjectURL.mock.calls[0]?.[0] as Blob;
@@ -674,6 +683,7 @@ describe("saved document index", () => {
       fetchMock.mock.calls.some(([input]) => String(input).endsWith("/feedback")),
     ).toBe(false);
 
+    await openMoreActions(user);
     await user.click(screen.getByRole("button", { name: "Download" }));
 
     const htmlBlob = createObjectURL.mock.calls[0]?.[0] as Blob;
@@ -715,7 +725,8 @@ describe("saved document index", () => {
 
     render(<DocumentReviewPage documentSlug="review" />);
 
-    await user.click(await screen.findByRole("button", { name: "Move" }));
+    await openMoreActions(user);
+    await user.click(screen.getByRole("button", { name: "Move" }));
     const destination = screen.getByRole("combobox", {
       name: "Destination collection",
     }) as HTMLSelectElement;
@@ -743,6 +754,41 @@ describe("saved document index", () => {
     expect(
       screen.queryByRole("combobox", { name: "Destination collection" }),
     ).toBeNull();
+  });
+
+  it("closes the move panel on Escape or a click outside it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input) === "/api/collections"
+          ? collectionListResponse([researchCollection])
+          : String(input).endsWith("/feedback")
+          ? jsonResponse({ latestBatchId: null, batches: [] })
+          : jsonResponse(documentResponse),
+      ),
+    );
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await openMoreActions(user);
+    await user.click(screen.getByRole("button", { name: "Move" }));
+    expect(screen.getByRole("group", { name: "Move document" })).toBeTruthy();
+
+    // A press inside the panel keeps it.
+    await user.click(screen.getByText("Move this document"));
+    expect(screen.getByRole("group", { name: "Move document" })).toBeTruthy();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("group", { name: "Move document" })).toBeNull();
+    expect(window.document.activeElement).toBe(
+      screen.getByRole("button", { name: "More actions" }),
+    );
+
+    await openMoreActions(user);
+    await user.click(screen.getByRole("button", { name: "Move" }));
+    await user.click(screen.getByRole("heading", { name: "Review" }));
+    expect(screen.queryByRole("group", { name: "Move document" })).toBeNull();
   });
 
   it("moves a filed document back to the root", async () => {
@@ -782,7 +828,8 @@ describe("saved document index", () => {
 
     render(<DocumentReviewPage documentSlug="review" />);
 
-    await user.click(await screen.findByRole("button", { name: "Move" }));
+    await openMoreActions(user);
+    await user.click(screen.getByRole("button", { name: "Move" }));
     const destination = screen.getByRole("combobox", {
       name: "Destination collection",
     }) as HTMLSelectElement;
@@ -836,7 +883,8 @@ describe("saved document index", () => {
 
     render(<DocumentReviewPage documentSlug="review" />);
 
-    await user.click(await screen.findByRole("button", { name: "Move" }));
+    await openMoreActions(user);
+    await user.click(screen.getByRole("button", { name: "Move" }));
     await user.click(screen.getByRole("button", { name: "Move document" }));
 
     expect(
@@ -857,9 +905,12 @@ describe("saved document index", () => {
       ),
     );
 
+    const user = userEvent.setup();
+
     render(<DocumentReviewPage documentSlug="review" />);
 
-    await screen.findByRole("button", { name: "Archive" });
+    await openMoreActions(user);
+    expect(screen.getByRole("button", { name: "Archive document" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Move" })).toBeNull();
   });
 
@@ -902,7 +953,8 @@ describe("saved document index", () => {
 
     render(<DocumentReviewPage documentSlug="review" />);
 
-    await user.click(await screen.findByRole("button", { name: "Archive" }));
+    await openMoreActions(user);
+    await user.click(screen.getByRole("button", { name: "Archive document" }));
 
     await waitFor(() =>
       expect(assign).toHaveBeenCalledWith("/collections/research"),
@@ -947,7 +999,8 @@ describe("saved document index", () => {
 
     render(<DocumentReviewPage documentSlug="review" />);
 
-    await user.click(await screen.findByRole("button", { name: "Archive" }));
+    await openMoreActions(user);
+    await user.click(screen.getByRole("button", { name: "Archive document" }));
 
     await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
   });
@@ -973,9 +1026,17 @@ describe("saved document index", () => {
       ),
     );
 
+    const user = userEvent.setup();
+
     render(<DocumentReviewPage documentSlug="review" />);
 
-    const outline = await screen.findByRole("complementary", {
+    // The outline starts folded; the bar's toggle opens it.
+    const toggle = await screen.findByRole("button", {
+      name: "Document outline",
+    });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    await user.click(toggle);
+    const outline = screen.getByRole("complementary", {
       name: "Document outline",
     });
     await waitFor(() =>
@@ -1013,9 +1074,10 @@ describe("saved document index", () => {
       ["Research", "/collections/research"],
       ["Payments", "/collections/payments"],
     ]);
-    // The archive link in the utility bar is scoped to the same collection.
+    // The archive link in the ⋯ menu is scoped to the same collection.
+    await openMoreActions(user);
     expect(
-      screen.getByRole("link", { name: "Archive" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Archived documents" }).getAttribute("href"),
     ).toBe("/archive?collection=payments");
   });
 
@@ -1031,6 +1093,8 @@ describe("saved document index", () => {
       ),
     );
 
+    const user = userEvent.setup();
+
     render(<DocumentReviewPage documentSlug="review" />);
 
     await screen.findByRole("heading", { name: "Review" });
@@ -1040,8 +1104,9 @@ describe("saved document index", () => {
       link.getAttribute("href"),
     ]);
     expect(crumbs).toEqual([["All documents", "/"]]);
+    await openMoreActions(user);
     expect(
-      screen.getByRole("link", { name: "Archive" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Archived documents" }).getAttribute("href"),
     ).toBe("/archive");
   });
 });

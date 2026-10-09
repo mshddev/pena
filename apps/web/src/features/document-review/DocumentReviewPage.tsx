@@ -6,6 +6,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -27,6 +28,7 @@ import {
 } from "../../collections";
 import { formatClockTime, formatRelativeTime } from "../../format";
 import { isSubmitAllShortcut } from "../../shortcuts";
+import { useDismiss } from "../../use-dismiss";
 import { CanvasDocumentViewer } from "./components/CanvasDocumentViewer";
 import { DocumentEditor } from "./components/DocumentEditor";
 import { DocumentViewer } from "./components/DocumentViewer";
@@ -77,6 +79,8 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
   const [isMoving, setIsMoving] = useState(false);
   const [isMoveOpen, setIsMoveOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const movePanelRef = useRef<HTMLDivElement>(null);
   // The feedback bar starts as a pill so it does not cover the document. A
   // new draft or a notice opens it.
   const [isFeedbackMinimized, setIsFeedbackMinimized] = useState(true);
@@ -501,6 +505,20 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
       })),
   ];
   const breadcrumbPath = collectionPath(collections, currentCollectionSlug);
+
+  // The move panel hangs off the bar like the menu it came from, so it closes
+  // the same ways, except while the move is under way.
+  useDismiss({
+    isOpen: isMoveOpen,
+    onDismiss: () => {
+      if (!isMoving) {
+        cancelMove();
+      }
+    },
+    isInside: (target) => movePanelRef.current?.contains(target) ?? false,
+    returnFocusTo: menuTriggerRef,
+    closeOnFrameClick: true,
+  });
   // A live page or canvas runs edge to edge; editing, history, and archived
   // views keep the reading frame.
   const fullBleedFormat =
@@ -512,6 +530,14 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
       currentDocument.format === "excalidraw")
       ? currentDocument.format
       : null;
+
+  // Only the live viewers mount the feedback bar.
+  const hasFeedbackBar =
+    !isFeedbackMinimized &&
+    currentDocument !== null &&
+    !isEditing &&
+    !isHistoryOpen &&
+    !currentDocument.archivedAt;
 
   const bar = (
     <>
@@ -572,6 +598,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
           isOpen={isMenuOpen}
           label="More actions"
           onOpenChange={setIsMenuOpen}
+          triggerRef={menuTriggerRef}
         >
           {currentDocument ? (
             <>
@@ -644,6 +671,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
           className="move-document-panel"
           role="group"
           aria-label="Move document"
+          ref={movePanelRef}
         >
           <div>
             <p className="move-document-title">Move this document</p>
@@ -693,7 +721,6 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
       activeSectionId={activeSectionId}
       bar={bar}
       barTitle={currentDocument?.title ?? documentSlug}
-      hasFrame={currentDocument?.format === "html"}
       isBarPinned={isMenuOpen || isMoveOpen}
       sections={sections}
     >
@@ -702,7 +729,7 @@ export function DocumentReviewPage({ documentSlug }: DocumentReviewPageProps) {
           fullBleedFormat
             ? ` document-pane-full-bleed document-pane-${fullBleedFormat}`
             : ""
-        }${isFeedbackMinimized ? "" : " has-feedback-bar"}${
+        }${hasFeedbackBar ? " has-feedback-bar" : ""}${
           draftFeedback.length > 0 && isPendingFeedbackOpen
             ? " has-pending-feedback"
             : ""

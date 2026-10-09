@@ -404,8 +404,9 @@ button:disabled {
   transform: translateY(-100%);
 }
 
-/* Laid over the top edge only while the bar is away. The page's frame and
-   the canvas swallow pointer events, so this is what notices the pointer. */
+/* Laid over the top edge only while the bar is away and the pointer is over
+   an HTML page's frame, which keeps pointer moves from the window. Anywhere
+   else, a canvas included, the window's own pointer moves bring the bar back. */
 .review-bar-reveal-zone {
   position: fixed;
   z-index: 19;
@@ -1474,15 +1475,11 @@ button:disabled {
   margin: 0 auto;
 }
 
-/* An HTML page brings its own design, so it takes the stage's full width
-   and the title lines up with it. The frame's white canvas stands in for a
-   browser's default, which a page without a background expects. */
-.html-stage .document-page-title {
-  max-width: none;
-}
-
-/* Beside the pending feedback panel the stage shrinks to fit its content,
-   and a frame's intrinsic width is only 300px, so it fills its column. */
+/* An HTML page brings its own design, so it takes the stage's full width.
+   Beside the pending feedback panel the stage shrinks to fit its content,
+   and a frame's intrinsic width is only 300px, so it fills its column. The
+   frame's white canvas stands in for a browser's default, which a page
+   without a background expects. */
 .html-stage {
   width: 100%;
 }
@@ -1502,10 +1499,6 @@ button:disabled {
    a page in a frame: Excalidraw's dark theme inverts the drawing's colors. */
 .canvas-stage {
   width: 100%;
-}
-
-.canvas-stage .document-page-title {
-  max-width: none;
 }
 
 .canvas-document {

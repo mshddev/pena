@@ -28,8 +28,6 @@ interface PenaLayoutProps {
   /** The document's name, shown on the bar's pull tab while it is hidden. */
   barTitle: string;
   children: ReactNode;
-  /** The document is drawn in a frame (an HTML page). */
-  hasFrame?: boolean;
   /** Keeps the bar in view while something in it is open. */
   isBarPinned?: boolean;
   sections: OutlineSection[];
@@ -40,7 +38,6 @@ export function PenaLayout({
   bar,
   barTitle,
   children,
-  hasFrame = false,
   isBarPinned = false,
   sections,
 }: PenaLayoutProps) {
@@ -169,7 +166,7 @@ export function PenaLayout({
 
   return (
     <div className="app-shell review-shell">
-      <ReviewBar hasFrame={hasFrame} isPinned={isBarPinned} title={barTitle}>
+      <ReviewBar isPinned={isBarPinned} title={barTitle}>
         <button
           aria-controls="document-outline-panel"
           aria-expanded={isOutlineOpen}

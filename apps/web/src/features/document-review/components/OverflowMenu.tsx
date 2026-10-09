@@ -1,4 +1,10 @@
-import { useId, useRef, type MouseEvent, type ReactNode } from "react";
+import {
+  useId,
+  useRef,
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { useDismiss } from "../../../use-dismiss";
 
@@ -7,6 +13,8 @@ interface OverflowMenuProps {
   isOpen: boolean;
   label: string;
   onOpenChange: (isOpen: boolean) => void;
+  /** Lets the page send focus back to the ⋯ button. */
+  triggerRef?: RefObject<HTMLButtonElement | null>;
 }
 
 /**
@@ -19,9 +27,11 @@ export function OverflowMenu({
   isOpen,
   label,
   onOpenChange,
+  triggerRef: givenTriggerRef,
 }: OverflowMenuProps) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const localTriggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = givenTriggerRef ?? localTriggerRef;
   const panelId = useId();
 
   useDismiss({

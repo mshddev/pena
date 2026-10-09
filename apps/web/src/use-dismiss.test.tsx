@@ -63,15 +63,29 @@ describe("useDismiss", () => {
   it("closes on a click in a frame, not on a frame's script taking focus", () => {
     const onDismiss = vi.fn();
     render(<Popup onDismiss={onDismiss} />);
+    const frame = screen.getByTitle("Page");
 
     // A script moves focus into the frame while the pointer is elsewhere.
     fireEvent.pointerOver(screen.getByText("Outside"));
+    frame.focus();
     fireEvent.blur(window);
     expect(onDismiss).not.toHaveBeenCalled();
 
     // The pointer crosses into the frame and the reader clicks there.
-    fireEvent.pointerOver(screen.getByTitle("Page"));
+    fireEvent.pointerOver(frame);
     fireEvent.blur(window);
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays open when the window loses focus to another app", () => {
+    const onDismiss = vi.fn();
+    render(<Popup onDismiss={onDismiss} />);
+
+    // The pointer left through the frame, so the page never saw it go.
+    fireEvent.pointerOver(screen.getByTitle("Page"));
+    screen.getByRole("button", { name: "Inside" }).focus();
+    fireEvent.blur(window);
+
+    expect(onDismiss).not.toHaveBeenCalled();
   });
 });

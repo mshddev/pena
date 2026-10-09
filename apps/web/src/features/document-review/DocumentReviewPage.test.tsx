@@ -756,6 +756,41 @@ describe("saved document index", () => {
     ).toBeNull();
   });
 
+  it("closes the move panel on Escape or a click outside it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input) === "/api/collections"
+          ? collectionListResponse([researchCollection])
+          : String(input).endsWith("/feedback")
+          ? jsonResponse({ latestBatchId: null, batches: [] })
+          : jsonResponse(documentResponse),
+      ),
+    );
+    const user = userEvent.setup();
+
+    render(<DocumentReviewPage documentSlug="review" />);
+
+    await openMoreActions(user);
+    await user.click(screen.getByRole("button", { name: "Move" }));
+    expect(screen.getByRole("group", { name: "Move document" })).toBeTruthy();
+
+    // A press inside the panel keeps it.
+    await user.click(screen.getByText("Move this document"));
+    expect(screen.getByRole("group", { name: "Move document" })).toBeTruthy();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("group", { name: "Move document" })).toBeNull();
+    expect(window.document.activeElement).toBe(
+      screen.getByRole("button", { name: "More actions" }),
+    );
+
+    await openMoreActions(user);
+    await user.click(screen.getByRole("button", { name: "Move" }));
+    await user.click(screen.getByRole("heading", { name: "Review" }));
+    expect(screen.queryByRole("group", { name: "Move document" })).toBeNull();
+  });
+
   it("moves a filed document back to the root", async () => {
     let currentDocument = {
       ...documentResponse,

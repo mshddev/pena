@@ -14,11 +14,6 @@ const REVEAL_EDGE = 16;
 
 interface ReviewBarProps {
   children: ReactNode;
-  /**
-   * The document is drawn in a frame, which keeps pointer moves from the
-   * window, so a strip laid over the top edge watches for the pointer.
-   */
-  hasFrame?: boolean;
   /** Keeps the bar in view, for example while one of its menus is open. */
   isPinned: boolean;
   /** Shown on the pull tab while the bar is hidden. */
@@ -32,17 +27,13 @@ interface ReviewBarProps {
  * back.
  *
  * Leaving is read off the bar itself. Arriving is read off the window's
- * pointer moves, except over an HTML page's frame, which keeps them; there a
- * strip over the top edge watches instead, at the cost of clicks on the
- * page's top 16 pixels while the bar is away.
+ * pointer moves, except while the pointer is over an HTML page's frame,
+ * which keeps them; only then a strip over the top edge watches instead, at
+ * the cost of clicks on the frame's top 16 pixels.
  */
-export function ReviewBar({
-  children,
-  hasFrame = false,
-  isPinned,
-  title,
-}: ReviewBarProps) {
+export function ReviewBar({ children, isPinned, title }: ReviewBarProps) {
   const [isHidden, setIsHidden] = useState(false);
+  const [isPointerOverFrame, setIsPointerOverFrame] = useState(false);
   const barRef = useRef<HTMLElement>(null);
   const hideTimerRef = useRef<number | null>(null);
   const isHoveredRef = useRef(false);
@@ -131,6 +122,17 @@ export function ReviewBar({
     return () => window.removeEventListener("pointermove", handlePointerMove);
   }, [reveal, scheduleHide]);
 
+  // The frame element belongs to this page, so crossing its edge is seen
+  // here even though the moves inside it are not.
+  useEffect(() => {
+    function handlePointerOver(event: PointerEvent): void {
+      setIsPointerOverFrame(event.target instanceof HTMLIFrameElement);
+    }
+
+    window.addEventListener("pointerover", handlePointerOver);
+    return () => window.removeEventListener("pointerover", handlePointerOver);
+  }, []);
+
   function handleBlur(event: FocusEvent<HTMLElement>): void {
     if (
       !isPinnedRef.current &&
@@ -165,7 +167,7 @@ export function ReviewBar({
 
       {isShown ? null : (
         <>
-          {hasFrame ? (
+          {isPointerOverFrame ? (
             <div
               aria-hidden="true"
               className="review-bar-reveal-zone"

@@ -14,11 +14,15 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function renderBar(isPinned = false, hasFrame = false) {
+function renderBar(isPinned = false) {
   return render(
-    <ReviewBar hasFrame={hasFrame} isPinned={isPinned} title="Checkout flow">
-      <button type="button">Edit</button>
-    </ReviewBar>,
+    <>
+      <ReviewBar isPinned={isPinned} title="Checkout flow">
+        <button type="button">Edit</button>
+      </ReviewBar>
+      <iframe title="Page" />
+      <p>Text</p>
+    </>,
   );
 }
 
@@ -89,15 +93,27 @@ describe("ReviewBar", () => {
     expect(bar().className).toContain("is-hidden");
   });
 
-  it("watches the top edge with a strip over a frame", () => {
-    const { container } = renderBar(false, true);
+  it("watches the top edge with a strip only while the pointer is over a frame", () => {
+    const { container } = renderBar();
+    const strip = () =>
+      container.ownerDocument.querySelector<HTMLElement>(
+        ".review-bar-reveal-zone",
+      );
 
     waitOutDelay();
-    const zone = container.ownerDocument.querySelector(
-      ".review-bar-reveal-zone",
-    ) as HTMLElement;
-    fireEvent.pointerEnter(zone);
+    expect(strip()).toBeNull();
 
+    // A frame keeps pointer moves from the window, so the strip stands in.
+    fireEvent.pointerOver(screen.getByTitle("Page"));
+    expect(strip()).not.toBeNull();
+
+    // Back over the page's own content, the window sees the pointer again
+    // and the strip stops taking clicks.
+    fireEvent.pointerOver(screen.getByText("Text"));
+    expect(strip()).toBeNull();
+
+    fireEvent.pointerOver(screen.getByTitle("Page"));
+    fireEvent.pointerEnter(strip() as HTMLElement);
     expect(bar().className).not.toContain("is-hidden");
     waitOutDelay();
     expect(bar().className).toContain("is-hidden");

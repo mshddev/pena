@@ -10,8 +10,9 @@ interface DismissOptions {
   returnFocusTo?: RefObject<HTMLElement | null>;
   /**
    * Also closes on a click inside a frame, which reaches the page only as
-   * the window losing focus. A frame's own script taking focus is not a
-   * click, so this closes only while the pointer is over a frame.
+   * the window losing focus to that frame. A frame's own script taking focus
+   * is not a click, and switching apps leaves focus where it was, so this
+   * closes only when focus went to a frame while the pointer was over one.
    */
   closeOnFrameClick?: boolean;
 }
@@ -62,7 +63,10 @@ export function useDismiss({
     }
 
     function handleBlur(): void {
-      if (isPointerOverFrame) {
+      if (
+        isPointerOverFrame &&
+        window.document.activeElement instanceof HTMLIFrameElement
+      ) {
         latestRef.current.onDismiss();
       }
     }
